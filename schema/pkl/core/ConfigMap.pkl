@@ -1,0 +1,51 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+module configmap
+
+import "@formae/formae.pkl"
+import "../k8s.pkl"
+
+const type = "K8S::Core::ConfigMap"
+
+/// K8S ConfigMap resource.
+/// ConfigMaps hold configuration data as key-value pairs for pods to consume.
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.metadata.uid"
+  discoverable = true
+  parent = "K8S::Core::Namespace"
+  listParam = new formae.ListProperty {
+    parentProperty = "metadata.name"
+    listParameter = "namespace"
+  }
+}
+open class ConfigMap extends k8s.Resource {
+  fixed hidden resourceType: String = module.type
+
+  /// API version for ConfigMap is always "v1"
+  @k8s.FieldHint { required = true }
+  apiVersion: String = "v1"
+
+  /// Kind is always "ConfigMap"
+  @k8s.FieldHint { required = true }
+  kind: String = "ConfigMap"
+
+  /// ConfigMap metadata
+  @k8s.FieldHint { required = true }
+  metadata: k8s.ObjectMeta
+
+  /// Data contains the configuration data as UTF-8 strings.
+  @k8s.FieldHint {}
+  data: Mapping<String, String>?
+
+  /// BinaryData contains binary configuration data as base64-encoded strings.
+  @k8s.FieldHint {}
+  binaryData: Mapping<String, String>?
+
+  /// Immutable, if set to true, ensures that data stored in the ConfigMap cannot be updated.
+  @k8s.FieldHint {}
+  immutable: Boolean?
+}

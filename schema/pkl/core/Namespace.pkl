@@ -1,0 +1,50 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+module namespace
+
+import "@formae/formae.pkl"
+import "../k8s.pkl"
+
+const type = "K8S::Core::Namespace"
+
+/// K8S Namespace resource.
+/// Namespaces provide a scope for names and are used to divide cluster resources.
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.metadata.uid"
+  discoverable = true
+}
+open class Namespace extends k8s.Resource {
+  fixed hidden resourceType: String = module.type
+
+  /// API version for Namespace is always "v1"
+  @k8s.FieldHint { required = true }
+  apiVersion: String = "v1"
+
+  /// Kind is always "Namespace"
+  @k8s.FieldHint { required = true }
+  kind: String = "Namespace"
+
+  /// Namespace metadata (name only, no namespace field since Namespace is cluster-scoped)
+  @k8s.FieldHint { required = true }
+  metadata: NamespaceMetadata
+}
+
+/// Simplified metadata for Namespace (cluster-scoped, so no namespace field).
+@k8s.SubResourceHint {}
+open class NamespaceMetadata extends formae.SubResource {
+  /// Name of the namespace
+  @k8s.FieldHint { required = true }
+  name: String
+
+  /// Labels for organization
+  @k8s.FieldHint {}
+  labels: Mapping<String, String>?
+
+  /// Annotations for metadata
+  @k8s.FieldHint {}
+  annotations: Mapping<String, String>?
+}

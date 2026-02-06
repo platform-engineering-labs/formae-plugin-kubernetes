@@ -1,0 +1,63 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * K8S Plugin Schema - Base definitions for Kubernetes resources
+ */
+module k8s
+
+import "@formae/formae.pkl"
+
+// =============================================================================
+// Annotation aliases for K8S resources
+// =============================================================================
+
+typealias ResourceHint = formae.ResourceHint
+typealias FieldHint = formae.FieldHint
+typealias SubResourceHint = formae.SubResourceHint
+
+// =============================================================================
+// ObjectMeta - Common K8S metadata
+// =============================================================================
+
+/// Kubernetes ObjectMeta - standard metadata for all K8S resources.
+@SubResourceHint {}
+open class ObjectMeta extends formae.SubResource {
+  /// Name must be unique within a namespace.
+  @FieldHint { required = true }
+  name: String
+
+  /// Namespace defines the space within which each name must be unique.
+  /// Empty for cluster-scoped resources.
+  @FieldHint {}
+  namespace: String?
+
+  /// Labels are key/value pairs for resource organization.
+  @FieldHint {}
+  labels: Mapping<String, String>?
+
+  /// Annotations are key/value pairs for arbitrary metadata.
+  @FieldHint {}
+  annotations: Mapping<String, String>?
+}
+
+// =============================================================================
+// Base Resource class for K8S
+// =============================================================================
+
+/// Base class for all K8S resources.
+/// Provides common structure: apiVersion, kind, metadata.
+open class Resource extends formae.Resource {
+  /// API version of the resource (e.g., "v1", "apps/v1")
+  @FieldHint { required = true }
+  apiVersion: String
+
+  /// Kind of the resource (e.g., "Namespace", "Pod")
+  @FieldHint { required = true }
+  kind: String
+
+  /// Standard K8S metadata
+  @FieldHint { required = true }
+  metadata: ObjectMeta
+}

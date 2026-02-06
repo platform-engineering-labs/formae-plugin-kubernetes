@@ -1,0 +1,140 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+module pod
+
+import "@formae/formae.pkl"
+import "../k8s.pkl"
+
+const type = "K8S::Core::Pod"
+
+/// K8S Pod resource.
+/// A Pod is the smallest deployable unit in Kubernetes.
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.metadata.name"
+  discoverable = true
+  parent = "K8S::Core::Namespace"
+  listParam = new formae.ListProperty {
+    parentProperty = "metadata.name"
+    listParameter = "namespace"
+  }
+}
+open class Pod extends k8s.Resource {
+  fixed hidden resourceType: String = module.type
+
+  /// API version for Pod is always "v1"
+  @k8s.FieldHint { required = true }
+  apiVersion: String = "v1"
+
+  /// Kind is always "Pod"
+  @k8s.FieldHint { required = true }
+  kind: String = "Pod"
+
+  /// Pod metadata
+  @k8s.FieldHint { required = true }
+  metadata: k8s.ObjectMeta
+
+  /// Pod specification
+  @k8s.FieldHint { required = true }
+  spec: PodSpec
+}
+
+/// PodSpec defines the desired state of a Pod.
+@k8s.SubResourceHint {}
+open class PodSpec extends formae.SubResource {
+  /// List of containers in the pod.
+  /// Containers are matched by name for updates.
+  @k8s.FieldHint {
+    required = true
+    updateMethod = "EntitySet"
+    indexField = "name"
+  }
+  containers: Listing<Container>
+
+  /// Restart policy for all containers.
+  @k8s.FieldHint {}
+  restartPolicy: String?
+
+  /// Node selector for pod scheduling.
+  @k8s.FieldHint {}
+  nodeSelector: Mapping<String, String>?
+
+  /// Service account name for the pod.
+  @k8s.FieldHint {}
+  serviceAccountName: String?
+}
+
+/// Container defines a container within a pod.
+@k8s.SubResourceHint {}
+open class Container extends formae.SubResource {
+  /// Name of the container (used as EntitySet key)
+  @k8s.FieldHint { required = true }
+  name: String
+
+  /// Container image
+  @k8s.FieldHint { required = true }
+  image: String
+
+  /// Command to run
+  @k8s.FieldHint {}
+  command: Listing<String>?
+
+  /// Arguments to the command
+  @k8s.FieldHint {}
+  args: Listing<String>?
+
+  /// Environment variables
+  @k8s.FieldHint {}
+  env: Listing<EnvVar>?
+
+  /// Container ports
+  @k8s.FieldHint {}
+  ports: Listing<ContainerPort>?
+
+  /// Resource requirements
+  @k8s.FieldHint {}
+  resources: ResourceRequirements?
+}
+
+/// Environment variable definition.
+@k8s.SubResourceHint {}
+open class EnvVar extends formae.SubResource {
+  /// Name of the environment variable
+  @k8s.FieldHint { required = true }
+  name: String
+
+  /// Value of the environment variable
+  @k8s.FieldHint {}
+  value: String?
+}
+
+/// Container port definition.
+@k8s.SubResourceHint {}
+open class ContainerPort extends formae.SubResource {
+  /// Port number
+  @k8s.FieldHint { required = true }
+  containerPort: Int
+
+  /// Protocol (TCP, UDP)
+  @k8s.FieldHint {}
+  protocol: String?
+
+  /// Optional name for the port
+  @k8s.FieldHint {}
+  name: String?
+}
+
+/// Resource requirements for a container.
+@k8s.SubResourceHint {}
+open class ResourceRequirements extends formae.SubResource {
+  /// Resource limits
+  @k8s.FieldHint {}
+  limits: Mapping<String, String>?
+
+  /// Resource requests
+  @k8s.FieldHint {}
+  requests: Mapping<String, String>?
+}

@@ -1,0 +1,104 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+module cronjob
+
+import "@formae/formae.pkl"
+import "../k8s.pkl"
+import "Job.pkl" as job
+
+const type = "K8S::Batch::CronJob"
+
+/// K8S CronJob resource.
+/// A CronJob creates Jobs on a repeating schedule.
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.metadata.uid"
+  discoverable = true
+  parent = "K8S::Core::Namespace"
+  listParam = new formae.ListProperty {
+    parentProperty = "metadata.name"
+    listParameter = "namespace"
+  }
+}
+open class CronJob extends k8s.Resource {
+  fixed hidden resourceType: String = module.type
+
+  /// API version for CronJob is always "batch/v1"
+  @k8s.FieldHint { required = true }
+  apiVersion: String = "batch/v1"
+
+  /// Kind is always "CronJob"
+  @k8s.FieldHint { required = true }
+  kind: String = "CronJob"
+
+  /// CronJob metadata
+  @k8s.FieldHint { required = true }
+  metadata: k8s.ObjectMeta
+
+  /// CronJob specification
+  @k8s.FieldHint { required = true }
+  spec: CronJobSpec
+}
+
+/// CronJobSpec defines the desired state of a CronJob.
+@k8s.SubResourceHint {}
+open class CronJobSpec extends formae.SubResource {
+  /// Cron schedule expression (e.g., "*/5 * * * *").
+  @k8s.FieldHint { required = true }
+  schedule: String
+
+  /// Time zone name for the schedule (e.g., "America/New_York").
+  @k8s.FieldHint {}
+  timeZone: String?
+
+  /// Job template specifying the Job to create.
+  @k8s.FieldHint { required = true }
+  jobTemplate: JobTemplateSpec
+
+  /// Concurrency policy: "Allow", "Forbid", or "Replace".
+  @k8s.FieldHint {}
+  concurrencyPolicy: String?
+
+  /// Deadline in seconds for starting the Job if it misses its scheduled time.
+  @k8s.FieldHint {}
+  startingDeadlineSeconds: Int?
+
+  /// Number of successful finished jobs to retain.
+  @k8s.FieldHint {}
+  successfulJobsHistoryLimit: Int?
+
+  /// Number of failed finished jobs to retain.
+  @k8s.FieldHint {}
+  failedJobsHistoryLimit: Int?
+
+  /// Suspend tells the controller to suspend subsequent executions.
+  @k8s.FieldHint {}
+  suspend: Boolean?
+}
+
+/// JobTemplateSpec describes the Job that will be created by the CronJob.
+@k8s.SubResourceHint {}
+open class JobTemplateSpec extends formae.SubResource {
+  /// Metadata for the Job.
+  @k8s.FieldHint {}
+  metadata: JobTemplateMetadata?
+
+  /// Spec defines the desired behavior of the Job.
+  @k8s.FieldHint { required = true }
+  spec: job.JobSpec
+}
+
+/// Simplified metadata for Job templates.
+@k8s.SubResourceHint {}
+open class JobTemplateMetadata extends formae.SubResource {
+  /// Labels for organization.
+  @k8s.FieldHint {}
+  labels: Mapping<String, String>?
+
+  /// Annotations for metadata.
+  @k8s.FieldHint {}
+  annotations: Mapping<String, String>?
+}

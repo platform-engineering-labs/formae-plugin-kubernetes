@@ -1,0 +1,120 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+module replicaset
+
+import "@formae/formae.pkl"
+import "../k8s.pkl"
+import "../core/Pod.pkl" as pod
+
+const type = "K8S::Apps::ReplicaSet"
+
+/// K8S ReplicaSet resource.
+/// A ReplicaSet ensures that a specified number of pod replicas are running at any given time.
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.metadata.uid"
+  discoverable = true
+  parent = "K8S::Core::Namespace"
+  listParam = new formae.ListProperty {
+    parentProperty = "metadata.name"
+    listParameter = "namespace"
+  }
+}
+open class ReplicaSet extends k8s.Resource {
+  fixed hidden resourceType: String = module.type
+
+  /// API version for ReplicaSet is always "apps/v1"
+  @k8s.FieldHint { required = true }
+  apiVersion: String = "apps/v1"
+
+  /// Kind is always "ReplicaSet"
+  @k8s.FieldHint { required = true }
+  kind: String = "ReplicaSet"
+
+  /// ReplicaSet metadata
+  @k8s.FieldHint { required = true }
+  metadata: k8s.ObjectMeta
+
+  /// ReplicaSet specification
+  @k8s.FieldHint { required = true }
+  spec: ReplicaSetSpec
+}
+
+/// ReplicaSetSpec defines the desired state of a ReplicaSet.
+@k8s.SubResourceHint {}
+open class ReplicaSetSpec extends formae.SubResource {
+  /// Number of desired pod replicas.
+  /// Defaults to 1 if not specified.
+  @k8s.FieldHint {}
+  replicas: Int?
+
+  /// Minimum number of seconds for which a newly created pod should be ready
+  /// without any of its container crashing, for it to be considered available.
+  @k8s.FieldHint {}
+  minReadySeconds: Int?
+
+  /// Label selector for pods.
+  /// Existing ReplicaSets whose pods are selected by this will be affected.
+  @k8s.FieldHint { required = true }
+  selector: LabelSelector
+
+  /// Template describes the pods that will be created.
+  @k8s.FieldHint { required = true }
+  template: PodTemplateSpec
+}
+
+/// LabelSelector is a label query over a set of resources.
+@k8s.SubResourceHint {}
+open class LabelSelector extends formae.SubResource {
+  /// matchLabels is a map of {key,value} pairs.
+  @k8s.FieldHint {}
+  matchLabels: Mapping<String, String>?
+
+  /// matchExpressions is a list of label selector requirements.
+  @k8s.FieldHint {}
+  matchExpressions: Listing<LabelSelectorRequirement>?
+}
+
+/// LabelSelectorRequirement is a selector that contains values, a key, and an operator.
+@k8s.SubResourceHint {}
+open class LabelSelectorRequirement extends formae.SubResource {
+  /// key is the label key that the selector applies to.
+  @k8s.FieldHint { required = true }
+  key: String
+
+  /// operator represents a key's relationship to a set of values.
+  /// Valid operators are In, NotIn, Exists and DoesNotExist.
+  @k8s.FieldHint { required = true }
+  operator: String
+
+  /// values is an array of string values.
+  @k8s.FieldHint {}
+  values: Listing<String>?
+}
+
+/// PodTemplateSpec describes the data a pod should have when created from a template.
+@k8s.SubResourceHint {}
+open class PodTemplateSpec extends formae.SubResource {
+  /// Standard object's metadata for the template.
+  @k8s.FieldHint {}
+  metadata: PodTemplateMetadata?
+
+  /// Specification of the desired behavior of the pod.
+  @k8s.FieldHint { required = true }
+  spec: pod.PodSpec
+}
+
+/// Simplified metadata for pod templates.
+@k8s.SubResourceHint {}
+open class PodTemplateMetadata extends formae.SubResource {
+  /// Labels for organization
+  @k8s.FieldHint {}
+  labels: Mapping<String, String>?
+
+  /// Annotations for metadata
+  @k8s.FieldHint {}
+  annotations: Mapping<String, String>?
+}

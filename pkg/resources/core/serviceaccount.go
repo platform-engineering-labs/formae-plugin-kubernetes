@@ -1,0 +1,282 @@
+// © 2025 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+
+package core
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/prov"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/registry"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/transport"
+	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1coreac "k8s.io/client-go/applyconfigurations/core/v1"
+)
+
+const ResourceTypeServiceAccount = "K8S::Core::ServiceAccount"
+
+func init() {
+	registry.Register(
+		ResourceTypeServiceAccount,
+		[]resource.Operation{
+			resource.OperationCreate,
+			resource.OperationRead,
+			resource.OperationUpdate,
+			resource.OperationDelete,
+			resource.OperationList,
+		},
+		func(client *transport.Client, cfg *config.Config) prov.Provisioner {
+			return &ServiceAccount{Client: client, Config: cfg}
+		},
+	)
+}
+
+// ServiceAccount implements the provisioner for K8S::Core::ServiceAccount resources.
+type ServiceAccount struct {
+	Client *transport.Client
+	Config *config.Config
+}
+
+var _ prov.Provisioner = &ServiceAccount{}
+
+func (sa *ServiceAccount) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
+	var svcAcct *v1coreac.ServiceAccountApplyConfiguration
+	if err := json.Unmarshal(request.Properties, &svcAcct); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal serviceaccount properties: %w", err)
+	}
+
+	namespace := sa.Config.EffectiveNamespace()
+	if svcAcct.Namespace != nil {
+		namespace = *svcAcct.Namespace
+	}
+
+	result, err := sa.Client.CoreV1().ServiceAccounts(namespace).Apply(ctx, svcAcct, metav1.ApplyOptions{
+		FieldManager: "formae",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply serviceaccount: %w", err)
+	}
+
+	ext, err := v1coreac.ExtractServiceAccount(result, "formae")
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract serviceaccount: %w", err)
+	}
+
+	properties, err := json.Marshal(ext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal serviceaccount properties: %w", err)
+	}
+
+	return &resource.CreateResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:          resource.OperationCreate,
+			OperationStatus:    resource.OperationStatusSuccess,
+			RequestID:          fmt.Sprintf("%d", result.Generation),
+			NativeID:           string(result.ObjectMeta.UID),
+			ResourceProperties: properties,
+		},
+	}, nil
+}
+
+func (sa *ServiceAccount) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
+	result, err := sa.findByUID(ctx, request.NativeID)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return &resource.ReadResult{
+				ResourceType: request.ResourceType,
+				ErrorCode:    resource.OperationErrorCodeNotFound,
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to get serviceaccount: %w", err)
+	}
+	if result == nil {
+		return &resource.ReadResult{
+			ResourceType: request.ResourceType,
+			ErrorCode:    resource.OperationErrorCodeNotFound,
+		}, nil
+	}
+
+	ext, err := v1coreac.ExtractServiceAccount(result, "formae")
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract serviceaccount: %w", err)
+	}
+
+	properties, err := json.Marshal(ext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal serviceaccount properties: %w", err)
+	}
+
+	return &resource.ReadResult{
+		ResourceType: request.ResourceType,
+		Properties:   string(properties),
+	}, nil
+}
+
+func (sa *ServiceAccount) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
+	var svcAcct *v1coreac.ServiceAccountApplyConfiguration
+	if err := json.Unmarshal(request.DesiredProperties, &svcAcct); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal serviceaccount properties: %w", err)
+	}
+
+	namespace := sa.Config.EffectiveNamespace()
+	if svcAcct.Namespace != nil {
+		namespace = *svcAcct.Namespace
+	}
+
+	result, err := sa.Client.CoreV1().ServiceAccounts(namespace).Apply(ctx, svcAcct, metav1.ApplyOptions{
+		FieldManager: "formae",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply serviceaccount: %w", err)
+	}
+
+	ext, err := v1coreac.ExtractServiceAccount(result, "formae")
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract serviceaccount: %w", err)
+	}
+
+	properties, err := json.Marshal(ext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal serviceaccount properties: %w", err)
+	}
+
+	return &resource.UpdateResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:          resource.OperationUpdate,
+			OperationStatus:    resource.OperationStatusSuccess,
+			RequestID:          result.ResourceVersion,
+			NativeID:           string(result.ObjectMeta.UID),
+			ResourceProperties: properties,
+		},
+	}, nil
+}
+
+func (sa *ServiceAccount) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
+	svcAcct, err := sa.findByUID(ctx, request.NativeID)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return &resource.DeleteResult{
+				ProgressResult: &resource.ProgressResult{
+					Operation:       resource.OperationDelete,
+					OperationStatus: resource.OperationStatusSuccess,
+				},
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to find serviceaccount: %w", err)
+	}
+	if svcAcct == nil {
+		return &resource.DeleteResult{
+			ProgressResult: &resource.ProgressResult{
+				Operation:       resource.OperationDelete,
+				OperationStatus: resource.OperationStatusSuccess,
+			},
+		}, nil
+	}
+
+	err = sa.Client.CoreV1().ServiceAccounts(svcAcct.Namespace).Delete(ctx, svcAcct.Name, metav1.DeleteOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return &resource.DeleteResult{
+				ProgressResult: &resource.ProgressResult{
+					Operation:       resource.OperationDelete,
+					OperationStatus: resource.OperationStatusSuccess,
+				},
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to delete serviceaccount: %w", err)
+	}
+
+	return &resource.DeleteResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:       resource.OperationDelete,
+			OperationStatus: resource.OperationStatusSuccess,
+		},
+	}, nil
+}
+
+func (sa *ServiceAccount) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
+	result, err := sa.findByUID(ctx, request.NativeID)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return &resource.StatusResult{
+				ProgressResult: &resource.ProgressResult{
+					Operation:       resource.OperationCheckStatus,
+					OperationStatus: resource.OperationStatusFailure,
+					ErrorCode:       resource.OperationErrorCodeNotFound,
+				},
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to get serviceaccount status: %w", err)
+	}
+	if result == nil {
+		return &resource.StatusResult{
+			ProgressResult: &resource.ProgressResult{
+				Operation:       resource.OperationCheckStatus,
+				OperationStatus: resource.OperationStatusFailure,
+				ErrorCode:       resource.OperationErrorCodeNotFound,
+			},
+		}, nil
+	}
+
+	ext, err := v1coreac.ExtractServiceAccount(result, "formae")
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract serviceaccount: %w", err)
+	}
+
+	properties, err := json.Marshal(ext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal serviceaccount properties: %w", err)
+	}
+
+	return &resource.StatusResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:          resource.OperationCheckStatus,
+			OperationStatus:    resource.OperationStatusSuccess,
+			RequestID:          request.RequestID,
+			NativeID:           string(result.ObjectMeta.UID),
+			ResourceProperties: properties,
+		},
+	}, nil
+}
+
+func (sa *ServiceAccount) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
+	namespace := sa.Config.EffectiveNamespace()
+	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
+		namespace = ns
+	}
+
+	result, err := sa.Client.CoreV1().ServiceAccounts(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list serviceaccounts: %w", err)
+	}
+
+	nativeIDs := make([]string, 0, len(result.Items))
+	for _, svcAcct := range result.Items {
+		nativeIDs = append(nativeIDs, string(svcAcct.ObjectMeta.UID))
+	}
+
+	return &resource.ListResult{
+		NativeIDs: nativeIDs,
+	}, nil
+}
+
+// findByUID finds a service account by its UID across all namespaces.
+func (sa *ServiceAccount) findByUID(ctx context.Context, uid string) (*v1.ServiceAccount, error) {
+	list, err := sa.Client.CoreV1().ServiceAccounts(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	for i := range list.Items {
+		if string(list.Items[i].UID) == uid {
+			return &list.Items[i], nil
+		}
+	}
+	return nil, nil
+}

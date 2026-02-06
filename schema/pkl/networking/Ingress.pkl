@@ -1,0 +1,143 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+module ingress
+
+import "@formae/formae.pkl"
+import "../k8s.pkl"
+
+const type = "K8S::Networking::Ingress"
+
+/// K8S Ingress resource.
+/// An Ingress manages external HTTP(S) access to services in a cluster.
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.metadata.uid"
+  discoverable = true
+  parent = "K8S::Core::Namespace"
+  listParam = new formae.ListProperty {
+    parentProperty = "metadata.name"
+    listParameter = "namespace"
+  }
+}
+open class Ingress extends k8s.Resource {
+  fixed hidden resourceType: String = module.type
+
+  /// API version for Ingress is always "networking.k8s.io/v1"
+  @k8s.FieldHint { required = true }
+  apiVersion: String = "networking.k8s.io/v1"
+
+  /// Kind is always "Ingress"
+  @k8s.FieldHint { required = true }
+  kind: String = "Ingress"
+
+  /// Ingress metadata
+  @k8s.FieldHint { required = true }
+  metadata: k8s.ObjectMeta
+
+  /// Ingress specification
+  @k8s.FieldHint { required = true }
+  spec: IngressSpec
+}
+
+/// IngressSpec defines the desired state of an Ingress.
+@k8s.SubResourceHint {}
+open class IngressSpec extends formae.SubResource {
+  /// IngressClassName is the name of the IngressClass to use.
+  @k8s.FieldHint {}
+  ingressClassName: String?
+
+  /// Default backend for requests that don't match any rule.
+  @k8s.FieldHint {}
+  defaultBackend: IngressBackend?
+
+  /// TLS configuration for the Ingress.
+  @k8s.FieldHint {}
+  tls: Listing<IngressTLS>?
+
+  /// Rules define how traffic is routed to backends.
+  @k8s.FieldHint {}
+  rules: Listing<IngressRule>?
+}
+
+/// IngressBackend describes a backend to route traffic to.
+@k8s.SubResourceHint {}
+open class IngressBackend extends formae.SubResource {
+  /// Service references a Service as a backend.
+  @k8s.FieldHint {}
+  service: IngressServiceBackend?
+}
+
+/// IngressServiceBackend references a Kubernetes Service as a backend.
+@k8s.SubResourceHint {}
+open class IngressServiceBackend extends formae.SubResource {
+  /// Name of the referenced service.
+  @k8s.FieldHint { required = true }
+  name: String
+
+  /// Port of the referenced service.
+  @k8s.FieldHint { required = true }
+  port: ServiceBackendPort
+}
+
+/// ServiceBackendPort identifies a port on a Service.
+@k8s.SubResourceHint {}
+open class ServiceBackendPort extends formae.SubResource {
+  /// Name of the port (mutually exclusive with number).
+  @k8s.FieldHint {}
+  name: String?
+
+  /// Port number (mutually exclusive with name).
+  @k8s.FieldHint {}
+  number: Int?
+}
+
+/// IngressTLS describes TLS configuration for an Ingress.
+@k8s.SubResourceHint {}
+open class IngressTLS extends formae.SubResource {
+  /// Hosts included in the TLS certificate.
+  @k8s.FieldHint {}
+  hosts: Listing<String>?
+
+  /// SecretName is the name of the secret containing the TLS certificate.
+  @k8s.FieldHint {}
+  secretName: String?
+}
+
+/// IngressRule defines routing rules for an Ingress.
+@k8s.SubResourceHint {}
+open class IngressRule extends formae.SubResource {
+  /// Host is the fully qualified domain name of a network host.
+  @k8s.FieldHint {}
+  host: String?
+
+  /// HTTP rules for the host.
+  @k8s.FieldHint {}
+  http: HTTPIngressRuleValue?
+}
+
+/// HTTPIngressRuleValue defines HTTP routing rules.
+@k8s.SubResourceHint {}
+open class HTTPIngressRuleValue extends formae.SubResource {
+  /// Paths define the routing rules.
+  @k8s.FieldHint { required = true }
+  paths: Listing<HTTPIngressPath>
+}
+
+/// HTTPIngressPath defines a path-based routing rule.
+@k8s.SubResourceHint {}
+open class HTTPIngressPath extends formae.SubResource {
+  /// Path to match against the URL.
+  @k8s.FieldHint {}
+  path: String?
+
+  /// PathType determines how the path is matched: "Exact", "Prefix", or "ImplementationSpecific".
+  @k8s.FieldHint { required = true }
+  pathType: String
+
+  /// Backend defines the referenced service endpoint.
+  @k8s.FieldHint { required = true }
+  backend: IngressBackend
+}

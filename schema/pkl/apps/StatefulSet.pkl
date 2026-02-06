@@ -1,0 +1,153 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+module statefulset
+
+import "@formae/formae.pkl"
+import "../k8s.pkl"
+import "../core/Pod.pkl" as pod
+import "ReplicaSet.pkl" as rs
+
+const type = "K8S::Apps::StatefulSet"
+
+/// K8S StatefulSet resource.
+/// A StatefulSet manages stateful applications with stable network identities and persistent storage.
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.metadata.uid"
+  discoverable = true
+  parent = "K8S::Core::Namespace"
+  listParam = new formae.ListProperty {
+    parentProperty = "metadata.name"
+    listParameter = "namespace"
+  }
+}
+open class StatefulSet extends k8s.Resource {
+  fixed hidden resourceType: String = module.type
+
+  /// API version for StatefulSet is always "apps/v1"
+  @k8s.FieldHint { required = true }
+  apiVersion: String = "apps/v1"
+
+  /// Kind is always "StatefulSet"
+  @k8s.FieldHint { required = true }
+  kind: String = "StatefulSet"
+
+  /// StatefulSet metadata
+  @k8s.FieldHint { required = true }
+  metadata: k8s.ObjectMeta
+
+  /// StatefulSet specification
+  @k8s.FieldHint { required = true }
+  spec: StatefulSetSpec
+}
+
+/// StatefulSetSpec defines the desired state of a StatefulSet.
+@k8s.SubResourceHint {}
+open class StatefulSetSpec extends formae.SubResource {
+  /// Number of desired pod replicas.
+  @k8s.FieldHint {}
+  replicas: Int?
+
+  /// Label selector for pods.
+  @k8s.FieldHint { required = true }
+  selector: rs.LabelSelector
+
+  /// Template describes the pods that will be created.
+  @k8s.FieldHint { required = true }
+  template: rs.PodTemplateSpec
+
+  /// ServiceName is the name of the governing headless Service.
+  @k8s.FieldHint { required = true }
+  serviceName: String
+
+  /// VolumeClaimTemplates is a list of PVC templates for the StatefulSet.
+  @k8s.FieldHint {}
+  volumeClaimTemplates: Listing<PersistentVolumeClaimTemplate>?
+
+  /// Pod management policy: "OrderedReady" or "Parallel".
+  @k8s.FieldHint {}
+  podManagementPolicy: String?
+
+  /// Update strategy for the StatefulSet.
+  @k8s.FieldHint {}
+  updateStrategy: StatefulSetUpdateStrategy?
+
+  /// The number of old revisions to retain.
+  @k8s.FieldHint {}
+  revisionHistoryLimit: Int?
+
+  /// Minimum number of seconds for which a newly created pod should be ready.
+  @k8s.FieldHint {}
+  minReadySeconds: Int?
+}
+
+/// StatefulSetUpdateStrategy defines the update strategy for a StatefulSet.
+@k8s.SubResourceHint {}
+open class StatefulSetUpdateStrategy extends formae.SubResource {
+  /// Type of update strategy: "RollingUpdate" or "OnDelete".
+  @k8s.FieldHint {}
+  type: String?
+
+  /// RollingUpdate config for RollingUpdate strategy.
+  @k8s.FieldHint {}
+  rollingUpdate: RollingUpdateStatefulSetStrategy?
+}
+
+/// RollingUpdateStatefulSetStrategy controls the rolling update of a StatefulSet.
+@k8s.SubResourceHint {}
+open class RollingUpdateStatefulSetStrategy extends formae.SubResource {
+  /// Ordinal at which to start the rolling update.
+  @k8s.FieldHint {}
+  partition: Int?
+
+  /// Maximum number of pods that can be unavailable during update.
+  @k8s.FieldHint {}
+  maxUnavailable: (Int|String)?
+}
+
+/// PersistentVolumeClaimTemplate defines a PVC template for StatefulSet volumes.
+@k8s.SubResourceHint {}
+open class PersistentVolumeClaimTemplate extends formae.SubResource {
+  /// Metadata for the PVC.
+  @k8s.FieldHint {}
+  metadata: rs.PodTemplateMetadata?
+
+  /// Spec defines the desired characteristics of a volume.
+  @k8s.FieldHint { required = true }
+  spec: PersistentVolumeClaimSpec
+}
+
+/// PersistentVolumeClaimSpec describes the desired characteristics of a PVC.
+@k8s.SubResourceHint {}
+open class PersistentVolumeClaimSpec extends formae.SubResource {
+  /// AccessModes contains the desired access modes the volume should have.
+  @k8s.FieldHint {}
+  accessModes: Listing<String>?
+
+  /// Resources represents the minimum resources the volume should have.
+  @k8s.FieldHint {}
+  resources: PVCResourceRequirements?
+
+  /// StorageClassName is the name of the StorageClass required by the claim.
+  @k8s.FieldHint {}
+  storageClassName: String?
+
+  /// VolumeMode defines what type of volume is required by the claim.
+  @k8s.FieldHint {}
+  volumeMode: String?
+}
+
+/// PVCResourceRequirements describes the storage resource requirements.
+@k8s.SubResourceHint {}
+open class PVCResourceRequirements extends formae.SubResource {
+  /// Requests describes the minimum amount of resources needed.
+  @k8s.FieldHint {}
+  requests: Mapping<String, String>?
+
+  /// Limits describes the maximum amount of resources allowed.
+  @k8s.FieldHint {}
+  limits: Mapping<String, String>?
+}
