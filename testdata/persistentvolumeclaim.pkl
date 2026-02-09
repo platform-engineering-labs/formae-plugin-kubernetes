@@ -29,7 +29,7 @@ forma {
     label = "test-persistentvolumeclaim"
     metadata = new k8s.ObjectMeta {
       name = "test-pvc-\(v.testRunID)"
-      namespace = ns.res.name
+      namespace = "formae-test-\(v.testRunID)"
     }
     spec = new pvc.PersistentVolumeClaimSpec {
       accessModes = new Listing {

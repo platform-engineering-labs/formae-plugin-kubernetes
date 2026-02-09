@@ -7,7 +7,6 @@ module networkpolicy
 
 import "@formae/formae.pkl"
 import "../k8s.pkl"
-import "../apps/ReplicaSet.pkl" as rs
 
 const type = "K8S::Networking::NetworkPolicy"
 
@@ -42,7 +41,7 @@ open class NetworkPolicy extends k8s.Resource {
 open class NetworkPolicySpec extends formae.SubResource {
   /// Selects the pods to which this NetworkPolicy applies
   @k8s.FieldHint { required = true }
-  podSelector: rs.LabelSelector
+  podSelector: k8s.LabelSelector
 
   /// List of ingress rules
   @k8s.FieldHint {}
@@ -81,10 +80,10 @@ open class NetworkPolicyEgressRule extends formae.SubResource {
 @k8s.SubResourceHint {}
 open class NetworkPolicyPeer extends formae.SubResource {
   @k8s.FieldHint {}
-  podSelector: rs.LabelSelector?
+  podSelector: k8s.LabelSelector?
 
   @k8s.FieldHint {}
-  namespaceSelector: rs.LabelSelector?
+  namespaceSelector: k8s.LabelSelector?
 
   @k8s.FieldHint {}
   ipBlock: IPBlock?

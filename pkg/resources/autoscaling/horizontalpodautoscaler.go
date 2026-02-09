@@ -285,18 +285,15 @@ func (h *HorizontalPodAutoscaler) findByUID(ctx context.Context, uid string) (*a
 }
 
 // fromConditions maps HPA conditions to Formae OperationStatus.
+// HPA is a declarative configuration object — once applied, it is considered
+// successful unless the controller reports it is unable to scale at all.
 func (h *HorizontalPodAutoscaler) fromConditions(hpa *autoscalingv2.HorizontalPodAutoscaler) resource.OperationStatus {
 	for _, cond := range hpa.Status.Conditions {
 		if cond.Type == autoscalingv2.AbleToScale && cond.Status == "False" {
 			return resource.OperationStatusFailure
 		}
 	}
-	for _, cond := range hpa.Status.Conditions {
-		if cond.Type == autoscalingv2.ScalingActive && cond.Status == "True" {
-			return resource.OperationStatusSuccess
-		}
-	}
-	return resource.OperationStatusInProgress
+	return resource.OperationStatusSuccess
 }
 
 // statusMessage builds a status message from HPA status.

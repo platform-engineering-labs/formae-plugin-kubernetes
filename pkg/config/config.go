@@ -16,15 +16,22 @@ import (
 )
 
 // Config holds the K8S plugin configuration extracted from target config.
+// JSON tags match the PKL Config class output fields (uppercase).
 type Config struct {
 	// Context is the kubeconfig context to use (optional, uses current-context if empty)
-	Context string `json:"context,omitempty"`
+	Context string `json:"Context,omitempty"`
 
 	// Namespace is the default namespace for namespaced resources
-	Namespace string `json:"namespace,omitempty"`
+	Namespace string `json:"Namespace,omitempty"`
 
 	// Kubeconfig is the path to kubeconfig file (optional, defaults to ~/.kube/config)
-	Kubeconfig string `json:"kubeconfig,omitempty"`
+	Kubeconfig string `json:"Kubeconfig,omitempty"`
+
+	// WaitForLoadBalancer controls whether Service (type LoadBalancer) and Ingress
+	// resources report InProgress until a load balancer address is assigned.
+	// Defaults to true (production behavior). Set to false for local clusters
+	// without a cloud load balancer controller (OrbStack, minikube, kind).
+	WaitForLoadBalancer *bool `json:"WaitForLoadBalancer,omitempty"`
 }
 
 // FromTargetConfig extracts Config from the target configuration bytes.
@@ -71,6 +78,15 @@ func (c *Config) ToK8sConfig() (*rest.Config, error) {
 	}
 
 	return config, nil
+}
+
+// ShouldWaitForLoadBalancer returns whether to wait for LB address assignment.
+// Defaults to true (production behavior) when not explicitly set.
+func (c *Config) ShouldWaitForLoadBalancer() bool {
+	if c.WaitForLoadBalancer == nil {
+		return true
+	}
+	return *c.WaitForLoadBalancer
 }
 
 // EffectiveNamespace returns the namespace to use for operations.

@@ -285,9 +285,10 @@ func (svc *Service) findByUID(ctx context.Context, uid string) (*v1.Service, err
 }
 
 // operationStatus maps Service state to Formae OperationStatus.
-// LoadBalancer services are InProgress until an external IP is assigned.
+// When WaitForLoadBalancer is enabled, LoadBalancer services report InProgress
+// until an external IP is assigned. Otherwise returns Success immediately.
 func (svc *Service) operationStatus(s *v1.Service) resource.OperationStatus {
-	if s.Spec.Type == v1.ServiceTypeLoadBalancer {
+	if svc.Config.ShouldWaitForLoadBalancer() && s.Spec.Type == v1.ServiceTypeLoadBalancer {
 		if len(s.Status.LoadBalancer.Ingress) == 0 {
 			return resource.OperationStatusInProgress
 		}

@@ -7,8 +7,6 @@ module job
 
 import "@formae/formae.pkl"
 import "../k8s.pkl"
-import "../core/Pod.pkl" as pod
-import "../apps/ReplicaSet.pkl" as rs
 
 const type = "K8S::Batch::Job"
 
@@ -41,46 +39,5 @@ open class Job extends k8s.Resource {
 
   /// Job specification
   @k8s.FieldHint { required = true }
-  spec: JobSpec
-}
-
-/// JobSpec defines the desired state of a Job.
-@k8s.SubResourceHint {}
-open class JobSpec extends formae.SubResource {
-  /// Template describes the pods that will be created.
-  @k8s.FieldHint { required = true }
-  template: rs.PodTemplateSpec
-
-  /// Number of successful completions needed.
-  @k8s.FieldHint {}
-  completions: Int?
-
-  /// Maximum desired number of pods running at any time.
-  @k8s.FieldHint {}
-  parallelism: Int?
-
-  /// Number of retries before considering a Job as failed.
-  @k8s.FieldHint {}
-  backoffLimit: Int?
-
-  /// Duration in seconds relative to startTime that the job may be active.
-  @k8s.FieldHint {}
-  activeDeadlineSeconds: Int?
-
-  /// TTL in seconds after finished (completed or failed) for automatic cleanup.
-  @k8s.FieldHint {}
-  ttlSecondsAfterFinished: Int?
-
-  /// Suspend specifies whether the Job controller should create Pods or not.
-  @k8s.FieldHint {}
-  suspend: Boolean?
-
-  /// CompletionMode specifies how Pod completions are tracked: "NonIndexed" or "Indexed".
-  @k8s.FieldHint {}
-  completionMode: String?
-
-  /// Restart policy for pods: "Never" or "OnFailure".
-  /// Note: "Always" is not valid for Jobs.
-  @k8s.FieldHint {}
-  restartPolicy: String?
+  spec: k8s.JobSpec
 }

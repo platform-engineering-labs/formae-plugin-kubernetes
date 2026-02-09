@@ -7,8 +7,6 @@ module statefulset
 
 import "@formae/formae.pkl"
 import "../k8s.pkl"
-import "../core/Pod.pkl" as pod
-import "ReplicaSet.pkl" as rs
 
 const type = "K8S::Apps::StatefulSet"
 
@@ -53,11 +51,11 @@ open class StatefulSetSpec extends formae.SubResource {
 
   /// Label selector for pods.
   @k8s.FieldHint { required = true }
-  selector: rs.LabelSelector
+  selector: k8s.LabelSelector
 
   /// Template describes the pods that will be created.
   @k8s.FieldHint { required = true }
-  template: rs.PodTemplateSpec
+  template: k8s.PodTemplateSpec
 
   /// ServiceName is the name of the governing headless Service.
   @k8s.FieldHint { required = true }
@@ -113,7 +111,7 @@ open class RollingUpdateStatefulSetStrategy extends formae.SubResource {
 open class PersistentVolumeClaimTemplate extends formae.SubResource {
   /// Metadata for the PVC.
   @k8s.FieldHint {}
-  metadata: rs.PodTemplateMetadata?
+  metadata: k8s.PodTemplateMetadata?
 
   /// Spec defines the desired characteristics of a volume.
   @k8s.FieldHint { required = true }

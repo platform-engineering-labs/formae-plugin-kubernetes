@@ -34,38 +34,9 @@ open class RoleBinding extends k8s.Resource {
 
   /// Reference to the Role or ClusterRole being bound
   @k8s.FieldHint { required = true }
-  roleRef: RoleRef
+  roleRef: k8s.RoleRef
 
   /// Subjects holds references to the objects the role applies to
   @k8s.FieldHint {}
-  subjects: Listing<Subject>?
-}
-
-/// RoleRef contains information about the role being referenced.
-@k8s.SubResourceHint {}
-open class RoleRef extends formae.SubResource {
-  @k8s.FieldHint { required = true }
-  apiGroup: String = "rbac.authorization.k8s.io"
-
-  @k8s.FieldHint { required = true }
-  kind: String
-
-  @k8s.FieldHint { required = true }
-  name: String
-}
-
-/// Subject contains a reference to the object or user identity a role binding applies to.
-@k8s.SubResourceHint {}
-open class Subject extends formae.SubResource {
-  @k8s.FieldHint { required = true }
-  kind: String
-
-  @k8s.FieldHint { required = true }
-  name: String
-
-  @k8s.FieldHint {}
-  namespace: (String|formae.Resolvable)?
-
-  @k8s.FieldHint {}
-  apiGroup: String?
+  subjects: Listing<k8s.Subject>?
 }

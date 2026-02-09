@@ -29,14 +29,14 @@ forma {
     label = "test-rolebinding"
     metadata = new k8s.ObjectMeta {
       name = "test-rb-\(v.testRunID)"
-      namespace = ns.res.name
+      namespace = "formae-test-\(v.testRunID)"
     }
-    roleRef = new rb.RoleRef {
+    roleRef = new k8s.RoleRef {
       kind = "Role"
       name = "test-role-\(v.testRunID)"
     }
     subjects = new Listing {
-      new rb.Subject {
+      new k8s.Subject {
         kind = "ServiceAccount"
         name = "default"
         namespace = "formae-test-\(v.testRunID)"

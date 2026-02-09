@@ -285,16 +285,14 @@ func (p *PersistentVolumeClaim) findByUID(ctx context.Context, uid string) (*v1.
 }
 
 // fromPhase maps K8S PersistentVolumeClaimPhase to Formae OperationStatus.
+// Pending is a normal state for PVCs using WaitForFirstConsumer StorageClasses,
+// so we treat it as Success rather than InProgress.
 func (p *PersistentVolumeClaim) fromPhase(phase v1.PersistentVolumeClaimPhase) resource.OperationStatus {
 	switch phase {
-	case v1.ClaimBound:
-		return resource.OperationStatusSuccess
-	case v1.ClaimPending:
-		return resource.OperationStatusInProgress
 	case v1.ClaimLost:
 		return resource.OperationStatusFailure
 	default:
-		return resource.OperationStatusInProgress
+		return resource.OperationStatusSuccess
 	}
 }
 

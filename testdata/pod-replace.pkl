@@ -30,15 +30,15 @@ forma {
     label = "test-pod"
     metadata = new k8s.ObjectMeta {
       name = "test-pod-\(v.testRunID)-replaced"
-      namespace = ns.res.name
+      namespace = "formae-test-\(v.testRunID)"
     }
-    spec = new pod.PodSpec {
+    spec = new k8s.PodSpec {
       containers = new Listing {
-        new pod.Container {
+        new k8s.Container {
           name = "nginx"
           image = "nginx:alpine"
           ports = new Listing {
-            new pod.ContainerPort {
+            new k8s.ContainerPort {
               containerPort = 80
               protocol = "TCP"
             }

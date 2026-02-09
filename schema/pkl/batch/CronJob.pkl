@@ -7,7 +7,6 @@ module cronjob
 
 import "@formae/formae.pkl"
 import "../k8s.pkl"
-import "Job.pkl" as job
 
 const type = "K8S::Batch::CronJob"
 
@@ -88,7 +87,7 @@ open class JobTemplateSpec extends formae.SubResource {
 
   /// Spec defines the desired behavior of the Job.
   @k8s.FieldHint { required = true }
-  spec: job.JobSpec
+  spec: k8s.JobSpec
 }
 
 /// Simplified metadata for Job templates.

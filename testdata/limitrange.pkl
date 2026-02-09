@@ -29,7 +29,7 @@ forma {
     label = "test-limitrange"
     metadata = new k8s.ObjectMeta {
       name = "test-lr-\(v.testRunID)"
-      namespace = ns.res.name
+      namespace = "formae-test-\(v.testRunID)"
     }
     spec = new lr.LimitRangeSpec {
       limits = new Listing {

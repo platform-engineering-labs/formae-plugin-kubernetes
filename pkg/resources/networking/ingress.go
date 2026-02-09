@@ -285,9 +285,11 @@ func (ing *Ingress) findByUID(ctx context.Context, uid string) (*networkingv1.In
 }
 
 // operationStatus maps Ingress state to Formae OperationStatus.
-// InProgress until a load balancer address is assigned.
+// When WaitForLoadBalancer is enabled, reports InProgress until a load balancer
+// address is assigned. Otherwise returns Success immediately (suitable for
+// clusters without an ingress controller).
 func (ing *Ingress) operationStatus(i *networkingv1.Ingress) resource.OperationStatus {
-	if len(i.Status.LoadBalancer.Ingress) == 0 {
+	if ing.Config.ShouldWaitForLoadBalancer() && len(i.Status.LoadBalancer.Ingress) == 0 {
 		return resource.OperationStatusInProgress
 	}
 	return resource.OperationStatusSuccess

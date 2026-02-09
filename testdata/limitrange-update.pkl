@@ -1,6 +1,6 @@
 /*
  * Conformance Test: LimitRange (Update)
- * Changes: increased default cpu and memory limits (mutable)
+ * Changes: added annotation (mutable), increased default cpu limit
  */
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
@@ -30,7 +30,10 @@ forma {
     label = "test-limitrange"
     metadata = new k8s.ObjectMeta {
       name = "test-lr-\(v.testRunID)"
-      namespace = ns.res.name
+      namespace = "formae-test-\(v.testRunID)"
+      annotations = new Mapping {
+        ["updated"] = "true"
+      }
     }
     spec = new lr.LimitRangeSpec {
       limits = new Listing {

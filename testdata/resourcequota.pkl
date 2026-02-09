@@ -29,13 +29,13 @@ forma {
     label = "test-resourcequota"
     metadata = new k8s.ObjectMeta {
       name = "test-rq-\(v.testRunID)"
-      namespace = ns.res.name
+      namespace = "formae-test-\(v.testRunID)"
     }
     spec = new rq.ResourceQuotaSpec {
       hard = new Mapping {
         ["pods"] = "10"
-        ["requests.cpu"] = "2"
-        ["requests.memory"] = "4Gi"
+        ["services"] = "5"
+        ["configmaps"] = "20"
       }
     }
   }

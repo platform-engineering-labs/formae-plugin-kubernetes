@@ -7,7 +7,6 @@ module poddisruptionbudget
 
 import "@formae/formae.pkl"
 import "../k8s.pkl"
-import "../apps/ReplicaSet.pkl" as rs
 
 const type = "K8S::Policy::PodDisruptionBudget"
 
@@ -50,5 +49,5 @@ open class PodDisruptionBudgetSpec extends formae.SubResource {
 
   /// Label query over pods whose evictions are managed by the budget
   @k8s.FieldHint {}
-  selector: rs.LabelSelector?
+  selector: k8s.LabelSelector?
 }

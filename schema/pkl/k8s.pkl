@@ -10,6 +10,36 @@ module k8s
 import "@formae/formae.pkl"
 
 // =============================================================================
+// Target Configuration
+// =============================================================================
+
+/// Configuration for the K8S target.
+/// Maps to the Go Config struct in pkg/config/config.go.
+open class Config {
+  hidden fixed type: String = "K8S"
+
+  /// Kubeconfig context to use (defaults to current-context)
+  hidden context: String?
+
+  /// Default namespace for namespaced resources (defaults to "default")
+  hidden namespace: String?
+
+  /// Path to kubeconfig file (defaults to $KUBECONFIG or ~/.kube/config)
+  hidden kubeconfig: String?
+
+  /// Whether to wait for LoadBalancer address on Service/Ingress resources.
+  /// Defaults to true (production behavior). Set to false for local clusters
+  /// without a cloud LB controller (OrbStack, minikube, kind).
+  hidden waitForLoadBalancer: Boolean?
+
+  fixed Type: String = type
+  fixed Context: String? = context
+  fixed Namespace: String? = namespace
+  fixed Kubeconfig: String? = kubeconfig
+  fixed WaitForLoadBalancer: Boolean? = waitForLoadBalancer
+}
+
+// =============================================================================
 // Annotation aliases for K8S resources
 // =============================================================================
 
@@ -60,4 +90,258 @@ open class Resource extends formae.Resource {
   /// Standard K8S metadata
   @FieldHint { required = true }
   metadata: ObjectMeta
+}
+
+// =============================================================================
+// Shared Sub-Resource Types
+// =============================================================================
+// These types are defined here (rather than in individual resource modules)
+// so that Formae's PKL extract can resolve them without cross-module imports.
+
+// -- Label Selector ----------------------------------------------------------
+
+/// LabelSelector is a label query over a set of resources.
+@SubResourceHint {}
+open class LabelSelector extends formae.SubResource {
+  /// matchLabels is a map of {key,value} pairs.
+  @FieldHint {}
+  matchLabels: Mapping<String, String>?
+
+  /// matchExpressions is a list of label selector requirements.
+  @FieldHint {}
+  matchExpressions: Listing<LabelSelectorRequirement>?
+}
+
+/// LabelSelectorRequirement is a selector that contains values, a key, and an operator.
+@SubResourceHint {}
+open class LabelSelectorRequirement extends formae.SubResource {
+  /// key is the label key that the selector applies to.
+  @FieldHint { required = true }
+  key: String
+
+  /// operator represents a key's relationship to a set of values.
+  /// Valid operators are In, NotIn, Exists and DoesNotExist.
+  @FieldHint { required = true }
+  operator: String
+
+  /// values is an array of string values.
+  @FieldHint {}
+  values: Listing<String>?
+}
+
+// -- Pod Types ---------------------------------------------------------------
+
+/// PodSpec defines the desired state of a Pod.
+@SubResourceHint {}
+open class PodSpec extends formae.SubResource {
+  /// List of containers in the pod.
+  @FieldHint {
+    required = true
+    updateMethod = "EntitySet"
+    indexField = "name"
+  }
+  containers: Listing<Container>
+
+  /// Restart policy for all containers.
+  @FieldHint {}
+  restartPolicy: String?
+
+  /// Node selector for pod scheduling.
+  @FieldHint {}
+  nodeSelector: Mapping<String, String>?
+
+  /// Service account name for the pod.
+  @FieldHint {}
+  serviceAccountName: String?
+}
+
+/// Container defines a container within a pod.
+@SubResourceHint {}
+open class Container extends formae.SubResource {
+  /// Name of the container (used as EntitySet key)
+  @FieldHint { required = true }
+  name: String
+
+  /// Container image
+  @FieldHint { required = true }
+  image: String
+
+  /// Command to run
+  @FieldHint {}
+  command: Listing<String>?
+
+  /// Arguments to the command
+  @FieldHint {}
+  args: Listing<String>?
+
+  /// Environment variables
+  @FieldHint {}
+  env: Listing<EnvVar>?
+
+  /// Container ports
+  @FieldHint {}
+  ports: Listing<ContainerPort>?
+
+  /// Resource requirements
+  @FieldHint {}
+  resources: ResourceRequirements?
+}
+
+/// Environment variable definition.
+@SubResourceHint {}
+open class EnvVar extends formae.SubResource {
+  /// Name of the environment variable
+  @FieldHint { required = true }
+  name: String
+
+  /// Value of the environment variable
+  @FieldHint {}
+  value: String?
+}
+
+/// Container port definition.
+@SubResourceHint {}
+open class ContainerPort extends formae.SubResource {
+  /// Port number
+  @FieldHint { required = true }
+  containerPort: Int
+
+  /// Protocol (TCP, UDP)
+  @FieldHint {}
+  protocol: String?
+
+  /// Optional name for the port
+  @FieldHint {}
+  name: String?
+}
+
+/// Resource requirements for a container.
+@SubResourceHint {}
+open class ResourceRequirements extends formae.SubResource {
+  /// Resource limits
+  @FieldHint {}
+  limits: Mapping<String, String>?
+
+  /// Resource requests
+  @FieldHint {}
+  requests: Mapping<String, String>?
+}
+
+// -- Pod Template Types ------------------------------------------------------
+
+/// PodTemplateSpec describes the data a pod should have when created from a template.
+@SubResourceHint {}
+open class PodTemplateSpec extends formae.SubResource {
+  /// Standard object's metadata for the template.
+  @FieldHint {}
+  metadata: PodTemplateMetadata?
+
+  /// Specification of the desired behavior of the pod.
+  @FieldHint { required = true }
+  spec: PodSpec
+}
+
+/// Simplified metadata for pod templates.
+@SubResourceHint {}
+open class PodTemplateMetadata extends formae.SubResource {
+  /// Labels for organization
+  @FieldHint {}
+  labels: Mapping<String, String>?
+
+  /// Annotations for metadata
+  @FieldHint {}
+  annotations: Mapping<String, String>?
+}
+
+// -- Job Types ---------------------------------------------------------------
+
+/// JobSpec defines the desired state of a Job.
+@SubResourceHint {}
+open class JobSpec extends formae.SubResource {
+  /// Template describes the pods that will be created.
+  @FieldHint { required = true }
+  template: PodTemplateSpec
+
+  /// Number of successful completions needed.
+  @FieldHint {}
+  completions: Int?
+
+  /// Maximum desired number of pods running at any time.
+  @FieldHint {}
+  parallelism: Int?
+
+  /// Number of retries before considering a Job as failed.
+  @FieldHint {}
+  backoffLimit: Int?
+
+  /// Duration in seconds relative to startTime that the job may be active.
+  @FieldHint {}
+  activeDeadlineSeconds: Int?
+
+  /// TTL in seconds after finished for automatic cleanup.
+  @FieldHint {}
+  ttlSecondsAfterFinished: Int?
+
+  /// Suspend specifies whether the Job controller should create Pods or not.
+  @FieldHint {}
+  suspend: Boolean?
+
+  /// CompletionMode: "NonIndexed" or "Indexed".
+  @FieldHint {}
+  completionMode: String?
+
+  /// Restart policy for pods: "Never" or "OnFailure".
+  @FieldHint {}
+  restartPolicy: String?
+}
+
+// -- RBAC Types ---------------------------------------------------------------
+
+/// PolicyRule holds information that describes a policy rule.
+@SubResourceHint {}
+open class PolicyRule extends formae.SubResource {
+  /// API groups this rule applies to
+  @FieldHint {}
+  apiGroups: Listing<String>?
+
+  /// Resources this rule applies to
+  @FieldHint {}
+  resources: Listing<String>?
+
+  /// Verbs (get, list, watch, create, update, delete, etc.)
+  @FieldHint { required = true }
+  verbs: Listing<String>
+
+  /// Resource names this rule applies to (optional restriction)
+  @FieldHint {}
+  resourceNames: Listing<String>?
+}
+
+/// RoleRef contains information about the role being referenced.
+@SubResourceHint {}
+open class RoleRef extends formae.SubResource {
+  @FieldHint { required = true }
+  apiGroup: String = "rbac.authorization.k8s.io"
+
+  @FieldHint { required = true }
+  kind: String
+
+  @FieldHint { required = true }
+  name: String
+}
+
+/// Subject contains a reference to the object or user identity a role binding applies to.
+@SubResourceHint {}
+open class Subject extends formae.SubResource {
+  @FieldHint { required = true }
+  kind: String
+
+  @FieldHint { required = true }
+  name: String
+
+  @FieldHint {}
+  namespace: (String|formae.Resolvable)?
+
+  @FieldHint {}
+  apiGroup: String?
 }

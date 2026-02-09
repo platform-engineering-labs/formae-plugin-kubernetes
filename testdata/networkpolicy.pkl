@@ -4,7 +4,6 @@
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
 import "@formae-plugin-k8s/core/Namespace.pkl" as ns
-import "@formae-plugin-k8s/apps/ReplicaSet.pkl" as rs
 import "@formae-plugin-k8s/networking/NetworkPolicy.pkl" as np
 import "@formae-plugin-k8s/k8s.pkl" as k8s
 import "./config/vars.pkl" as v
@@ -30,10 +29,10 @@ forma {
     label = "test-networkpolicy"
     metadata = new k8s.ObjectMeta {
       name = "test-np-\(v.testRunID)"
-      namespace = ns.res.name
+      namespace = "formae-test-\(v.testRunID)"
     }
     spec = new np.NetworkPolicySpec {
-      podSelector = new rs.LabelSelector {
+      podSelector = new k8s.LabelSelector {
         matchLabels = new Mapping {
           ["app"] = "test"
         }

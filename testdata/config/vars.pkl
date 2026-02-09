@@ -1,4 +1,5 @@
 import "@formae/formae.pkl"
+import "@formae-plugin-k8s/k8s.pkl"
 
 local stackName = "plugin-sdk-test-stack"
 
@@ -12,5 +13,7 @@ stack = new formae.Stack {
 target = new formae.Target {
   label = "k8s-target"
   namespace = "K8S"
-  config = new Mapping {}
+  config = new k8s.Config {
+    waitForLoadBalancer = false
+  }
 }

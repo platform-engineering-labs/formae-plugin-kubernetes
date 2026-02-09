@@ -5,7 +5,6 @@
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
 import "@formae-plugin-k8s/rbac/ClusterRole.pkl" as cr
-import "@formae-plugin-k8s/rbac/Role.pkl" as role
 import "@formae-plugin-k8s/k8s.pkl" as k8s
 import "./config/vars.pkl" as v
 
@@ -19,7 +18,7 @@ forma {
       name = "test-cr-\(v.testRunID)"
     }
     rules = new Listing {
-      new role.PolicyRule {
+      new k8s.PolicyRule {
         apiGroups = new Listing { "" }
         resources = new Listing { "nodes" }
         verbs = new Listing { "get"; "list"; "watch" }

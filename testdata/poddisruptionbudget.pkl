@@ -4,7 +4,6 @@
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
 import "@formae-plugin-k8s/core/Namespace.pkl" as ns
-import "@formae-plugin-k8s/apps/ReplicaSet.pkl" as rs
 import "@formae-plugin-k8s/policy/PodDisruptionBudget.pkl" as pdb
 import "@formae-plugin-k8s/k8s.pkl" as k8s
 import "./config/vars.pkl" as v
@@ -30,11 +29,11 @@ forma {
     label = "test-pdb"
     metadata = new k8s.ObjectMeta {
       name = "test-pdb-\(v.testRunID)"
-      namespace = ns.res.name
+      namespace = "formae-test-\(v.testRunID)"
     }
     spec = new pdb.PodDisruptionBudgetSpec {
       minAvailable = 1
-      selector = new rs.LabelSelector {
+      selector = new k8s.LabelSelector {
         matchLabels = new Mapping {
           ["app"] = "test"
         }

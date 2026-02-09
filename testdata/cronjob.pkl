@@ -4,9 +4,6 @@
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
 import "@formae-plugin-k8s/core/Namespace.pkl" as ns
-import "@formae-plugin-k8s/core/Pod.pkl" as pod
-import "@formae-plugin-k8s/apps/ReplicaSet.pkl" as rs
-import "@formae-plugin-k8s/batch/Job.pkl" as job
 import "@formae-plugin-k8s/batch/CronJob.pkl" as cj
 import "@formae-plugin-k8s/k8s.pkl" as k8s
 import "./config/vars.pkl" as v
@@ -32,19 +29,19 @@ forma {
     label = "test-cronjob"
     metadata = new k8s.ObjectMeta {
       name = "test-cj-\(v.testRunID)"
-      namespace = ns.res.name
+      namespace = "formae-test-\(v.testRunID)"
     }
     spec = new cj.CronJobSpec {
       schedule = "*/5 * * * *"
       successfulJobsHistoryLimit = 1
       failedJobsHistoryLimit = 1
       jobTemplate = new cj.JobTemplateSpec {
-        spec = new job.JobSpec {
+        spec = new k8s.JobSpec {
           backoffLimit = 1
-          template = new rs.PodTemplateSpec {
-            spec = new pod.PodSpec {
+          template = new k8s.PodTemplateSpec {
+            spec = new k8s.PodSpec {
               containers = new Listing {
-                new pod.Container {
+                new k8s.Container {
                   name = "cron-worker"
                   image = "busybox:latest"
                   command = new Listing { "echo"; "tick" }

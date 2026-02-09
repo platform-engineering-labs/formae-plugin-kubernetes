@@ -30,11 +30,11 @@ forma {
     label = "test-configmap"
     metadata = new k8s.ObjectMeta {
       name = "test-cm-\(v.testRunID)"
-      namespace = ns.res.name
+      namespace = "formae-test-\(v.testRunID)"
     }
     data = new Mapping {
-      ["app.conf"] = "key=updated-value"
-      ["log.level"] = "debug"
+      ["greeting"] = "hello-updated"
+      ["database_url"] = "postgres://localhost:5432/mydb-v2"
     }
   }
 }

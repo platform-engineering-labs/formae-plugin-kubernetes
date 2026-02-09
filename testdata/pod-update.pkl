@@ -1,6 +1,6 @@
 /*
  * Conformance Test: Pod (Update)
- * Changes: image tag changed (mutable), added env var
+ * Changes: image tag changed (mutable) - only image changes allowed on Pods
  */
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
@@ -30,23 +30,17 @@ forma {
     label = "test-pod"
     metadata = new k8s.ObjectMeta {
       name = "test-pod-\(v.testRunID)"
-      namespace = ns.res.name
+      namespace = "formae-test-\(v.testRunID)"
     }
-    spec = new pod.PodSpec {
+    spec = new k8s.PodSpec {
       containers = new Listing {
-        new pod.Container {
+        new k8s.Container {
           name = "nginx"
           image = "nginx:latest"
           ports = new Listing {
-            new pod.ContainerPort {
+            new k8s.ContainerPort {
               containerPort = 80
               protocol = "TCP"
-            }
-          }
-          env = new Listing {
-            new pod.EnvVar {
-              name = "ENV"
-              value = "test"
             }
           }
         }

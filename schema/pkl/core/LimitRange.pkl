@@ -41,7 +41,11 @@ open class LimitRange extends k8s.Resource {
 @k8s.SubResourceHint {}
 open class LimitRangeSpec extends formae.SubResource {
   /// Limits is the list of LimitRangeItem objects that are enforced
-  @k8s.FieldHint { required = true }
+  @k8s.FieldHint {
+    required = true
+    updateMethod = "EntitySet"
+    indexField = "type"
+  }
   limits: Listing<LimitRangeItem>
 }
 

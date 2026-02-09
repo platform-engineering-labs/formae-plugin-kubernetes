@@ -34,25 +34,5 @@ open class Role extends k8s.Resource {
 
   /// List of policy rules
   @k8s.FieldHint { required = true }
-  rules: Listing<PolicyRule>
-}
-
-/// PolicyRule holds information that describes a policy rule.
-@k8s.SubResourceHint {}
-open class PolicyRule extends formae.SubResource {
-  /// API groups this rule applies to
-  @k8s.FieldHint {}
-  apiGroups: Listing<String>?
-
-  /// Resources this rule applies to
-  @k8s.FieldHint {}
-  resources: Listing<String>?
-
-  /// Verbs (get, list, watch, create, update, delete, etc.)
-  @k8s.FieldHint { required = true }
-  verbs: Listing<String>
-
-  /// Resource names this rule applies to (optional restriction)
-  @k8s.FieldHint {}
-  resourceNames: Listing<String>?
+  rules: Listing<k8s.PolicyRule>
 }

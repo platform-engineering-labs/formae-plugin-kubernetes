@@ -7,8 +7,6 @@ module clusterrolebinding
 
 import "@formae/formae.pkl"
 import "../k8s.pkl"
-import "RoleBinding.pkl" as rb
-
 const type = "K8S::Rbac::ClusterRoleBinding"
 
 @k8s.ResourceHint {
@@ -30,9 +28,9 @@ open class ClusterRoleBinding extends k8s.Resource {
 
   /// Reference to the ClusterRole being bound
   @k8s.FieldHint { required = true }
-  roleRef: rb.RoleRef
+  roleRef: k8s.RoleRef
 
   /// Subjects holds references to the objects the role applies to
   @k8s.FieldHint {}
-  subjects: Listing<rb.Subject>?
+  subjects: Listing<k8s.Subject>?
 }

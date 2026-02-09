@@ -29,7 +29,7 @@ forma {
     label = "test-hpa"
     metadata = new k8s.ObjectMeta {
       name = "test-hpa-\(v.testRunID)"
-      namespace = ns.res.name
+      namespace = "formae-test-\(v.testRunID)"
     }
     spec = new hpa.HorizontalPodAutoscalerSpec {
       scaleTargetRef = new hpa.CrossVersionObjectReference {

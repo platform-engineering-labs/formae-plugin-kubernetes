@@ -273,18 +273,10 @@ func (p *PersistentVolume) findByUID(ctx context.Context, uid string) (*v1.Persi
 // fromPhase maps K8S PersistentVolumePhase to Formae OperationStatus.
 func (p *PersistentVolume) fromPhase(phase v1.PersistentVolumePhase) resource.OperationStatus {
 	switch phase {
-	case v1.VolumeAvailable:
-		return resource.OperationStatusSuccess
-	case v1.VolumeBound:
-		return resource.OperationStatusSuccess
-	case v1.VolumeReleased:
-		return resource.OperationStatusSuccess
-	case v1.VolumePending:
-		return resource.OperationStatusInProgress
 	case v1.VolumeFailed:
 		return resource.OperationStatusFailure
 	default:
-		return resource.OperationStatusInProgress
+		return resource.OperationStatusSuccess
 	}
 }
 

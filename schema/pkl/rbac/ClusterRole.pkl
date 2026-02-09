@@ -7,8 +7,6 @@ module clusterrole
 
 import "@formae/formae.pkl"
 import "../k8s.pkl"
-import "Role.pkl" as role
-
 const type = "K8S::Rbac::ClusterRole"
 
 @k8s.ResourceHint {
@@ -30,7 +28,7 @@ open class ClusterRole extends k8s.Resource {
 
   /// List of policy rules
   @k8s.FieldHint { required = true }
-  rules: Listing<role.PolicyRule>
+  rules: Listing<k8s.PolicyRule>
 
   /// AggregationRule describes how to build the rules for this ClusterRole
   @k8s.FieldHint {}

@@ -30,7 +30,7 @@ forma {
     label = "test-service"
     metadata = new k8s.ObjectMeta {
       name = "test-svc-\(v.testRunID)"
-      namespace = ns.res.name
+      namespace = "formae-test-\(v.testRunID)"
     }
     spec = new svc.ServiceSpec {
       type = "ClusterIP"
@@ -39,11 +39,13 @@ forma {
       }
       ports = new Listing {
         new svc.ServicePort {
+          name = "http"
           port = 80
           targetPort = 8080
           protocol = "TCP"
         }
         new svc.ServicePort {
+          name = "https"
           port = 443
           targetPort = 8443
           protocol = "TCP"
