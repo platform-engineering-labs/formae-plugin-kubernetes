@@ -1,0 +1,45 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+module priorityclass
+
+import "@formae/formae.pkl"
+import "../k8s.pkl"
+
+const type = "K8S::Scheduling::PriorityClass"
+
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.metadata.uid"
+  discoverable = true
+}
+open class PriorityClass extends k8s.Resource {
+  fixed hidden resourceType: String = module.type
+
+  @k8s.FieldHint { required = true }
+  apiVersion: String = "scheduling.k8s.io/v1"
+
+  @k8s.FieldHint { required = true }
+  kind: String = "PriorityClass"
+
+  @k8s.FieldHint { required = true }
+  metadata: k8s.ObjectMeta
+
+  /// The value of this priority class (higher is higher priority)
+  @k8s.FieldHint { required = true }
+  value: Int
+
+  /// Whether this is the default priority class for pods
+  @k8s.FieldHint {}
+  globalDefault: Boolean?
+
+  /// Description of this priority class
+  @k8s.FieldHint {}
+  description: String?
+
+  /// PreemptionPolicy (PreemptLowerPriority or Never)
+  @k8s.FieldHint {}
+  preemptionPolicy: String?
+}

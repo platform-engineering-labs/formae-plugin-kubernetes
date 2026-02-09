@@ -1,0 +1,71 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+module rolebinding
+
+import "@formae/formae.pkl"
+import "../k8s.pkl"
+
+const type = "K8S::Rbac::RoleBinding"
+
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.metadata.uid"
+  discoverable = true
+  parent = "K8S::Core::Namespace"
+  listParam = new formae.ListProperty {
+    parentProperty = "metadata.name"
+    listParameter = "namespace"
+  }
+}
+open class RoleBinding extends k8s.Resource {
+  fixed hidden resourceType: String = module.type
+
+  @k8s.FieldHint { required = true }
+  apiVersion: String = "rbac.authorization.k8s.io/v1"
+
+  @k8s.FieldHint { required = true }
+  kind: String = "RoleBinding"
+
+  @k8s.FieldHint { required = true }
+  metadata: k8s.ObjectMeta
+
+  /// Reference to the Role or ClusterRole being bound
+  @k8s.FieldHint { required = true }
+  roleRef: RoleRef
+
+  /// Subjects holds references to the objects the role applies to
+  @k8s.FieldHint {}
+  subjects: Listing<Subject>?
+}
+
+/// RoleRef contains information about the role being referenced.
+@k8s.SubResourceHint {}
+open class RoleRef extends formae.SubResource {
+  @k8s.FieldHint { required = true }
+  apiGroup: String = "rbac.authorization.k8s.io"
+
+  @k8s.FieldHint { required = true }
+  kind: String
+
+  @k8s.FieldHint { required = true }
+  name: String
+}
+
+/// Subject contains a reference to the object or user identity a role binding applies to.
+@k8s.SubResourceHint {}
+open class Subject extends formae.SubResource {
+  @k8s.FieldHint { required = true }
+  kind: String
+
+  @k8s.FieldHint { required = true }
+  name: String
+
+  @k8s.FieldHint {}
+  namespace: (String|formae.Resolvable)?
+
+  @k8s.FieldHint {}
+  apiGroup: String?
+}

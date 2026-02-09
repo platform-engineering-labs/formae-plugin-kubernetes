@@ -17,9 +17,14 @@ import (
 
 	// Import resources to trigger init() registration
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/apps"
+	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/autoscaling"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/batch"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/core"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/networking"
+	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/policy"
+	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/rbac"
+	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/scheduling"
+	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/storage"
 )
 
 // Plugin implements the Formae ResourcePlugin interface for Kubernetes.

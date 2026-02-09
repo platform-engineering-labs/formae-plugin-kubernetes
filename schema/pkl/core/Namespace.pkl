@@ -10,6 +10,15 @@ import "../k8s.pkl"
 
 const type = "K8S::Core::Namespace"
 
+/// Resolvable reference to a Namespace resource.
+/// Use this to reference Namespace properties in other resources (e.g., namespace = ns.res.name).
+open class NamespaceResolvable extends formae.Resolvable {
+  hidden type = module.type
+
+  /// Reference to the namespace name (metadata.name)
+  hidden name: NamespaceResolvable = (this) { property = "metadata.name" }
+}
+
 /// K8S Namespace resource.
 /// Namespaces provide a scope for names and are used to divide cluster resources.
 @k8s.ResourceHint {
@@ -18,7 +27,14 @@ const type = "K8S::Core::Namespace"
   discoverable = true
 }
 open class Namespace extends k8s.Resource {
+  hidden parent = this
   fixed hidden resourceType: String = module.type
+
+  /// Resolvable reference to this namespace's properties
+  hidden res: NamespaceResolvable = new {
+    label = parent.label
+    stack = parent.stack?.label
+  }
 
   /// API version for Namespace is always "v1"
   @k8s.FieldHint { required = true }
@@ -37,7 +53,7 @@ open class Namespace extends k8s.Resource {
 @k8s.SubResourceHint {}
 open class NamespaceMetadata extends formae.SubResource {
   /// Name of the namespace
-  @k8s.FieldHint { required = true }
+  @k8s.FieldHint { required = true; createOnly = true }
   name: String
 
   /// Labels for organization

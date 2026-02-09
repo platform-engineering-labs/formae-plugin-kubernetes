@@ -1,0 +1,110 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+module horizontalpodautoscaler
+
+import "@formae/formae.pkl"
+import "../k8s.pkl"
+
+const type = "K8S::Autoscaling::HorizontalPodAutoscaler"
+
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.metadata.uid"
+  discoverable = true
+  parent = "K8S::Core::Namespace"
+  listParam = new formae.ListProperty {
+    parentProperty = "metadata.name"
+    listParameter = "namespace"
+  }
+}
+open class HorizontalPodAutoscaler extends k8s.Resource {
+  fixed hidden resourceType: String = module.type
+
+  @k8s.FieldHint { required = true }
+  apiVersion: String = "autoscaling/v2"
+
+  @k8s.FieldHint { required = true }
+  kind: String = "HorizontalPodAutoscaler"
+
+  @k8s.FieldHint { required = true }
+  metadata: k8s.ObjectMeta
+
+  @k8s.FieldHint { required = true }
+  spec: HorizontalPodAutoscalerSpec
+}
+
+/// HorizontalPodAutoscalerSpec describes the desired functionality.
+@k8s.SubResourceHint {}
+open class HorizontalPodAutoscalerSpec extends formae.SubResource {
+  /// Reference to the scaled resource
+  @k8s.FieldHint { required = true }
+  scaleTargetRef: CrossVersionObjectReference
+
+  /// Minimum number of replicas
+  @k8s.FieldHint {}
+  minReplicas: Int?
+
+  /// Maximum number of replicas
+  @k8s.FieldHint { required = true }
+  maxReplicas: Int
+
+  /// Metrics to use for scaling decisions
+  @k8s.FieldHint {}
+  metrics: Listing<MetricSpec>?
+}
+
+/// CrossVersionObjectReference contains enough info to let you identify the referred resource.
+@k8s.SubResourceHint {}
+open class CrossVersionObjectReference extends formae.SubResource {
+  @k8s.FieldHint { required = true }
+  apiVersion: String
+
+  @k8s.FieldHint { required = true }
+  kind: String
+
+  @k8s.FieldHint { required = true }
+  name: String
+}
+
+/// MetricSpec specifies how to scale based on a single metric.
+@k8s.SubResourceHint {}
+open class MetricSpec extends formae.SubResource {
+  /// Type of metric source (Resource, Pods, Object, External)
+  @k8s.FieldHint { required = true }
+  type: String
+
+  /// Resource refers to a resource metric
+  @k8s.FieldHint {}
+  resource: ResourceMetricSource?
+}
+
+/// ResourceMetricSource indicates how to scale on a resource metric.
+@k8s.SubResourceHint {}
+open class ResourceMetricSource extends formae.SubResource {
+  /// Name of the resource (cpu, memory)
+  @k8s.FieldHint { required = true }
+  name: String
+
+  /// Target specifies the target value for the metric
+  @k8s.FieldHint { required = true }
+  target: MetricTarget
+}
+
+/// MetricTarget defines the target value or utilization.
+@k8s.SubResourceHint {}
+open class MetricTarget extends formae.SubResource {
+  /// Type of metric target (Utilization, Value, AverageValue)
+  @k8s.FieldHint { required = true }
+  type: String
+
+  /// AverageUtilization is the target percentage of resource utilization
+  @k8s.FieldHint {}
+  averageUtilization: Int?
+
+  /// AverageValue is the target value
+  @k8s.FieldHint {}
+  averageValue: String?
+}

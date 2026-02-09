@@ -1,0 +1,16 @@
+import "@formae/formae.pkl"
+
+local stackName = "plugin-sdk-test-stack"
+
+testRunID = read("env:FORMAE_TEST_RUN_ID")
+
+stack = new formae.Stack {
+  label = stackName
+  description = "Plugin SDK conformance test stack"
+}
+
+target = new formae.Target {
+  label = "k8s-target"
+  namespace = "K8S"
+  config = new Mapping {}
+}

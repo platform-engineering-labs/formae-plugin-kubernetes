@@ -1,0 +1,282 @@
+// © 2025 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+
+package policy
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/prov"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/registry"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/transport"
+	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
+	policyv1 "k8s.io/api/policy/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	policyv1ac "k8s.io/client-go/applyconfigurations/policy/v1"
+)
+
+const ResourceTypePodDisruptionBudget = "K8S::Policy::PodDisruptionBudget"
+
+func init() {
+	registry.Register(
+		ResourceTypePodDisruptionBudget,
+		[]resource.Operation{
+			resource.OperationCreate,
+			resource.OperationRead,
+			resource.OperationUpdate,
+			resource.OperationDelete,
+			resource.OperationList,
+		},
+		func(client *transport.Client, cfg *config.Config) prov.Provisioner {
+			return &PodDisruptionBudget{Client: client, Config: cfg}
+		},
+	)
+}
+
+// PodDisruptionBudget implements the provisioner for K8S::Policy::PodDisruptionBudget resources.
+type PodDisruptionBudget struct {
+	Client *transport.Client
+	Config *config.Config
+}
+
+var _ prov.Provisioner = &PodDisruptionBudget{}
+
+func (p *PodDisruptionBudget) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
+	var pdb *policyv1ac.PodDisruptionBudgetApplyConfiguration
+	if err := json.Unmarshal(request.Properties, &pdb); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal poddisruptionbudget properties: %w", err)
+	}
+
+	namespace := p.Config.EffectiveNamespace()
+	if pdb.Namespace != nil {
+		namespace = *pdb.Namespace
+	}
+
+	result, err := p.Client.PolicyV1().PodDisruptionBudgets(namespace).Apply(ctx, pdb, metav1.ApplyOptions{
+		FieldManager: "formae",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply poddisruptionbudget: %w", err)
+	}
+
+	ext, err := policyv1ac.ExtractPodDisruptionBudget(result, "formae")
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract poddisruptionbudget: %w", err)
+	}
+
+	properties, err := json.Marshal(ext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal poddisruptionbudget properties: %w", err)
+	}
+
+	return &resource.CreateResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:          resource.OperationCreate,
+			OperationStatus:    resource.OperationStatusSuccess,
+			RequestID:          fmt.Sprintf("%d", result.Generation),
+			NativeID:           string(result.ObjectMeta.UID),
+			ResourceProperties: properties,
+		},
+	}, nil
+}
+
+func (p *PodDisruptionBudget) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
+	result, err := p.findByUID(ctx, request.NativeID)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return &resource.ReadResult{
+				ResourceType: request.ResourceType,
+				ErrorCode:    resource.OperationErrorCodeNotFound,
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to get poddisruptionbudget: %w", err)
+	}
+	if result == nil {
+		return &resource.ReadResult{
+			ResourceType: request.ResourceType,
+			ErrorCode:    resource.OperationErrorCodeNotFound,
+		}, nil
+	}
+
+	ext, err := policyv1ac.ExtractPodDisruptionBudget(result, "formae")
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract poddisruptionbudget: %w", err)
+	}
+
+	properties, err := json.Marshal(ext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal poddisruptionbudget properties: %w", err)
+	}
+
+	return &resource.ReadResult{
+		ResourceType: request.ResourceType,
+		Properties:   string(properties),
+	}, nil
+}
+
+func (p *PodDisruptionBudget) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
+	var pdb *policyv1ac.PodDisruptionBudgetApplyConfiguration
+	if err := json.Unmarshal(request.DesiredProperties, &pdb); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal poddisruptionbudget properties: %w", err)
+	}
+
+	namespace := p.Config.EffectiveNamespace()
+	if pdb.Namespace != nil {
+		namespace = *pdb.Namespace
+	}
+
+	result, err := p.Client.PolicyV1().PodDisruptionBudgets(namespace).Apply(ctx, pdb, metav1.ApplyOptions{
+		FieldManager: "formae",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply poddisruptionbudget: %w", err)
+	}
+
+	ext, err := policyv1ac.ExtractPodDisruptionBudget(result, "formae")
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract poddisruptionbudget: %w", err)
+	}
+
+	properties, err := json.Marshal(ext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal poddisruptionbudget properties: %w", err)
+	}
+
+	return &resource.UpdateResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:          resource.OperationUpdate,
+			OperationStatus:    resource.OperationStatusSuccess,
+			RequestID:          result.ResourceVersion,
+			NativeID:           string(result.ObjectMeta.UID),
+			ResourceProperties: properties,
+		},
+	}, nil
+}
+
+func (p *PodDisruptionBudget) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
+	pdb, err := p.findByUID(ctx, request.NativeID)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return &resource.DeleteResult{
+				ProgressResult: &resource.ProgressResult{
+					Operation:       resource.OperationDelete,
+					OperationStatus: resource.OperationStatusSuccess,
+				},
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to find poddisruptionbudget: %w", err)
+	}
+	if pdb == nil {
+		return &resource.DeleteResult{
+			ProgressResult: &resource.ProgressResult{
+				Operation:       resource.OperationDelete,
+				OperationStatus: resource.OperationStatusSuccess,
+			},
+		}, nil
+	}
+
+	err = p.Client.PolicyV1().PodDisruptionBudgets(pdb.Namespace).Delete(ctx, pdb.Name, metav1.DeleteOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return &resource.DeleteResult{
+				ProgressResult: &resource.ProgressResult{
+					Operation:       resource.OperationDelete,
+					OperationStatus: resource.OperationStatusSuccess,
+				},
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to delete poddisruptionbudget: %w", err)
+	}
+
+	return &resource.DeleteResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:       resource.OperationDelete,
+			OperationStatus: resource.OperationStatusSuccess,
+		},
+	}, nil
+}
+
+func (p *PodDisruptionBudget) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
+	result, err := p.findByUID(ctx, request.NativeID)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return &resource.StatusResult{
+				ProgressResult: &resource.ProgressResult{
+					Operation:       resource.OperationCheckStatus,
+					OperationStatus: resource.OperationStatusFailure,
+					ErrorCode:       resource.OperationErrorCodeNotFound,
+				},
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to get poddisruptionbudget status: %w", err)
+	}
+	if result == nil {
+		return &resource.StatusResult{
+			ProgressResult: &resource.ProgressResult{
+				Operation:       resource.OperationCheckStatus,
+				OperationStatus: resource.OperationStatusFailure,
+				ErrorCode:       resource.OperationErrorCodeNotFound,
+			},
+		}, nil
+	}
+
+	ext, err := policyv1ac.ExtractPodDisruptionBudget(result, "formae")
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract poddisruptionbudget: %w", err)
+	}
+
+	properties, err := json.Marshal(ext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal poddisruptionbudget properties: %w", err)
+	}
+
+	return &resource.StatusResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:          resource.OperationCheckStatus,
+			OperationStatus:    resource.OperationStatusSuccess,
+			RequestID:          request.RequestID,
+			NativeID:           string(result.ObjectMeta.UID),
+			ResourceProperties: properties,
+		},
+	}, nil
+}
+
+func (p *PodDisruptionBudget) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
+	namespace := p.Config.EffectiveNamespace()
+	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
+		namespace = ns
+	}
+
+	result, err := p.Client.PolicyV1().PodDisruptionBudgets(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list poddisruptionbudgets: %w", err)
+	}
+
+	nativeIDs := make([]string, 0, len(result.Items))
+	for _, pdb := range result.Items {
+		nativeIDs = append(nativeIDs, string(pdb.ObjectMeta.UID))
+	}
+
+	return &resource.ListResult{
+		NativeIDs: nativeIDs,
+	}, nil
+}
+
+// findByUID finds a poddisruptionbudget by its UID across all namespaces.
+func (p *PodDisruptionBudget) findByUID(ctx context.Context, uid string) (*policyv1.PodDisruptionBudget, error) {
+	list, err := p.Client.PolicyV1().PodDisruptionBudgets(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	for i := range list.Items {
+		if string(list.Items[i].UID) == uid {
+			return &list.Items[i], nil
+		}
+	}
+	return nil, nil
+}

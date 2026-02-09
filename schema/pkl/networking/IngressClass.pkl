@@ -1,0 +1,63 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+module ingressclass
+
+import "@formae/formae.pkl"
+import "../k8s.pkl"
+
+const type = "K8S::Networking::IngressClass"
+
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.metadata.uid"
+  discoverable = true
+}
+open class IngressClass extends k8s.Resource {
+  fixed hidden resourceType: String = module.type
+
+  @k8s.FieldHint { required = true }
+  apiVersion: String = "networking.k8s.io/v1"
+
+  @k8s.FieldHint { required = true }
+  kind: String = "IngressClass"
+
+  @k8s.FieldHint { required = true }
+  metadata: k8s.ObjectMeta
+
+  @k8s.FieldHint {}
+  spec: IngressClassSpec?
+}
+
+/// IngressClassSpec provides information about the class of an Ingress.
+@k8s.SubResourceHint {}
+open class IngressClassSpec extends formae.SubResource {
+  /// Controller refers to the name of the controller
+  @k8s.FieldHint {}
+  controller: String?
+
+  /// Parameters is a link to a custom resource for additional configuration
+  @k8s.FieldHint {}
+  parameters: IngressClassParametersReference?
+}
+
+/// IngressClassParametersReference identifies an API object.
+@k8s.SubResourceHint {}
+open class IngressClassParametersReference extends formae.SubResource {
+  @k8s.FieldHint { required = true }
+  kind: String
+
+  @k8s.FieldHint { required = true }
+  name: String
+
+  @k8s.FieldHint {}
+  apiGroup: String?
+
+  @k8s.FieldHint {}
+  namespace: String?
+
+  @k8s.FieldHint {}
+  scope: String?
+}

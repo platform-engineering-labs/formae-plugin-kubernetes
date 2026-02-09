@@ -1,0 +1,33 @@
+/*
+ * Conformance Test: PersistentVolume (Update)
+ * Changes: increased storage capacity (mutable)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@formae-plugin-k8s/core/PersistentVolume.pkl" as pv
+import "@formae-plugin-k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new pv.PersistentVolume {
+    label = "test-persistentvolume"
+    metadata = new k8s.ObjectMeta {
+      name = "test-pv-\(v.testRunID)"
+    }
+    spec = new pv.PersistentVolumeSpec {
+      capacity = new Mapping {
+        ["storage"] = "2Gi"
+      }
+      accessModes = new Listing {
+        "ReadWriteOnce"
+      }
+      persistentVolumeReclaimPolicy = "Retain"
+      hostPath = new pv.HostPathVolumeSource {
+        path = "/tmp/test-pv"
+      }
+    }
+  }
+}

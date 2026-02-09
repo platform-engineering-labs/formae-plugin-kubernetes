@@ -1,0 +1,50 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+module resourcequota
+
+import "@formae/formae.pkl"
+import "../k8s.pkl"
+
+const type = "K8S::Core::ResourceQuota"
+
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.metadata.uid"
+  discoverable = true
+  parent = "K8S::Core::Namespace"
+  listParam = new formae.ListProperty {
+    parentProperty = "metadata.name"
+    listParameter = "namespace"
+  }
+}
+open class ResourceQuota extends k8s.Resource {
+  fixed hidden resourceType: String = module.type
+
+  @k8s.FieldHint { required = true }
+  apiVersion: String = "v1"
+
+  @k8s.FieldHint { required = true }
+  kind: String = "ResourceQuota"
+
+  @k8s.FieldHint { required = true }
+  metadata: k8s.ObjectMeta
+
+  /// Spec defines the desired quotas
+  @k8s.FieldHint { required = true }
+  spec: ResourceQuotaSpec
+}
+
+/// ResourceQuotaSpec defines the desired hard limits.
+@k8s.SubResourceHint {}
+open class ResourceQuotaSpec extends formae.SubResource {
+  /// Hard is the set of desired hard limits for each named resource
+  @k8s.FieldHint {}
+  hard: Mapping<String, String>?
+
+  /// Scopes specifies which resources are covered by this quota
+  @k8s.FieldHint {}
+  scopes: Listing<String>?
+}

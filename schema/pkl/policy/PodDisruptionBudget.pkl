@@ -1,0 +1,54 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+module poddisruptionbudget
+
+import "@formae/formae.pkl"
+import "../k8s.pkl"
+import "../apps/ReplicaSet.pkl" as rs
+
+const type = "K8S::Policy::PodDisruptionBudget"
+
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.metadata.uid"
+  discoverable = true
+  parent = "K8S::Core::Namespace"
+  listParam = new formae.ListProperty {
+    parentProperty = "metadata.name"
+    listParameter = "namespace"
+  }
+}
+open class PodDisruptionBudget extends k8s.Resource {
+  fixed hidden resourceType: String = module.type
+
+  @k8s.FieldHint { required = true }
+  apiVersion: String = "policy/v1"
+
+  @k8s.FieldHint { required = true }
+  kind: String = "PodDisruptionBudget"
+
+  @k8s.FieldHint { required = true }
+  metadata: k8s.ObjectMeta
+
+  @k8s.FieldHint { required = true }
+  spec: PodDisruptionBudgetSpec
+}
+
+/// PodDisruptionBudgetSpec defines the desired disruption budget.
+@k8s.SubResourceHint {}
+open class PodDisruptionBudgetSpec extends formae.SubResource {
+  /// Minimum available pods (number or percentage)
+  @k8s.FieldHint {}
+  minAvailable: (Int|String)?
+
+  /// Maximum unavailable pods (number or percentage)
+  @k8s.FieldHint {}
+  maxUnavailable: (Int|String)?
+
+  /// Label query over pods whose evictions are managed by the budget
+  @k8s.FieldHint {}
+  selector: rs.LabelSelector?
+}

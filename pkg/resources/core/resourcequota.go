@@ -1,0 +1,282 @@
+// © 2025 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+
+package core
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/prov"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/registry"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/transport"
+	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1coreac "k8s.io/client-go/applyconfigurations/core/v1"
+)
+
+const ResourceTypeResourceQuota = "K8S::Core::ResourceQuota"
+
+func init() {
+	registry.Register(
+		ResourceTypeResourceQuota,
+		[]resource.Operation{
+			resource.OperationCreate,
+			resource.OperationRead,
+			resource.OperationUpdate,
+			resource.OperationDelete,
+			resource.OperationList,
+		},
+		func(client *transport.Client, cfg *config.Config) prov.Provisioner {
+			return &ResourceQuota{Client: client, Config: cfg}
+		},
+	)
+}
+
+// ResourceQuota implements the provisioner for K8S::Core::ResourceQuota resources.
+type ResourceQuota struct {
+	Client *transport.Client
+	Config *config.Config
+}
+
+var _ prov.Provisioner = &ResourceQuota{}
+
+func (r *ResourceQuota) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
+	var rq *v1coreac.ResourceQuotaApplyConfiguration
+	if err := json.Unmarshal(request.Properties, &rq); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal resourcequota properties: %w", err)
+	}
+
+	namespace := r.Config.EffectiveNamespace()
+	if rq.Namespace != nil {
+		namespace = *rq.Namespace
+	}
+
+	result, err := r.Client.CoreV1().ResourceQuotas(namespace).Apply(ctx, rq, metav1.ApplyOptions{
+		FieldManager: "formae",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply resourcequota: %w", err)
+	}
+
+	ext, err := v1coreac.ExtractResourceQuota(result, "formae")
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract resourcequota: %w", err)
+	}
+
+	properties, err := json.Marshal(ext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal resourcequota properties: %w", err)
+	}
+
+	return &resource.CreateResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:          resource.OperationCreate,
+			OperationStatus:    resource.OperationStatusSuccess,
+			RequestID:          fmt.Sprintf("%d", result.Generation),
+			NativeID:           string(result.ObjectMeta.UID),
+			ResourceProperties: properties,
+		},
+	}, nil
+}
+
+func (r *ResourceQuota) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
+	result, err := r.findByUID(ctx, request.NativeID)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return &resource.ReadResult{
+				ResourceType: request.ResourceType,
+				ErrorCode:    resource.OperationErrorCodeNotFound,
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to get resourcequota: %w", err)
+	}
+	if result == nil {
+		return &resource.ReadResult{
+			ResourceType: request.ResourceType,
+			ErrorCode:    resource.OperationErrorCodeNotFound,
+		}, nil
+	}
+
+	ext, err := v1coreac.ExtractResourceQuota(result, "formae")
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract resourcequota: %w", err)
+	}
+
+	properties, err := json.Marshal(ext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal resourcequota properties: %w", err)
+	}
+
+	return &resource.ReadResult{
+		ResourceType: request.ResourceType,
+		Properties:   string(properties),
+	}, nil
+}
+
+func (r *ResourceQuota) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
+	var rq *v1coreac.ResourceQuotaApplyConfiguration
+	if err := json.Unmarshal(request.DesiredProperties, &rq); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal resourcequota properties: %w", err)
+	}
+
+	namespace := r.Config.EffectiveNamespace()
+	if rq.Namespace != nil {
+		namespace = *rq.Namespace
+	}
+
+	result, err := r.Client.CoreV1().ResourceQuotas(namespace).Apply(ctx, rq, metav1.ApplyOptions{
+		FieldManager: "formae",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply resourcequota: %w", err)
+	}
+
+	ext, err := v1coreac.ExtractResourceQuota(result, "formae")
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract resourcequota: %w", err)
+	}
+
+	properties, err := json.Marshal(ext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal resourcequota properties: %w", err)
+	}
+
+	return &resource.UpdateResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:          resource.OperationUpdate,
+			OperationStatus:    resource.OperationStatusSuccess,
+			RequestID:          result.ResourceVersion,
+			NativeID:           string(result.ObjectMeta.UID),
+			ResourceProperties: properties,
+		},
+	}, nil
+}
+
+func (r *ResourceQuota) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
+	rq, err := r.findByUID(ctx, request.NativeID)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return &resource.DeleteResult{
+				ProgressResult: &resource.ProgressResult{
+					Operation:       resource.OperationDelete,
+					OperationStatus: resource.OperationStatusSuccess,
+				},
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to find resourcequota: %w", err)
+	}
+	if rq == nil {
+		return &resource.DeleteResult{
+			ProgressResult: &resource.ProgressResult{
+				Operation:       resource.OperationDelete,
+				OperationStatus: resource.OperationStatusSuccess,
+			},
+		}, nil
+	}
+
+	err = r.Client.CoreV1().ResourceQuotas(rq.Namespace).Delete(ctx, rq.Name, metav1.DeleteOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return &resource.DeleteResult{
+				ProgressResult: &resource.ProgressResult{
+					Operation:       resource.OperationDelete,
+					OperationStatus: resource.OperationStatusSuccess,
+				},
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to delete resourcequota: %w", err)
+	}
+
+	return &resource.DeleteResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:       resource.OperationDelete,
+			OperationStatus: resource.OperationStatusSuccess,
+		},
+	}, nil
+}
+
+func (r *ResourceQuota) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
+	result, err := r.findByUID(ctx, request.NativeID)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return &resource.StatusResult{
+				ProgressResult: &resource.ProgressResult{
+					Operation:       resource.OperationCheckStatus,
+					OperationStatus: resource.OperationStatusFailure,
+					ErrorCode:       resource.OperationErrorCodeNotFound,
+				},
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to get resourcequota status: %w", err)
+	}
+	if result == nil {
+		return &resource.StatusResult{
+			ProgressResult: &resource.ProgressResult{
+				Operation:       resource.OperationCheckStatus,
+				OperationStatus: resource.OperationStatusFailure,
+				ErrorCode:       resource.OperationErrorCodeNotFound,
+			},
+		}, nil
+	}
+
+	ext, err := v1coreac.ExtractResourceQuota(result, "formae")
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract resourcequota: %w", err)
+	}
+
+	properties, err := json.Marshal(ext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal resourcequota properties: %w", err)
+	}
+
+	return &resource.StatusResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:          resource.OperationCheckStatus,
+			OperationStatus:    resource.OperationStatusSuccess,
+			RequestID:          request.RequestID,
+			NativeID:           string(result.ObjectMeta.UID),
+			ResourceProperties: properties,
+		},
+	}, nil
+}
+
+func (r *ResourceQuota) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
+	namespace := r.Config.EffectiveNamespace()
+	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
+		namespace = ns
+	}
+
+	result, err := r.Client.CoreV1().ResourceQuotas(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list resourcequotas: %w", err)
+	}
+
+	nativeIDs := make([]string, 0, len(result.Items))
+	for _, rq := range result.Items {
+		nativeIDs = append(nativeIDs, string(rq.ObjectMeta.UID))
+	}
+
+	return &resource.ListResult{
+		NativeIDs: nativeIDs,
+	}, nil
+}
+
+// findByUID finds a resourcequota by its UID across all namespaces.
+func (r *ResourceQuota) findByUID(ctx context.Context, uid string) (*v1.ResourceQuota, error) {
+	list, err := r.Client.CoreV1().ResourceQuotas(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	for i := range list.Items {
+		if string(list.Items[i].UID) == uid {
+			return &list.Items[i], nil
+		}
+	}
+	return nil, nil
+}

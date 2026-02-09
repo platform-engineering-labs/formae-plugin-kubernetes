@@ -1,0 +1,267 @@
+// © 2025 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+
+package networking
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/prov"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/registry"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/transport"
+	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
+	networkingv1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	networkingv1ac "k8s.io/client-go/applyconfigurations/networking/v1"
+)
+
+const ResourceTypeIngressClass = "K8S::Networking::IngressClass"
+
+func init() {
+	registry.Register(
+		ResourceTypeIngressClass,
+		[]resource.Operation{
+			resource.OperationCreate,
+			resource.OperationRead,
+			resource.OperationUpdate,
+			resource.OperationDelete,
+			resource.OperationList,
+		},
+		func(client *transport.Client, cfg *config.Config) prov.Provisioner {
+			return &IngressClass{Client: client, Config: cfg}
+		},
+	)
+}
+
+// IngressClass implements the provisioner for K8S::Networking::IngressClass resources.
+type IngressClass struct {
+	Client *transport.Client
+	Config *config.Config
+}
+
+var _ prov.Provisioner = &IngressClass{}
+
+func (ic *IngressClass) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
+	var ingressClass *networkingv1ac.IngressClassApplyConfiguration
+	if err := json.Unmarshal(request.Properties, &ingressClass); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal ingressclass properties: %w", err)
+	}
+
+	result, err := ic.Client.NetworkingV1().IngressClasses().Apply(ctx, ingressClass, metav1.ApplyOptions{
+		FieldManager: "formae",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply ingressclass: %w", err)
+	}
+
+	ext, err := networkingv1ac.ExtractIngressClass(result, "formae")
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract ingressclass: %w", err)
+	}
+
+	properties, err := json.Marshal(ext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal ingressclass properties: %w", err)
+	}
+
+	return &resource.CreateResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:          resource.OperationCreate,
+			OperationStatus:    resource.OperationStatusSuccess,
+			RequestID:          fmt.Sprintf("%d", result.Generation),
+			NativeID:           string(result.ObjectMeta.UID),
+			ResourceProperties: properties,
+		},
+	}, nil
+}
+
+func (ic *IngressClass) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
+	result, err := ic.findByUID(ctx, request.NativeID)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return &resource.ReadResult{
+				ResourceType: request.ResourceType,
+				ErrorCode:    resource.OperationErrorCodeNotFound,
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to get ingressclass: %w", err)
+	}
+	if result == nil {
+		return &resource.ReadResult{
+			ResourceType: request.ResourceType,
+			ErrorCode:    resource.OperationErrorCodeNotFound,
+		}, nil
+	}
+
+	ext, err := networkingv1ac.ExtractIngressClass(result, "formae")
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract ingressclass: %w", err)
+	}
+
+	properties, err := json.Marshal(ext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal ingressclass properties: %w", err)
+	}
+
+	return &resource.ReadResult{
+		ResourceType: request.ResourceType,
+		Properties:   string(properties),
+	}, nil
+}
+
+func (ic *IngressClass) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
+	var ingressClass *networkingv1ac.IngressClassApplyConfiguration
+	if err := json.Unmarshal(request.DesiredProperties, &ingressClass); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal ingressclass properties: %w", err)
+	}
+
+	result, err := ic.Client.NetworkingV1().IngressClasses().Apply(ctx, ingressClass, metav1.ApplyOptions{
+		FieldManager: "formae",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply ingressclass: %w", err)
+	}
+
+	ext, err := networkingv1ac.ExtractIngressClass(result, "formae")
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract ingressclass: %w", err)
+	}
+
+	properties, err := json.Marshal(ext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal ingressclass properties: %w", err)
+	}
+
+	return &resource.UpdateResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:          resource.OperationUpdate,
+			OperationStatus:    resource.OperationStatusSuccess,
+			RequestID:          result.ResourceVersion,
+			NativeID:           string(result.ObjectMeta.UID),
+			ResourceProperties: properties,
+		},
+	}, nil
+}
+
+func (ic *IngressClass) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
+	ingressClass, err := ic.findByUID(ctx, request.NativeID)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return &resource.DeleteResult{
+				ProgressResult: &resource.ProgressResult{
+					Operation:       resource.OperationDelete,
+					OperationStatus: resource.OperationStatusSuccess,
+				},
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to find ingressclass: %w", err)
+	}
+	if ingressClass == nil {
+		return &resource.DeleteResult{
+			ProgressResult: &resource.ProgressResult{
+				Operation:       resource.OperationDelete,
+				OperationStatus: resource.OperationStatusSuccess,
+			},
+		}, nil
+	}
+
+	err = ic.Client.NetworkingV1().IngressClasses().Delete(ctx, ingressClass.Name, metav1.DeleteOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return &resource.DeleteResult{
+				ProgressResult: &resource.ProgressResult{
+					Operation:       resource.OperationDelete,
+					OperationStatus: resource.OperationStatusSuccess,
+				},
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to delete ingressclass: %w", err)
+	}
+
+	return &resource.DeleteResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:       resource.OperationDelete,
+			OperationStatus: resource.OperationStatusSuccess,
+		},
+	}, nil
+}
+
+func (ic *IngressClass) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
+	result, err := ic.findByUID(ctx, request.NativeID)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return &resource.StatusResult{
+				ProgressResult: &resource.ProgressResult{
+					Operation:       resource.OperationCheckStatus,
+					OperationStatus: resource.OperationStatusFailure,
+					ErrorCode:       resource.OperationErrorCodeNotFound,
+				},
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to get ingressclass status: %w", err)
+	}
+	if result == nil {
+		return &resource.StatusResult{
+			ProgressResult: &resource.ProgressResult{
+				Operation:       resource.OperationCheckStatus,
+				OperationStatus: resource.OperationStatusFailure,
+				ErrorCode:       resource.OperationErrorCodeNotFound,
+			},
+		}, nil
+	}
+
+	ext, err := networkingv1ac.ExtractIngressClass(result, "formae")
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract ingressclass: %w", err)
+	}
+
+	properties, err := json.Marshal(ext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal ingressclass properties: %w", err)
+	}
+
+	return &resource.StatusResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:          resource.OperationCheckStatus,
+			OperationStatus:    resource.OperationStatusSuccess,
+			RequestID:          request.RequestID,
+			NativeID:           string(result.ObjectMeta.UID),
+			ResourceProperties: properties,
+		},
+	}, nil
+}
+
+func (ic *IngressClass) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
+	result, err := ic.Client.NetworkingV1().IngressClasses().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list ingressclasses: %w", err)
+	}
+
+	nativeIDs := make([]string, 0, len(result.Items))
+	for _, ingressClass := range result.Items {
+		nativeIDs = append(nativeIDs, string(ingressClass.ObjectMeta.UID))
+	}
+
+	return &resource.ListResult{
+		NativeIDs: nativeIDs,
+	}, nil
+}
+
+// findByUID finds an ingressclass by its UID.
+func (ic *IngressClass) findByUID(ctx context.Context, uid string) (*networkingv1.IngressClass, error) {
+	list, err := ic.Client.NetworkingV1().IngressClasses().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	for i := range list.Items {
+		if string(list.Items[i].UID) == uid {
+			return &list.Items[i], nil
+		}
+	}
+	return nil, nil
+}

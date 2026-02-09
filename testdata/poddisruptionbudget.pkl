@@ -1,0 +1,44 @@
+/*
+ * Conformance Test: PodDisruptionBudget (Create)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@formae-plugin-k8s/core/Namespace.pkl" as ns
+import "@formae-plugin-k8s/apps/ReplicaSet.pkl" as rs
+import "@formae-plugin-k8s/policy/PodDisruptionBudget.pkl" as pdb
+import "@formae-plugin-k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local ns = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  ns
+
+  new pdb.PodDisruptionBudget {
+    label = "test-pdb"
+    metadata = new k8s.ObjectMeta {
+      name = "test-pdb-\(v.testRunID)"
+      namespace = ns.res.name
+    }
+    spec = new pdb.PodDisruptionBudgetSpec {
+      minAvailable = 1
+      selector = new rs.LabelSelector {
+        matchLabels = new Mapping {
+          ["app"] = "test"
+        }
+      }
+    }
+  }
+}

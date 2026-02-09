@@ -1,0 +1,70 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+module persistentvolumeclaim
+
+import "@formae/formae.pkl"
+import "../k8s.pkl"
+
+const type = "K8S::Core::PersistentVolumeClaim"
+
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.metadata.uid"
+  discoverable = true
+  parent = "K8S::Core::Namespace"
+  listParam = new formae.ListProperty {
+    parentProperty = "metadata.name"
+    listParameter = "namespace"
+  }
+}
+open class PersistentVolumeClaim extends k8s.Resource {
+  fixed hidden resourceType: String = module.type
+
+  @k8s.FieldHint { required = true }
+  apiVersion: String = "v1"
+
+  @k8s.FieldHint { required = true }
+  kind: String = "PersistentVolumeClaim"
+
+  @k8s.FieldHint { required = true }
+  metadata: k8s.ObjectMeta
+
+  /// Spec defines the desired characteristics of a volume
+  @k8s.FieldHint { required = true }
+  spec: PersistentVolumeClaimSpec
+}
+
+/// PersistentVolumeClaimSpec describes the common attributes of storage devices.
+@k8s.SubResourceHint {}
+open class PersistentVolumeClaimSpec extends formae.SubResource {
+  /// Access modes requested
+  @k8s.FieldHint { required = true }
+  accessModes: Listing<String>
+
+  /// Resources represents the minimum resources the volume should have
+  @k8s.FieldHint { required = true }
+  resources: VolumeResourceRequirements
+
+  /// Name of the StorageClass
+  @k8s.FieldHint {}
+  storageClassName: String?
+
+  /// VolumeName is the binding reference to the PersistentVolume
+  @k8s.FieldHint {}
+  volumeName: String?
+
+  /// VolumeMode defines what type of volume is required
+  @k8s.FieldHint {}
+  volumeMode: String?
+}
+
+/// VolumeResourceRequirements describes the storage resource requirements.
+@k8s.SubResourceHint {}
+open class VolumeResourceRequirements extends formae.SubResource {
+  /// Requests describes the minimum amount of resources needed
+  @k8s.FieldHint { required = true }
+  requests: Mapping<String, String>
+}

@@ -1,0 +1,38 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+module clusterrolebinding
+
+import "@formae/formae.pkl"
+import "../k8s.pkl"
+import "RoleBinding.pkl" as rb
+
+const type = "K8S::Rbac::ClusterRoleBinding"
+
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.metadata.uid"
+  discoverable = true
+}
+open class ClusterRoleBinding extends k8s.Resource {
+  fixed hidden resourceType: String = module.type
+
+  @k8s.FieldHint { required = true }
+  apiVersion: String = "rbac.authorization.k8s.io/v1"
+
+  @k8s.FieldHint { required = true }
+  kind: String = "ClusterRoleBinding"
+
+  @k8s.FieldHint { required = true }
+  metadata: k8s.ObjectMeta
+
+  /// Reference to the ClusterRole being bound
+  @k8s.FieldHint { required = true }
+  roleRef: rb.RoleRef
+
+  /// Subjects holds references to the objects the role applies to
+  @k8s.FieldHint {}
+  subjects: Listing<rb.Subject>?
+}

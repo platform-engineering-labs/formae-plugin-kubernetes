@@ -1,0 +1,71 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+module persistentvolume
+
+import "@formae/formae.pkl"
+import "../k8s.pkl"
+
+const type = "K8S::Core::PersistentVolume"
+
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.metadata.uid"
+  discoverable = true
+}
+open class PersistentVolume extends k8s.Resource {
+  fixed hidden resourceType: String = module.type
+
+  @k8s.FieldHint { required = true }
+  apiVersion: String = "v1"
+
+  @k8s.FieldHint { required = true }
+  kind: String = "PersistentVolume"
+
+  @k8s.FieldHint { required = true }
+  metadata: k8s.ObjectMeta
+
+  /// Spec defines the desired characteristics of a volume
+  @k8s.FieldHint { required = true }
+  spec: PersistentVolumeSpec
+}
+
+/// PersistentVolumeSpec describes the persistent volume.
+@k8s.SubResourceHint {}
+open class PersistentVolumeSpec extends formae.SubResource {
+  /// Capacity of the volume
+  @k8s.FieldHint { required = true }
+  capacity: Mapping<String, String>
+
+  /// Access modes
+  @k8s.FieldHint { required = true }
+  accessModes: Listing<String>
+
+  /// Reclaim policy (Retain, Recycle, Delete)
+  @k8s.FieldHint {}
+  persistentVolumeReclaimPolicy: String?
+
+  /// StorageClass name
+  @k8s.FieldHint {}
+  storageClassName: String?
+
+  /// VolumeMode (Filesystem or Block)
+  @k8s.FieldHint {}
+  volumeMode: String?
+
+  /// HostPath represents a directory on the host
+  @k8s.FieldHint {}
+  hostPath: HostPathVolumeSource?
+}
+
+/// HostPathVolumeSource represents a host path mapped into a pod.
+@k8s.SubResourceHint {}
+open class HostPathVolumeSource extends formae.SubResource {
+  @k8s.FieldHint { required = true }
+  path: String
+
+  @k8s.FieldHint {}
+  type: String?
+}

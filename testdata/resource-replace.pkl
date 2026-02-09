@@ -1,40 +1,23 @@
 /*
- * Conformance Test: Replace Resource
- *
- * This file modifies a createOnly field to trigger resource replacement.
- * Changes from resource.pkl:
- *   - name: changed to add "-replaced" suffix
- *
- * The name field has createOnly=true (implicit for K8S names),
- * so formae should delete the existing resource and create a new one.
+ * Conformance Test: Namespace (Replace)
+ * Changes: name changed (createOnly field) - triggers delete+create
  */
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
-
 import "@formae-plugin-k8s/core/Namespace.pkl" as ns
-
-local stackName = "plugin-sdk-test-stack"
-local testRunID = read("env:FORMAE_TEST_RUN_ID")
+import "./config/vars.pkl" as v
 
 forma {
-  new formae.Stack {
-    label = stackName
-    description = "Plugin SDK conformance test stack"
-  }
-
-  new formae.Target {
-    label = "k8s-target"
-    namespace = "K8S"
-    config = new Mapping {}
-  }
+  v.stack
+  v.target
 
   new ns.Namespace {
     label = "test-namespace"
     metadata = new ns.NamespaceMetadata {
-      name = "formae-test-\(testRunID)-replaced"  // CHANGED - triggers replacement
+      name = "formae-test-\(v.testRunID)-replaced"
       labels = new Mapping {
         ["managed-by"] = "formae"
-        ["test-run"] = testRunID
+        ["test-run"] = v.testRunID
       }
     }
   }

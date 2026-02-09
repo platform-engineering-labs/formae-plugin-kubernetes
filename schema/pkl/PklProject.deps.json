@@ -7,11 +7,6 @@
       "checksums": {
         "sha256": "b56fd992b9529fdc8977452affad06212d43d59542c5f41f9fe8bfda2f806d6d"
       }
-    },
-    "package://hub.platform.engineering/plugins/k8s/schema/pkl@0": {
-      "type": "local",
-      "uri": "projectpackage://hub.platform.engineering/plugins/k8s/schema/pkl@0.1.0",
-      "path": "../schema/pkl"
     }
   }
 }

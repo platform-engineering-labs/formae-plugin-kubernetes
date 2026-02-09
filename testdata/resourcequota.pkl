@@ -1,0 +1,42 @@
+/*
+ * Conformance Test: ResourceQuota (Create)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@formae-plugin-k8s/core/Namespace.pkl" as ns
+import "@formae-plugin-k8s/core/ResourceQuota.pkl" as rq
+import "@formae-plugin-k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local ns = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  ns
+
+  new rq.ResourceQuota {
+    label = "test-resourcequota"
+    metadata = new k8s.ObjectMeta {
+      name = "test-rq-\(v.testRunID)"
+      namespace = ns.res.name
+    }
+    spec = new rq.ResourceQuotaSpec {
+      hard = new Mapping {
+        ["pods"] = "10"
+        ["requests.cpu"] = "2"
+        ["requests.memory"] = "4Gi"
+      }
+    }
+  }
+}

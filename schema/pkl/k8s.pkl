@@ -25,13 +25,13 @@ typealias SubResourceHint = formae.SubResourceHint
 @SubResourceHint {}
 open class ObjectMeta extends formae.SubResource {
   /// Name must be unique within a namespace.
-  @FieldHint { required = true }
+  @FieldHint { required = true; createOnly = true }
   name: String
 
   /// Namespace defines the space within which each name must be unique.
-  /// Empty for cluster-scoped resources.
+  /// Empty for cluster-scoped resources. Accepts resolvable references.
   @FieldHint {}
-  namespace: String?
+  namespace: (String|formae.Resolvable)?
 
   /// Labels are key/value pairs for resource organization.
   @FieldHint {}

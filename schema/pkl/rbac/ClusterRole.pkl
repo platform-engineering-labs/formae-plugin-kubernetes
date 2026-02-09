@@ -1,0 +1,52 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+module clusterrole
+
+import "@formae/formae.pkl"
+import "../k8s.pkl"
+import "Role.pkl" as role
+
+const type = "K8S::Rbac::ClusterRole"
+
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.metadata.uid"
+  discoverable = true
+}
+open class ClusterRole extends k8s.Resource {
+  fixed hidden resourceType: String = module.type
+
+  @k8s.FieldHint { required = true }
+  apiVersion: String = "rbac.authorization.k8s.io/v1"
+
+  @k8s.FieldHint { required = true }
+  kind: String = "ClusterRole"
+
+  @k8s.FieldHint { required = true }
+  metadata: k8s.ObjectMeta
+
+  /// List of policy rules
+  @k8s.FieldHint { required = true }
+  rules: Listing<role.PolicyRule>
+
+  /// AggregationRule describes how to build the rules for this ClusterRole
+  @k8s.FieldHint {}
+  aggregationRule: AggregationRule?
+}
+
+/// AggregationRule describes how to build rules from other ClusterRoles.
+@k8s.SubResourceHint {}
+open class AggregationRule extends formae.SubResource {
+  @k8s.FieldHint {}
+  clusterRoleSelectors: Listing<LabelSelector>?
+}
+
+/// LabelSelector for aggregation rule matching.
+@k8s.SubResourceHint {}
+open class LabelSelector extends formae.SubResource {
+  @k8s.FieldHint {}
+  matchLabels: Mapping<String, String>?
+}

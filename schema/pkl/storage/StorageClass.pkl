@@ -1,0 +1,49 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+module storageclass
+
+import "@formae/formae.pkl"
+import "../k8s.pkl"
+
+const type = "K8S::Storage::StorageClass"
+
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.metadata.uid"
+  discoverable = true
+}
+open class StorageClass extends k8s.Resource {
+  fixed hidden resourceType: String = module.type
+
+  @k8s.FieldHint { required = true }
+  apiVersion: String = "storage.k8s.io/v1"
+
+  @k8s.FieldHint { required = true }
+  kind: String = "StorageClass"
+
+  @k8s.FieldHint { required = true }
+  metadata: k8s.ObjectMeta
+
+  /// Provisioner indicates the type of the provisioner
+  @k8s.FieldHint { required = true }
+  provisioner: String
+
+  /// Parameters holds the parameters for the provisioner
+  @k8s.FieldHint {}
+  parameters: Mapping<String, String>?
+
+  /// Reclaim policy (Delete, Retain)
+  @k8s.FieldHint {}
+  reclaimPolicy: String?
+
+  /// VolumeBindingMode indicates how PVCs should be provisioned and bound
+  @k8s.FieldHint {}
+  volumeBindingMode: String?
+
+  /// AllowVolumeExpansion shows whether the storage class allows volume expand
+  @k8s.FieldHint {}
+  allowVolumeExpansion: Boolean?
+}

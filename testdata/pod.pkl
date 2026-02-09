@@ -1,0 +1,50 @@
+/*
+ * Conformance Test: Pod (Create)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@formae-plugin-k8s/core/Namespace.pkl" as ns
+import "@formae-plugin-k8s/core/Pod.pkl" as pod
+import "@formae-plugin-k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local ns = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  ns
+
+  new pod.Pod {
+    label = "test-pod"
+    metadata = new k8s.ObjectMeta {
+      name = "test-pod-\(v.testRunID)"
+      namespace = ns.res.name
+    }
+    spec = new pod.PodSpec {
+      containers = new Listing {
+        new pod.Container {
+          name = "nginx"
+          image = "nginx:alpine"
+          ports = new Listing {
+            new pod.ContainerPort {
+              containerPort = 80
+              protocol = "TCP"
+            }
+          }
+        }
+      }
+      restartPolicy = "Always"
+    }
+  }
+}

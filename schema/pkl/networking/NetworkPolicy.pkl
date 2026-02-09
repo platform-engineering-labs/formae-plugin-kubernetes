@@ -1,0 +1,111 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+module networkpolicy
+
+import "@formae/formae.pkl"
+import "../k8s.pkl"
+import "../apps/ReplicaSet.pkl" as rs
+
+const type = "K8S::Networking::NetworkPolicy"
+
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.metadata.uid"
+  discoverable = true
+  parent = "K8S::Core::Namespace"
+  listParam = new formae.ListProperty {
+    parentProperty = "metadata.name"
+    listParameter = "namespace"
+  }
+}
+open class NetworkPolicy extends k8s.Resource {
+  fixed hidden resourceType: String = module.type
+
+  @k8s.FieldHint { required = true }
+  apiVersion: String = "networking.k8s.io/v1"
+
+  @k8s.FieldHint { required = true }
+  kind: String = "NetworkPolicy"
+
+  @k8s.FieldHint { required = true }
+  metadata: k8s.ObjectMeta
+
+  @k8s.FieldHint { required = true }
+  spec: NetworkPolicySpec
+}
+
+/// NetworkPolicySpec defines the desired state of NetworkPolicy.
+@k8s.SubResourceHint {}
+open class NetworkPolicySpec extends formae.SubResource {
+  /// Selects the pods to which this NetworkPolicy applies
+  @k8s.FieldHint { required = true }
+  podSelector: rs.LabelSelector
+
+  /// List of ingress rules
+  @k8s.FieldHint {}
+  ingress: Listing<NetworkPolicyIngressRule>?
+
+  /// List of egress rules
+  @k8s.FieldHint {}
+  egress: Listing<NetworkPolicyEgressRule>?
+
+  /// Policy types (Ingress, Egress)
+  @k8s.FieldHint {}
+  policyTypes: Listing<String>?
+}
+
+/// NetworkPolicyIngressRule describes a particular set of traffic allowed to the pod.
+@k8s.SubResourceHint {}
+open class NetworkPolicyIngressRule extends formae.SubResource {
+  @k8s.FieldHint {}
+  from: Listing<NetworkPolicyPeer>?
+
+  @k8s.FieldHint {}
+  ports: Listing<NetworkPolicyPort>?
+}
+
+/// NetworkPolicyEgressRule describes a particular set of traffic allowed out of the pod.
+@k8s.SubResourceHint {}
+open class NetworkPolicyEgressRule extends formae.SubResource {
+  @k8s.FieldHint {}
+  to: Listing<NetworkPolicyPeer>?
+
+  @k8s.FieldHint {}
+  ports: Listing<NetworkPolicyPort>?
+}
+
+/// NetworkPolicyPeer describes a peer to allow traffic to/from.
+@k8s.SubResourceHint {}
+open class NetworkPolicyPeer extends formae.SubResource {
+  @k8s.FieldHint {}
+  podSelector: rs.LabelSelector?
+
+  @k8s.FieldHint {}
+  namespaceSelector: rs.LabelSelector?
+
+  @k8s.FieldHint {}
+  ipBlock: IPBlock?
+}
+
+/// IPBlock describes a particular CIDR.
+@k8s.SubResourceHint {}
+open class IPBlock extends formae.SubResource {
+  @k8s.FieldHint { required = true }
+  cidr: String
+
+  @k8s.FieldHint {}
+  except: Listing<String>?
+}
+
+/// NetworkPolicyPort describes a port to allow traffic on.
+@k8s.SubResourceHint {}
+open class NetworkPolicyPort extends formae.SubResource {
+  @k8s.FieldHint {}
+  port: (Int|String)?
+
+  @k8s.FieldHint {}
+  protocol: String?
+}

@@ -1,0 +1,70 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+module limitrange
+
+import "@formae/formae.pkl"
+import "../k8s.pkl"
+
+const type = "K8S::Core::LimitRange"
+
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.metadata.uid"
+  discoverable = true
+  parent = "K8S::Core::Namespace"
+  listParam = new formae.ListProperty {
+    parentProperty = "metadata.name"
+    listParameter = "namespace"
+  }
+}
+open class LimitRange extends k8s.Resource {
+  fixed hidden resourceType: String = module.type
+
+  @k8s.FieldHint { required = true }
+  apiVersion: String = "v1"
+
+  @k8s.FieldHint { required = true }
+  kind: String = "LimitRange"
+
+  @k8s.FieldHint { required = true }
+  metadata: k8s.ObjectMeta
+
+  /// Spec defines the limits
+  @k8s.FieldHint { required = true }
+  spec: LimitRangeSpec
+}
+
+/// LimitRangeSpec defines a min/max usage for resources.
+@k8s.SubResourceHint {}
+open class LimitRangeSpec extends formae.SubResource {
+  /// Limits is the list of LimitRangeItem objects that are enforced
+  @k8s.FieldHint { required = true }
+  limits: Listing<LimitRangeItem>
+}
+
+/// LimitRangeItem defines limits for a specific resource type.
+@k8s.SubResourceHint {}
+open class LimitRangeItem extends formae.SubResource {
+  /// Type of resource that this limit applies to (Container, Pod, PersistentVolumeClaim)
+  @k8s.FieldHint { required = true }
+  type: String
+
+  /// Max usage constraints
+  @k8s.FieldHint {}
+  max: Mapping<String, String>?
+
+  /// Min usage constraints
+  @k8s.FieldHint {}
+  min: Mapping<String, String>?
+
+  /// Default resource requirement limit
+  @k8s.FieldHint {}
+  default: Mapping<String, String>?
+
+  /// Default resource requirement request
+  @k8s.FieldHint {}
+  defaultRequest: Mapping<String, String>?
+}

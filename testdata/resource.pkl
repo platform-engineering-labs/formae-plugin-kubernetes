@@ -1,38 +1,22 @@
 /*
- * Conformance Test: Create Resource
- *
- * This file defines the initial resource state for conformance testing.
- * The conformance test harness will apply this file first.
+ * Conformance Test: Namespace (Create)
  */
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
-
 import "@formae-plugin-k8s/core/Namespace.pkl" as ns
-
-local stackName = "plugin-sdk-test-stack"
-// Read the test run ID from environment variable set by the test harness
-// This ensures consistent naming within a test run but unique names between runs
-local testRunID = read("env:FORMAE_TEST_RUN_ID")
+import "./config/vars.pkl" as v
 
 forma {
-  new formae.Stack {
-    label = stackName
-    description = "Plugin SDK conformance test stack"
-  }
-
-  new formae.Target {
-    label = "k8s-target"
-    namespace = "K8S"
-    config = new Mapping {}
-  }
+  v.stack
+  v.target
 
   new ns.Namespace {
     label = "test-namespace"
     metadata = new ns.NamespaceMetadata {
-      name = "formae-test-\(testRunID)"
+      name = "formae-test-\(v.testRunID)"
       labels = new Mapping {
         ["managed-by"] = "formae"
-        ["test-run"] = testRunID
+        ["test-run"] = v.testRunID
       }
     }
   }
