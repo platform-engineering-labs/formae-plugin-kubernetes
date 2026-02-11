@@ -153,6 +153,10 @@ open class PodSpec extends formae.SubResource {
   /// Service account name for the pod.
   @FieldHint {}
   serviceAccountName: String?
+
+  /// List of volumes that can be mounted by containers.
+  @FieldHint {}
+  volumes: Listing<Volume>?
 }
 
 /// Container defines a container within a pod.
@@ -185,6 +189,10 @@ open class Container extends formae.SubResource {
   /// Resource requirements
   @FieldHint {}
   resources: ResourceRequirements?
+
+  /// Volume mounts for the container
+  @FieldHint {}
+  volumeMounts: Listing<VolumeMount>?
 }
 
 /// Environment variable definition.
@@ -194,9 +202,89 @@ open class EnvVar extends formae.SubResource {
   @FieldHint { required = true }
   name: String
 
-  /// Value of the environment variable
+  /// Value of the environment variable (use this OR valueFrom, not both)
   @FieldHint {}
   value: String?
+
+  /// Source for the environment variable's value (downward API, configmap, secret)
+  @FieldHint {}
+  valueFrom: EnvVarSource?
+}
+
+/// EnvVarSource represents a source for the value of an EnvVar.
+@SubResourceHint {}
+open class EnvVarSource extends formae.SubResource {
+  /// Selects a field of the pod (e.g., metadata.name, metadata.namespace)
+  @FieldHint {}
+  fieldRef: ObjectFieldSelector?
+
+  /// Selects a resource of the container (e.g., limits.cpu, requests.memory)
+  @FieldHint {}
+  resourceFieldRef: ResourceFieldSelector?
+
+  /// Selects a key of a ConfigMap
+  @FieldHint {}
+  configMapKeyRef: ConfigMapKeySelector?
+
+  /// Selects a key of a Secret
+  @FieldHint {}
+  secretKeyRef: SecretKeySelector?
+}
+
+/// ObjectFieldSelector selects a field of the pod.
+@SubResourceHint {}
+open class ObjectFieldSelector extends formae.SubResource {
+  /// Path of the field to select (e.g., metadata.name, metadata.namespace, status.podIP)
+  @FieldHint { required = true }
+  fieldPath: String
+
+  /// Version of the schema the fieldPath is written in terms of
+  @FieldHint {}
+  apiVersion: String?
+}
+
+/// ResourceFieldSelector selects a resource of the container.
+@SubResourceHint {}
+open class ResourceFieldSelector extends formae.SubResource {
+  /// Resource to select (e.g., limits.cpu, requests.memory)
+  @FieldHint { required = true }
+  resource: String
+
+  /// Container name
+  @FieldHint {}
+  containerName: String?
+}
+
+/// ConfigMapKeySelector selects a key from a ConfigMap.
+@SubResourceHint {}
+open class ConfigMapKeySelector extends formae.SubResource {
+  /// The ConfigMap to select from
+  @FieldHint { required = true }
+  name: String
+
+  /// The key to select
+  @FieldHint { required = true }
+  key: String
+
+  /// Whether the ConfigMap must exist
+  @FieldHint {}
+  optional: Boolean?
+}
+
+/// SecretKeySelector selects a key from a Secret.
+@SubResourceHint {}
+open class SecretKeySelector extends formae.SubResource {
+  /// The Secret to select from
+  @FieldHint { required = true }
+  name: String
+
+  /// The key to select
+  @FieldHint { required = true }
+  key: String
+
+  /// Whether the Secret must exist
+  @FieldHint {}
+  optional: Boolean?
 }
 
 /// Container port definition.
@@ -225,6 +313,122 @@ open class ResourceRequirements extends formae.SubResource {
   /// Resource requests
   @FieldHint {}
   requests: Mapping<String, String>?
+}
+
+/// Volume mount within a container.
+@SubResourceHint {}
+open class VolumeMount extends formae.SubResource {
+  /// Name of the volume (must match a Volume name in the pod spec)
+  @FieldHint { required = true }
+  name: String
+
+  /// Path within the container at which the volume should be mounted
+  @FieldHint { required = true }
+  mountPath: String
+
+  /// Mount the volume as read-only
+  @FieldHint {}
+  readOnly: Boolean?
+
+  /// Path within the volume to mount (default: root of volume)
+  @FieldHint {}
+  subPath: String?
+}
+
+/// Volume that can be mounted by containers in a pod.
+@SubResourceHint {}
+open class Volume extends formae.SubResource {
+  /// Name of the volume (referenced by volumeMounts)
+  @FieldHint { required = true }
+  name: String
+
+  /// ConfigMap volume source
+  @FieldHint {}
+  configMap: ConfigMapVolumeSource?
+
+  /// Secret volume source
+  @FieldHint {}
+  secret: SecretVolumeSource?
+
+  /// EmptyDir volume source
+  @FieldHint {}
+  emptyDir: EmptyDirVolumeSource?
+
+  /// PersistentVolumeClaim volume source
+  @FieldHint {}
+  persistentVolumeClaim: PersistentVolumeClaimVolumeSource?
+}
+
+/// ConfigMapVolumeSource adapts a ConfigMap into a volume.
+@SubResourceHint {}
+open class ConfigMapVolumeSource extends formae.SubResource {
+  /// Name of the ConfigMap
+  @FieldHint { required = true }
+  name: String
+
+  /// Specific items to project (if unspecified, all keys are projected)
+  @FieldHint {}
+  items: Listing<KeyToPath>?
+
+  /// Default file permission mode (e.g., 0644)
+  @FieldHint {}
+  defaultMode: Int?
+}
+
+/// SecretVolumeSource adapts a Secret into a volume.
+@SubResourceHint {}
+open class SecretVolumeSource extends formae.SubResource {
+  /// Name of the Secret
+  @FieldHint { required = true }
+  secretName: String
+
+  /// Specific items to project
+  @FieldHint {}
+  items: Listing<KeyToPath>?
+
+  /// Default file permission mode
+  @FieldHint {}
+  defaultMode: Int?
+}
+
+/// EmptyDirVolumeSource is a temporary directory that shares a pod's lifetime.
+@SubResourceHint {}
+open class EmptyDirVolumeSource extends formae.SubResource {
+  /// Storage medium (default: node disk, "Memory" for tmpfs)
+  @FieldHint {}
+  medium: String?
+
+  /// Size limit (e.g., "1Gi")
+  @FieldHint {}
+  sizeLimit: String?
+}
+
+/// PersistentVolumeClaimVolumeSource references a PVC.
+@SubResourceHint {}
+open class PersistentVolumeClaimVolumeSource extends formae.SubResource {
+  /// Name of the PVC
+  @FieldHint { required = true }
+  claimName: String
+
+  /// Mount as read-only
+  @FieldHint {}
+  readOnly: Boolean?
+}
+
+/// KeyToPath maps a ConfigMap/Secret key to a file path.
+@SubResourceHint {}
+open class KeyToPath extends formae.SubResource {
+  /// The key to project
+  @FieldHint { required = true }
+  key: String
+
+  /// The relative path of the file to map the key to
+  @FieldHint { required = true }
+  path: String
+
+  /// File permission mode
+  @FieldHint {}
+  mode: Int?
 }
 
 // -- Pod Template Types ------------------------------------------------------

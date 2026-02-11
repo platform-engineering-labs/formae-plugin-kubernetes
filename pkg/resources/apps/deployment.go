@@ -285,23 +285,14 @@ func (d *Deployment) findByUID(ctx context.Context, uid string) (*appsv1.Deploym
 }
 
 // fromConditions maps K8S Deployment conditions to Formae OperationStatus.
+// Only explicit ReplicaFailure is reported as Failure. All other states
+// (including ongoing rollouts and crashlooping pods) return Success because
+// the Deployment spec was accepted by the API server. Runtime health is
+// a separate concern from provisioning.
 func (d *Deployment) fromConditions(conditions []appsv1.DeploymentCondition) resource.OperationStatus {
 	for _, cond := range conditions {
 		if cond.Type == appsv1.DeploymentReplicaFailure && cond.Status == "True" {
 			return resource.OperationStatusFailure
-		}
-	}
-	for _, cond := range conditions {
-		if cond.Type == appsv1.DeploymentProgressing && cond.Status == "True" {
-			if cond.Reason == "NewReplicaSetAvailable" {
-				return resource.OperationStatusSuccess
-			}
-			return resource.OperationStatusInProgress
-		}
-	}
-	for _, cond := range conditions {
-		if cond.Type == appsv1.DeploymentAvailable && cond.Status == "True" {
-			return resource.OperationStatusSuccess
 		}
 	}
 	return resource.OperationStatusSuccess
