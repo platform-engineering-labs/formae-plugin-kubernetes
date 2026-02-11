@@ -3,8 +3,8 @@ module github.com/platform-engineering-labs/formae-plugin-k8s
 go 1.25.0
 
 require (
-	github.com/platform-engineering-labs/formae/pkg/plugin v0.1.11
-	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.1.17
+	github.com/platform-engineering-labs/formae/pkg/plugin v0.1.12
+	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.1.19
 	k8s.io/api v0.35.0
 	k8s.io/apimachinery v0.35.0
 	k8s.io/client-go v0.35.0
