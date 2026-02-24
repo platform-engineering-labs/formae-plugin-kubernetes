@@ -16,11 +16,15 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 
 	// Import resources to trigger init() registration
+	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/admissionregistration"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/apps"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/autoscaling"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/batch"
+	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/coordination"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/core"
+	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/flowcontrol"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/networking"
+	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/node"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/policy"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/rbac"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/scheduling"

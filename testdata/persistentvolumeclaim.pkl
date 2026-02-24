@@ -31,11 +31,11 @@ forma {
       name = "test-pvc-\(v.testRunID)"
       namespace = "formae-test-\(v.testRunID)"
     }
-    spec = new pvc.PersistentVolumeClaimSpec {
+    spec = new Dynamic {
       accessModes = new Listing {
         "ReadWriteOnce"
       }
-      resources = new pvc.VolumeResourceRequirements {
+      resources = new Dynamic {
         requests = new Mapping {
           ["storage"] = "1Gi"
         }

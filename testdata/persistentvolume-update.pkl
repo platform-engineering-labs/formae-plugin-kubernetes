@@ -17,7 +17,7 @@ forma {
     metadata = new k8s.ObjectMeta {
       name = "test-pv-\(v.testRunID)"
     }
-    spec = new pv.PersistentVolumeSpec {
+    spec = new Dynamic {
       capacity = new Mapping {
         ["storage"] = "2Gi"
       }
@@ -25,7 +25,7 @@ forma {
         "ReadWriteOnce"
       }
       persistentVolumeReclaimPolicy = "Retain"
-      hostPath = new pv.HostPathVolumeSource {
+      hostPath = new Dynamic {
         path = "/tmp/test-pv"
       }
     }

@@ -17,6 +17,7 @@ forma {
       name = "test-crb-\(v.testRunID)"
     }
     roleRef = new k8s.RoleRef {
+      apiGroup = "rbac.authorization.k8s.io"
       kind = "ClusterRole"
       name = "test-cr-\(v.testRunID)"
     }

@@ -40,7 +40,8 @@ forma {
         }
       }
       template = new k8s.PodTemplateSpec {
-        metadata = new k8s.PodTemplateMetadata {
+        metadata = new k8s.ObjectMeta {
+          name = "test-dep-\(v.testRunID)"
           labels = new Mapping {
             ["app"] = "test-dep"
           }
