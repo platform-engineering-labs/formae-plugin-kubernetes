@@ -1,0 +1,80 @@
+// Stage 1: Provision an EKS cluster on AWS.
+//
+// Creates VPC, networking, IAM roles, security groups, and an EKS cluster
+// with AutoMode enabled (Karpenter-managed node pools, EBS, ELB).
+//
+// Deploy:
+//   formae apply examples/eks-full-stack/stage1-eks.pkl
+//
+// Override defaults:
+//   formae apply examples/eks-full-stack/stage1-eks.pkl \
+//     --prop name=my-cluster --prop region=us-east-1
+//
+// Teardown:
+//   formae destroy examples/eks-full-stack/stage1-eks.pkl
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "./infrastructure/vars.pkl"
+import "./infrastructure/vpc.pkl"
+import "./infrastructure/network.pkl"
+import "./infrastructure/security_groups.pkl"
+import "./infrastructure/iam.pkl"
+import "./infrastructure/eks.pkl"
+
+description {
+  text = """
+    EKS Full-Stack — Stage 1: AWS Infrastructure.
+
+    Provisions a complete EKS cluster with:
+    - VPC with DNS support
+    - Internet gateway + public subnets in 2 AZs
+    - Route table with public route
+    - Security groups for cluster and node communication
+    - IAM roles for cluster service and worker nodes
+    - EKS cluster with AutoMode (Karpenter, EBS, ELB)
+
+    After this stage completes (~10-15 min), run:
+      aws eks update-kubeconfig --name \(vars.projectName) --region \(vars.region)
+    Then proceed to stage2-webapp.pkl.
+    """
+  confirm = true
+}
+
+properties = vars.props
+
+forma {
+  vars.stack
+  vars.target
+
+  // ── VPC ──────────────────────────────────────────────────────────────────
+  vpc.nvpc(properties)
+
+  // ── Networking ───────────────────────────────────────────────────────────
+  network.igw(properties)
+  network.attachIgw(properties)
+
+  for (subnet in network.subnets(properties)) {
+    subnet
+  }
+
+  network.routeTable(properties)
+  network.publicRoute(properties)
+
+  for (assoc in network.subnetAssocs(properties)) {
+    assoc
+  }
+
+  // ── Security Groups ──────────────────────────────────────────────────────
+  for (sg in security_groups.securityGroups(properties)) {
+    sg
+  }
+
+  // ── IAM ──────────────────────────────────────────────────────────────────
+  iam.clusterRole(properties)
+  iam.nodeRole(properties)
+
+  // ── EKS Cluster ──────────────────────────────────────────────────────────
+  eks.eksCluster(properties)
+}

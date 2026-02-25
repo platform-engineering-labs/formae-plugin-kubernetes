@@ -1,0 +1,39 @@
+/// Mappers for node.k8s.io/v1 K8S resource types.
+module node
+
+import "@formae-plugin-k8s/k8s.pkl" as k8s
+import "@formae-plugin-k8s/node/RuntimeClass.pkl" as rc
+
+import "common.pkl"
+
+// =============================================================================
+// RuntimeClass (cluster-scoped)
+// =============================================================================
+
+function mapRuntimeClass(src: Any, prefix: String, _namespace: String): rc.RuntimeClass =
+  new rc.RuntimeClass {
+    label = common.makeLabel(prefix, "runtimeclass", src.metadata.name)
+    metadata = common.mapClusterMeta(src.metadata)
+    handler = src.handler
+    when (src.overhead != null) {
+      overhead = new rc.Overhead {
+        when (src.overhead.podFixed != null) {
+          podFixed = common.mapQuantityMapping(src.overhead.podFixed)
+        }
+      }
+    }
+    when (src.scheduling != null) {
+      scheduling = new rc.Scheduling {
+        when (src.scheduling.nodeSelector != null) {
+          nodeSelector = common.mapStringMapping(src.scheduling.nodeSelector)
+        }
+        when (src.scheduling.tolerations != null) {
+          tolerations = new Listing {
+            for (_t in src.scheduling.tolerations) {
+              _t
+            }
+          }
+        }
+      }
+    }
+  }

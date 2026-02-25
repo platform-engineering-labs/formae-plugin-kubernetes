@@ -1,0 +1,76 @@
+/// HelmChart: Render a Helm chart and map its output to formae-plugin-k8s types.
+///
+/// Usage in a forma file:
+/// ```pkl
+/// import "@formae-helm/HelmChart.pkl"
+///
+/// local chart = new HelmChart {
+///   chart = "bitnami/nginx"
+///   version = "22.4.7"
+///   releaseName = "my-nginx"
+///   namespace = "formae-test"
+///   values = new Dynamic {
+///     replicaCount = 2
+///     service { type = "ClusterIP" }
+///   }
+/// }
+///
+/// forma {
+///   // stack, target...
+///   for (resource in chart.resources) {
+///     resource
+///   }
+/// }
+/// ```
+module HelmChart
+
+import "@helm/helm.pkl"
+import "@formae/formae.pkl"
+
+import "mappers/dispatch.pkl"
+
+/// Helm chart reference (e.g., "bitnami/nginx").
+chart: String
+
+/// Chart version to render (e.g., "22.4.7").
+version: String
+
+/// Helm release name — used in resource naming and label prefix.
+releaseName: String
+
+/// Target namespace for namespaced resources.
+namespace: String = "default"
+
+/// Helm values to pass to the chart. Use `new Dynamic { ... }` syntax.
+values: Dynamic?
+
+/// Prefix for Formae resource labels. Defaults to releaseName.
+labelPrefix: String = releaseName
+
+/// When true, silently skip resource types not supported by formae-plugin-k8s.
+/// When false, throw on unsupported types.
+skipUnsupported: Boolean = true
+
+/// The rendered Helm chart resources, mapped to formae-plugin-k8s types.
+/// Ready to be spread into a `forma {}` block.
+resources: Listing<formae.Resource> = new Listing {
+  for (_key, _res in _rendered) {
+    when (dispatch.isSupported(_res.apiVersion, _res.kind)) {
+      dispatch.mapResource(_res, labelPrefix, namespace)
+    }
+    when (!dispatch.isSupported(_res.apiVersion, _res.kind) && !skipUnsupported) {
+      throw("Unsupported resource type: \(_res.apiVersion)/\(_res.kind) (\(_res.metadata.name)). Set skipUnsupported = true to skip.")
+    }
+  }
+}
+
+/// Internal: the raw helm template output.
+hidden _rendered = (new helm.Template {
+  chart = module.chart
+  version = module.version
+  releaseName = module.releaseName
+  namespace = module.namespace
+  when (module.values != null) {
+    values = module.values
+  }
+}).resources

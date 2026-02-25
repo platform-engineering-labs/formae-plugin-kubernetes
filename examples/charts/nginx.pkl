@@ -1,0 +1,41 @@
+// Example: Deploy nginx using the native NginxChart (no Helm).
+//
+//   pkl eval -f pcf nginx.pkl
+//   formae apply --mode reconcile nginx.pkl
+//
+amends "@formae/forma.pkl"
+
+import "@formae/formae.pkl"
+import "@formae-charts/NginxChart.pkl"
+
+local nginx = new NginxChart.Nginx {
+  name = "my-nginx"
+  namespace = "formae-test"
+  replicas = 2
+  image = "nginx:1.27"
+  serviceType = "ClusterIP"
+  cpuRequest = "100m"
+  cpuLimit = "200m"
+  memoryRequest = "128Mi"
+  memoryLimit = "256Mi"
+  createNamespace = true
+  createServiceAccount = true
+}
+
+forma {
+  new formae.Stack {
+    label = "nginx-native"
+    description = "Native nginx chart — no Helm"
+  }
+  new formae.Target {
+    label = "k8s-local"
+    namespace = "K8S"
+    config {
+      ["context"] = "orbstack"
+      ["namespace"] = "formae-test"
+    }
+  }
+  for (r in nginx.resources) {
+    r
+  }
+}

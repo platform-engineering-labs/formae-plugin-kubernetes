@@ -1,0 +1,605 @@
+module registry
+
+/// A formae resource to generate from a pkl-k8s source.
+class ResourceEntry {
+  /// Formae resource type (e.g., "K8S::Apps::Deployment")
+  type: String
+
+  /// Output module path relative to schema/pkl/ (e.g., "apps/Deployment")
+  modulePath: String
+
+  /// PKL module name (lowercase, e.g., "deployment")
+  moduleName: String
+
+  /// K8S API version (e.g., "apps/v1")
+  apiVersion: String
+
+  /// K8S kind (e.g., "Deployment")
+  kind: String
+
+  /// JSONPath identifier (default: "$.metadata.uid")
+  identifier: String = "$.metadata.uid"
+
+  /// Whether cluster-scoped (no parent/listParam)
+  clusterScoped: Boolean = false
+
+  /// Custom metadata type name (e.g., "NamespaceMetadata" for Namespace)
+  metadataType: String?
+
+  /// Raw PKL content before the resource class
+  customContent: String?
+
+  /// Custom class body content (replaces default `fixed hidden resourceType` line)
+  customClassContent: String?
+
+  /// Whether to generate a Resolvable class for this resource.
+  /// Default true — all resources get a <Kind>Resolvable class and `res` field.
+  resolvable: Boolean = true
+
+  /// Resource doc comment
+  doc: String?
+}
+
+/// Field-level override keyed by "ClassName.fieldName"
+class FieldOverride {
+  createOnly: Boolean = false
+  resolvable: Boolean = false
+  updateMethod: String?
+  indexField: String?
+  typeOverride: String?
+}
+
+// =============================================================================
+// Resources
+// =============================================================================
+
+resources: Listing<ResourceEntry> = new {
+  // -------------------------------------------------------------------------
+  // Core API (v1)
+  // -------------------------------------------------------------------------
+
+  new {
+    type = "K8S::Core::Namespace"
+    modulePath = "core/Namespace"
+    moduleName = "namespace"
+    apiVersion = "v1"
+    kind = "Namespace"
+    clusterScoped = true
+    metadataType = "NamespaceMetadata"
+    doc = """
+      K8S Namespace resource.
+      Namespaces provide a scope for names and are used to divide cluster resources.
+      """
+  }
+
+  new {
+    type = "K8S::Core::Pod"
+    modulePath = "core/Pod"
+    moduleName = "pod"
+    apiVersion = "v1"
+    kind = "Pod"
+    identifier = "$.metadata.name"
+    doc = """
+      K8S Pod resource.
+      A Pod is the smallest deployable unit in Kubernetes.
+      """
+  }
+
+  new {
+    type = "K8S::Core::ConfigMap"
+    modulePath = "core/ConfigMap"
+    moduleName = "configmap"
+    apiVersion = "v1"
+    kind = "ConfigMap"
+    doc = """
+      K8S ConfigMap resource.
+      ConfigMaps hold configuration data as key-value pairs for pods to consume.
+      """
+  }
+
+  new {
+    type = "K8S::Core::Secret"
+    modulePath = "core/Secret"
+    moduleName = "secret"
+    apiVersion = "v1"
+    kind = "Secret"
+    doc = """
+      K8S Secret resource.
+      Secrets hold sensitive data such as passwords, tokens, or keys.
+      """
+  }
+
+  new {
+    type = "K8S::Core::ServiceAccount"
+    modulePath = "core/ServiceAccount"
+    moduleName = "serviceaccount"
+    apiVersion = "v1"
+    kind = "ServiceAccount"
+    doc = """
+      K8S ServiceAccount resource.
+      ServiceAccounts provide an identity for processes that run in a Pod.
+      """
+  }
+
+  new {
+    type = "K8S::Core::Service"
+    modulePath = "core/Service"
+    moduleName = "service"
+    apiVersion = "v1"
+    kind = "Service"
+    doc = """
+      K8S Service resource.
+      A Service exposes a set of Pods as a network service.
+      """
+  }
+
+  new {
+    type = "K8S::Core::PersistentVolume"
+    modulePath = "core/PersistentVolume"
+    moduleName = "persistentvolume"
+    apiVersion = "v1"
+    kind = "PersistentVolume"
+    clusterScoped = true
+  }
+
+  new {
+    type = "K8S::Core::PersistentVolumeClaim"
+    modulePath = "core/PersistentVolumeClaim"
+    moduleName = "persistentvolumeclaim"
+    apiVersion = "v1"
+    kind = "PersistentVolumeClaim"
+  }
+
+  new {
+    type = "K8S::Core::Endpoints"
+    modulePath = "core/Endpoints"
+    moduleName = "endpoints"
+    apiVersion = "v1"
+    kind = "Endpoints"
+  }
+
+  new {
+    type = "K8S::Core::LimitRange"
+    modulePath = "core/LimitRange"
+    moduleName = "limitrange"
+    apiVersion = "v1"
+    kind = "LimitRange"
+  }
+
+  new {
+    type = "K8S::Core::ResourceQuota"
+    modulePath = "core/ResourceQuota"
+    moduleName = "resourcequota"
+    apiVersion = "v1"
+    kind = "ResourceQuota"
+  }
+
+  // -------------------------------------------------------------------------
+  // Apps API (apps/v1)
+  // -------------------------------------------------------------------------
+
+  new {
+    type = "K8S::Apps::Deployment"
+    modulePath = "apps/Deployment"
+    moduleName = "deployment"
+    apiVersion = "apps/v1"
+    kind = "Deployment"
+    doc = """
+      K8S Deployment resource.
+      A Deployment manages a set of replica Pods with declarative updates.
+      """
+  }
+
+  new {
+    type = "K8S::Apps::ReplicaSet"
+    modulePath = "apps/ReplicaSet"
+    moduleName = "replicaset"
+    apiVersion = "apps/v1"
+    kind = "ReplicaSet"
+    doc = """
+      K8S ReplicaSet resource.
+      A ReplicaSet ensures that a specified number of pod replicas are running at any given time.
+      """
+  }
+
+  new {
+    type = "K8S::Apps::StatefulSet"
+    modulePath = "apps/StatefulSet"
+    moduleName = "statefulset"
+    apiVersion = "apps/v1"
+    kind = "StatefulSet"
+    doc = """
+      K8S StatefulSet resource.
+      A StatefulSet manages stateful applications with stable network identities and persistent storage.
+      """
+  }
+
+  new {
+    type = "K8S::Apps::DaemonSet"
+    modulePath = "apps/DaemonSet"
+    moduleName = "daemonset"
+    apiVersion = "apps/v1"
+    kind = "DaemonSet"
+    doc = """
+      K8S DaemonSet resource.
+      A DaemonSet ensures that all (or some) nodes run a copy of a Pod.
+      """
+  }
+
+  // -------------------------------------------------------------------------
+  // Batch API (batch/v1)
+  // -------------------------------------------------------------------------
+
+  new {
+    type = "K8S::Batch::Job"
+    modulePath = "batch/Job"
+    moduleName = "job"
+    apiVersion = "batch/v1"
+    kind = "Job"
+    doc = """
+      K8S Job resource.
+      A Job creates one or more Pods and ensures a specified number of them successfully terminate.
+      """
+  }
+
+  new {
+    type = "K8S::Batch::CronJob"
+    modulePath = "batch/CronJob"
+    moduleName = "cronjob"
+    apiVersion = "batch/v1"
+    kind = "CronJob"
+    doc = """
+      K8S CronJob resource.
+      A CronJob creates Jobs on a repeating schedule.
+      """
+  }
+
+  // -------------------------------------------------------------------------
+  // Networking API (networking.k8s.io/v1)
+  // -------------------------------------------------------------------------
+
+  new {
+    type = "K8S::Networking::Ingress"
+    modulePath = "networking/Ingress"
+    moduleName = "ingress"
+    apiVersion = "networking.k8s.io/v1"
+    kind = "Ingress"
+    doc = """
+      K8S Ingress resource.
+      An Ingress manages external HTTP(S) access to services in a cluster.
+      """
+  }
+
+  new {
+    type = "K8S::Networking::IngressClass"
+    modulePath = "networking/IngressClass"
+    moduleName = "ingressclass"
+    apiVersion = "networking.k8s.io/v1"
+    kind = "IngressClass"
+    clusterScoped = true
+  }
+
+  new {
+    type = "K8S::Networking::NetworkPolicy"
+    modulePath = "networking/NetworkPolicy"
+    moduleName = "networkpolicy"
+    apiVersion = "networking.k8s.io/v1"
+    kind = "NetworkPolicy"
+  }
+
+  // -------------------------------------------------------------------------
+  // Autoscaling API (autoscaling/v2)
+  // -------------------------------------------------------------------------
+
+  new {
+    type = "K8S::Autoscaling::HorizontalPodAutoscaler"
+    modulePath = "autoscaling/HorizontalPodAutoscaler"
+    moduleName = "horizontalpodautoscaler"
+    apiVersion = "autoscaling/v2"
+    kind = "HorizontalPodAutoscaler"
+  }
+
+  // -------------------------------------------------------------------------
+  // Policy API (policy/v1)
+  // -------------------------------------------------------------------------
+
+  new {
+    type = "K8S::Policy::PodDisruptionBudget"
+    modulePath = "policy/PodDisruptionBudget"
+    moduleName = "poddisruptionbudget"
+    apiVersion = "policy/v1"
+    kind = "PodDisruptionBudget"
+  }
+
+  // -------------------------------------------------------------------------
+  // RBAC API (rbac.authorization.k8s.io/v1)
+  // -------------------------------------------------------------------------
+
+  new {
+    type = "K8S::Rbac::Role"
+    modulePath = "rbac/Role"
+    moduleName = "role"
+    apiVersion = "rbac.authorization.k8s.io/v1"
+    kind = "Role"
+  }
+
+  new {
+    type = "K8S::Rbac::ClusterRole"
+    modulePath = "rbac/ClusterRole"
+    moduleName = "clusterrole"
+    apiVersion = "rbac.authorization.k8s.io/v1"
+    kind = "ClusterRole"
+    clusterScoped = true
+  }
+
+  new {
+    type = "K8S::Rbac::RoleBinding"
+    modulePath = "rbac/RoleBinding"
+    moduleName = "rolebinding"
+    apiVersion = "rbac.authorization.k8s.io/v1"
+    kind = "RoleBinding"
+  }
+
+  new {
+    type = "K8S::Rbac::ClusterRoleBinding"
+    modulePath = "rbac/ClusterRoleBinding"
+    moduleName = "clusterrolebinding"
+    apiVersion = "rbac.authorization.k8s.io/v1"
+    kind = "ClusterRoleBinding"
+    clusterScoped = true
+  }
+
+  // -------------------------------------------------------------------------
+  // Storage API (storage.k8s.io/v1)
+  // -------------------------------------------------------------------------
+
+  new {
+    type = "K8S::Storage::StorageClass"
+    modulePath = "storage/StorageClass"
+    moduleName = "storageclass"
+    apiVersion = "storage.k8s.io/v1"
+    kind = "StorageClass"
+    clusterScoped = true
+  }
+
+  // -------------------------------------------------------------------------
+  // Scheduling API (scheduling.k8s.io/v1)
+  // -------------------------------------------------------------------------
+
+  new {
+    type = "K8S::Scheduling::PriorityClass"
+    modulePath = "scheduling/PriorityClass"
+    moduleName = "priorityclass"
+    apiVersion = "scheduling.k8s.io/v1"
+    kind = "PriorityClass"
+    clusterScoped = true
+  }
+
+  // -------------------------------------------------------------------------
+  // Admission Registration API (admissionregistration.k8s.io/v1)
+  // -------------------------------------------------------------------------
+
+  new {
+    type = "K8S::Admissionregistration::ValidatingWebhookConfiguration"
+    modulePath = "admissionregistration/ValidatingWebhookConfiguration"
+    moduleName = "validatingwebhookconfiguration"
+    apiVersion = "admissionregistration.k8s.io/v1"
+    kind = "ValidatingWebhookConfiguration"
+    clusterScoped = true
+    doc = """
+      K8S ValidatingWebhookConfiguration resource.
+      Configures admission webhooks that validate requests to the API server.
+      """
+  }
+
+  new {
+    type = "K8S::Admissionregistration::MutatingWebhookConfiguration"
+    modulePath = "admissionregistration/MutatingWebhookConfiguration"
+    moduleName = "mutatingwebhookconfiguration"
+    apiVersion = "admissionregistration.k8s.io/v1"
+    kind = "MutatingWebhookConfiguration"
+    clusterScoped = true
+    doc = """
+      K8S MutatingWebhookConfiguration resource.
+      Configures admission webhooks that mutate requests to the API server.
+      """
+  }
+
+  // -------------------------------------------------------------------------
+  // Storage API — additional (storage.k8s.io/v1)
+  // -------------------------------------------------------------------------
+
+  new {
+    type = "K8S::Storage::CSIDriver"
+    modulePath = "storage/CSIDriver"
+    moduleName = "csidriver"
+    apiVersion = "storage.k8s.io/v1"
+    kind = "CSIDriver"
+    clusterScoped = true
+    doc = """
+      K8S CSIDriver resource.
+      CSIDriver captures information about a Container Storage Interface (CSI) volume driver.
+      """
+  }
+
+  // -------------------------------------------------------------------------
+  // Node API (node.k8s.io/v1)
+  // -------------------------------------------------------------------------
+
+  new {
+    type = "K8S::Node::RuntimeClass"
+    modulePath = "node/RuntimeClass"
+    moduleName = "runtimeclass"
+    apiVersion = "node.k8s.io/v1"
+    kind = "RuntimeClass"
+    clusterScoped = true
+    doc = """
+      K8S RuntimeClass resource.
+      RuntimeClass defines a class of container runtime supported in the cluster.
+      """
+  }
+
+  // -------------------------------------------------------------------------
+  // Coordination API (coordination.k8s.io/v1)
+  // -------------------------------------------------------------------------
+
+  new {
+    type = "K8S::Coordination::Lease"
+    modulePath = "coordination/Lease"
+    moduleName = "lease"
+    apiVersion = "coordination.k8s.io/v1"
+    kind = "Lease"
+    doc = """
+      K8S Lease resource.
+      Leases provide a mechanism for distributed lease-based leader election.
+      """
+  }
+
+  // -------------------------------------------------------------------------
+  // Flow Control API (flowcontrol.apiserver.k8s.io/v1)
+  // -------------------------------------------------------------------------
+
+  new {
+    type = "K8S::Flowcontrol::FlowSchema"
+    modulePath = "flowcontrol/FlowSchema"
+    moduleName = "flowschema"
+    apiVersion = "flowcontrol.apiserver.k8s.io/v1"
+    kind = "FlowSchema"
+    clusterScoped = true
+    doc = """
+      K8S FlowSchema resource.
+      FlowSchemas define how requests to the API server are classified into flows for priority and fairness.
+      """
+  }
+
+  new {
+    type = "K8S::Flowcontrol::PriorityLevelConfiguration"
+    modulePath = "flowcontrol/PriorityLevelConfiguration"
+    moduleName = "prioritylevelconfiguration"
+    apiVersion = "flowcontrol.apiserver.k8s.io/v1"
+    kind = "PriorityLevelConfiguration"
+    clusterScoped = true
+    doc = """
+      K8S PriorityLevelConfiguration resource.
+      PriorityLevelConfiguration defines the configuration of a priority level for API request handling.
+      """
+  }
+}
+
+// =============================================================================
+// Field Overrides
+// =============================================================================
+// Keyed by "ClassName.fieldName" — applied during code generation.
+
+fieldOverrides: Mapping<String, FieldOverride> = new {
+  ["ObjectMeta.name"] = new { createOnly = true }
+  ["ObjectMeta.namespace"] = new { resolvable = true }
+  ["NamespaceMetadata.name"] = new { createOnly = true }
+  ["PodSpec.containers"] = new { updateMethod = "EntitySet"; indexField = "name" }
+  ["PodSpec.serviceAccountName"] = new { resolvable = true }
+  ["PodSpec.priorityClassName"] = new { resolvable = true }
+  ["PodSpec.runtimeClassName"] = new { resolvable = true }
+  ["ServiceSpec.ports"] = new { updateMethod = "EntitySet"; indexField = "port" }
+  ["LimitRangeSpec.limits"] = new { updateMethod = "EntitySet"; indexField = "type" }
+  ["Secret.type"] = new { createOnly = true }
+  ["Subject.namespace"] = new { resolvable = true }
+  ["IngressSpec.ingressClassName"] = new { resolvable = true }
+  ["PersistentVolumeClaimSpec.storageClassName"] = new { resolvable = true }
+  ["PersistentVolumeClaimSpec.volumeName"] = new { resolvable = true }
+  ["RoleRef.name"] = new { resolvable = true }
+  ["CrossVersionObjectReference.name"] = new { resolvable = true }
+  // Volume source references
+  ["PersistentVolumeClaimVolumeSource.claimName"] = new { resolvable = true }
+  ["SecretVolumeSource.secretName"] = new { resolvable = true }
+  ["AzureFileVolumeSource.secretName"] = new { resolvable = true }
+  ["ConfigMapVolumeSource.name"] = new { resolvable = true }
+  // Projection references
+  ["ConfigMapProjection.name"] = new { resolvable = true }
+  ["SecretProjection.name"] = new { resolvable = true }
+  // Env value references
+  ["SecretKeySelector.name"] = new { resolvable = true }
+  ["ConfigMapKeySelector.name"] = new { resolvable = true }
+  // StatefulSet → Service
+  ["StatefulSetSpec.serviceName"] = new { resolvable = true }
+  // Ingress → Service backend
+  ["IngressServiceBackend.name"] = new { resolvable = true }
+  // IngressClass parameters
+  ["IngressClassParametersReference.name"] = new { resolvable = true }
+  ["IngressClassParametersReference.namespace"] = new { resolvable = true }
+  // FlowSchema → PriorityLevelConfiguration
+  ["PriorityLevelConfigurationReference.name"] = new { resolvable = true }
+  ["ServiceAccountSubject.namespace"] = new { resolvable = true }
+}
+
+// =============================================================================
+// ObjectMeta Configuration
+// =============================================================================
+// Only these fields from K8S ObjectMeta are included in the formae schema.
+
+objectMetaFields: Listing<String> = new {
+  "name"
+  "namespace"
+  "labels"
+  "annotations"
+}
+
+// =============================================================================
+// Exclusion Rules
+// =============================================================================
+// Controls which properties and classes are excluded from generated schemas.
+// All of these target read-only, server-managed data that users never set.
+
+/// Properties excluded from ALL generated types (global).
+excludeProperties: Listing<String> = new {
+  "status"
+  "uid"
+  "resourceVersion"
+  "creationTimestamp"
+  "generation"
+  "managedFields"
+  "selfLink"
+  "deletionTimestamp"
+  "deletionGracePeriodSeconds"
+  "finalizers"
+  "ownerReferences"
+  "generateName"
+}
+
+/// Properties excluded from specific classes.
+/// Keyed by class name, values are field names to drop.
+excludeClassProperties: Mapping<String, Listing<String>> = new {
+}
+
+/// Class name suffixes to exclude from local sub-types.
+/// Classes ending with any of these are read-only server-managed types
+/// (e.g., PodStatus, DeploymentCondition, HorizontalPodAutoscalerStatus).
+excludeClassSuffixes: Listing<String> = new {
+  "Status"
+  "Condition"
+}
+
+/// Explicit class names to exclude from local sub-types.
+/// For status-related classes with non-standard names that don't match
+/// the suffix patterns above.
+excludeClasses: Listing<String> = new {
+  "IngressLoadBalancerIngress"
+}
+
+// =============================================================================
+// K8S Type Alias Mappings
+// =============================================================================
+// Maps pkl-k8s type alias names to formae PKL type names.
+
+typeAliasMap: Mapping<String, String> = new {
+  ["Int32"] = "Int"
+  ["Int64"] = "Int"
+  ["Quantity"] = "String"
+  ["Time"] = "String"
+  ["MicroTime"] = "String"
+  ["PortNumber"] = "Int"
+  ["PortName"] = "String"
+  ["Rfc1035Label"] = "String"
+  ["Rfc1123Label"] = "String"
+  ["QualifiedName"] = "String"
+  ["RawExtension"] = "Dynamic"
+}

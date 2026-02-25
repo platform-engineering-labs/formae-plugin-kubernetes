@@ -1,0 +1,67 @@
+/// Example: Deploy bitnami/nginx via Helm chart rendering.
+///
+/// Renders bitnami/nginx 22.4.7 through formae-helm and produces
+/// a forma file with typed K8S resources ready for Formae management.
+///
+/// Usage:
+///   pkl eval examples/helm/nginx.pkl
+///
+/// Requires:
+///   - pkl-reader-helm binary on PATH
+///   - helm repos: helm repo add bitnami https://charts.bitnami.com/bitnami
+amends "@formae/forma.pkl"
+
+import "@formae/formae.pkl"
+import "@formae-plugin-k8s/core/Namespace.pkl" as ns
+import "@formae-helm/HelmChart.pkl"
+
+local chart = new HelmChart {
+  chart = "bitnami/nginx"
+  version = "22.4.7"
+  releaseName = "my-nginx"
+  namespace = "formae-test"
+  values = new Dynamic {
+    replicaCount = 2
+    service {
+      type = "ClusterIP"
+    }
+    networkPolicy {
+      enabled = false
+    }
+    podDisruptionBudget {
+      create = false
+    }
+    tls {
+      enabled = false
+    }
+  }
+}
+
+forma {
+  new formae.Stack {
+    label = "helm-nginx"
+    description = "Helm chart: bitnami/nginx 22.4.7"
+  }
+
+  new formae.Target {
+    label = "k8s-local"
+    namespace = "K8S"
+    config = new Mapping {
+      ["context"] = "orbstack"
+      ["namespace"] = "formae-test"
+    }
+  }
+
+  // Namespace managed separately (not part of helm template)
+  new ns.Namespace {
+    label = "my-nginx-namespace"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test"
+    }
+  }
+
+  // All resources from the Helm chart
+  for (resource in chart.resources) {
+    resource
+  }
+}
