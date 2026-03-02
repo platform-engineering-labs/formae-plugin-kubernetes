@@ -80,7 +80,7 @@ func (h *HorizontalPodAutoscaler) Create(ctx context.Context, request *resource.
 			OperationStatus:    h.fromConditions(result),
 			RequestID:          fmt.Sprintf("%d", result.Generation),
 			StatusMessage:      h.statusMessage(result),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -154,7 +154,7 @@ func (h *HorizontalPodAutoscaler) Update(ctx context.Context, request *resource.
 			OperationStatus:    h.fromConditions(result),
 			RequestID:          result.ResourceVersion,
 			StatusMessage:      h.statusMessage(result),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -243,7 +243,7 @@ func (h *HorizontalPodAutoscaler) Status(ctx context.Context, request *resource.
 			OperationStatus:    h.fromConditions(result),
 			RequestID:          request.RequestID,
 			StatusMessage:      h.statusMessage(result),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -262,7 +262,7 @@ func (h *HorizontalPodAutoscaler) List(ctx context.Context, request *resource.Li
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, hpa := range result.Items {
-		nativeIDs = append(nativeIDs, string(hpa.ObjectMeta.UID))
+		nativeIDs = append(nativeIDs, string(hpa.UID))
 	}
 
 	return &resource.ListResult{

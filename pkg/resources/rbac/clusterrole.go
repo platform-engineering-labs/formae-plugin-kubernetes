@@ -74,7 +74,7 @@ func (c *ClusterRole) Create(ctx context.Context, request *resource.CreateReques
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          fmt.Sprintf("%d", result.Generation),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -142,7 +142,7 @@ func (c *ClusterRole) Update(ctx context.Context, request *resource.UpdateReques
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          result.ResourceVersion,
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -230,7 +230,7 @@ func (c *ClusterRole) Status(ctx context.Context, request *resource.StatusReques
 			Operation:          resource.OperationCheckStatus,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          request.RequestID,
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -244,7 +244,7 @@ func (c *ClusterRole) List(ctx context.Context, request *resource.ListRequest) (
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, cr := range result.Items {
-		nativeIDs = append(nativeIDs, string(cr.ObjectMeta.UID))
+		nativeIDs = append(nativeIDs, string(cr.UID))
 	}
 
 	return &resource.ListResult{

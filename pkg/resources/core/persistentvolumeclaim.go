@@ -80,7 +80,7 @@ func (p *PersistentVolumeClaim) Create(ctx context.Context, request *resource.Cr
 			OperationStatus:    p.fromPhase(result.Status.Phase),
 			RequestID:          fmt.Sprintf("%d", result.Generation),
 			StatusMessage:      p.statusMessage(result.Status.Phase),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -154,7 +154,7 @@ func (p *PersistentVolumeClaim) Update(ctx context.Context, request *resource.Up
 			OperationStatus:    p.fromPhase(result.Status.Phase),
 			RequestID:          result.ResourceVersion,
 			StatusMessage:      p.statusMessage(result.Status.Phase),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -243,7 +243,7 @@ func (p *PersistentVolumeClaim) Status(ctx context.Context, request *resource.St
 			OperationStatus:    p.fromPhase(result.Status.Phase),
 			RequestID:          request.RequestID,
 			StatusMessage:      p.statusMessage(result.Status.Phase),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -262,7 +262,7 @@ func (p *PersistentVolumeClaim) List(ctx context.Context, request *resource.List
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, pvc := range result.Items {
-		nativeIDs = append(nativeIDs, string(pvc.ObjectMeta.UID))
+		nativeIDs = append(nativeIDs, string(pvc.UID))
 	}
 
 	return &resource.ListResult{

@@ -79,7 +79,7 @@ func (cj *CronJob) Create(ctx context.Context, request *resource.CreateRequest) 
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          fmt.Sprintf("%d", result.Generation),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -152,7 +152,7 @@ func (cj *CronJob) Update(ctx context.Context, request *resource.UpdateRequest) 
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          result.ResourceVersion,
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -240,7 +240,7 @@ func (cj *CronJob) Status(ctx context.Context, request *resource.StatusRequest) 
 			Operation:          resource.OperationCheckStatus,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          request.RequestID,
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -259,7 +259,7 @@ func (cj *CronJob) List(ctx context.Context, request *resource.ListRequest) (*re
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, cronjob := range result.Items {
-		nativeIDs = append(nativeIDs, string(cronjob.ObjectMeta.UID))
+		nativeIDs = append(nativeIDs, string(cronjob.UID))
 	}
 
 	return &resource.ListResult{

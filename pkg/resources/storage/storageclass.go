@@ -74,7 +74,7 @@ func (s *StorageClass) Create(ctx context.Context, request *resource.CreateReque
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          fmt.Sprintf("%d", result.Generation),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -142,7 +142,7 @@ func (s *StorageClass) Update(ctx context.Context, request *resource.UpdateReque
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          result.ResourceVersion,
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -230,7 +230,7 @@ func (s *StorageClass) Status(ctx context.Context, request *resource.StatusReque
 			Operation:          resource.OperationCheckStatus,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          request.RequestID,
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -244,7 +244,7 @@ func (s *StorageClass) List(ctx context.Context, request *resource.ListRequest) 
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, sc := range result.Items {
-		nativeIDs = append(nativeIDs, string(sc.ObjectMeta.UID))
+		nativeIDs = append(nativeIDs, string(sc.UID))
 	}
 
 	return &resource.ListResult{

@@ -79,7 +79,7 @@ func (l *Lease) Create(ctx context.Context, request *resource.CreateRequest) (*r
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          fmt.Sprintf("%d", result.Generation),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -152,7 +152,7 @@ func (l *Lease) Update(ctx context.Context, request *resource.UpdateRequest) (*r
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          result.ResourceVersion,
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -240,7 +240,7 @@ func (l *Lease) Status(ctx context.Context, request *resource.StatusRequest) (*r
 			Operation:          resource.OperationCheckStatus,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          request.RequestID,
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -259,7 +259,7 @@ func (l *Lease) List(ctx context.Context, request *resource.ListRequest) (*resou
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, lease := range result.Items {
-		nativeIDs = append(nativeIDs, string(lease.ObjectMeta.UID))
+		nativeIDs = append(nativeIDs, string(lease.UID))
 	}
 
 	return &resource.ListResult{

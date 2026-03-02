@@ -79,7 +79,7 @@ func (s *Secret) Create(ctx context.Context, request *resource.CreateRequest) (*
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          fmt.Sprintf("%d", result.Generation),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -152,7 +152,7 @@ func (s *Secret) Update(ctx context.Context, request *resource.UpdateRequest) (*
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          result.ResourceVersion,
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -240,7 +240,7 @@ func (s *Secret) Status(ctx context.Context, request *resource.StatusRequest) (*
 			Operation:          resource.OperationCheckStatus,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          request.RequestID,
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -259,7 +259,7 @@ func (s *Secret) List(ctx context.Context, request *resource.ListRequest) (*reso
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, secret := range result.Items {
-		nativeIDs = append(nativeIDs, string(secret.ObjectMeta.UID))
+		nativeIDs = append(nativeIDs, string(secret.UID))
 	}
 
 	return &resource.ListResult{

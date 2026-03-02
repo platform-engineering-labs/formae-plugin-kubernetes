@@ -82,7 +82,7 @@ func (p *Pod) Create(ctx context.Context, request *resource.CreateRequest) (*res
 			RequestID:          fmt.Sprintf("%d", result.Generation),
 			StatusMessage:      result.Status.Message,
 			ErrorCode:          p.fromReason(result.Status.Reason),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -160,7 +160,7 @@ func (p *Pod) Update(ctx context.Context, request *resource.UpdateRequest) (*res
 			RequestID:          result.ResourceVersion,
 			StatusMessage:      result.Status.Message,
 			ErrorCode:          p.fromReason(result.Status.Reason),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -252,7 +252,7 @@ func (p *Pod) Status(ctx context.Context, request *resource.StatusRequest) (*res
 			RequestID:          request.RequestID,
 			StatusMessage:      result.Status.Message,
 			ErrorCode:          p.fromReason(result.Status.Reason),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -271,7 +271,7 @@ func (p *Pod) List(ctx context.Context, request *resource.ListRequest) (*resourc
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, pod := range result.Items {
-		nativeIDs = append(nativeIDs, string(pod.ObjectMeta.UID))
+		nativeIDs = append(nativeIDs, string(pod.UID))
 	}
 
 	return &resource.ListResult{

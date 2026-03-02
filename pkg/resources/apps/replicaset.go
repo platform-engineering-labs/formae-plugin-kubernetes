@@ -81,7 +81,7 @@ func (r *ReplicaSet) Create(ctx context.Context, request *resource.CreateRequest
 			OperationStatus:    r.fromConditions(result.Status.Conditions),
 			RequestID:          fmt.Sprintf("%d", result.Generation),
 			StatusMessage:      r.statusMessage(result.Status),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -158,7 +158,7 @@ func (r *ReplicaSet) Update(ctx context.Context, request *resource.UpdateRequest
 			OperationStatus:    r.fromConditions(result.Status.Conditions),
 			RequestID:          result.ResourceVersion,
 			StatusMessage:      r.statusMessage(result.Status),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -249,7 +249,7 @@ func (r *ReplicaSet) Status(ctx context.Context, request *resource.StatusRequest
 			OperationStatus:    r.fromConditions(result.Status.Conditions),
 			RequestID:          request.RequestID,
 			StatusMessage:      r.statusMessage(result.Status),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -268,7 +268,7 @@ func (r *ReplicaSet) List(ctx context.Context, request *resource.ListRequest) (*
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, rs := range result.Items {
-		nativeIDs = append(nativeIDs, string(rs.ObjectMeta.UID))
+		nativeIDs = append(nativeIDs, string(rs.UID))
 	}
 
 	return &resource.ListResult{

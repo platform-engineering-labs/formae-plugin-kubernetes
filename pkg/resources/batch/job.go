@@ -80,7 +80,7 @@ func (j *Job) Create(ctx context.Context, request *resource.CreateRequest) (*res
 			OperationStatus:    j.fromConditions(result.Status.Conditions),
 			RequestID:          fmt.Sprintf("%d", result.Generation),
 			StatusMessage:      j.statusMessage(result.Status),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -154,7 +154,7 @@ func (j *Job) Update(ctx context.Context, request *resource.UpdateRequest) (*res
 			OperationStatus:    j.fromConditions(result.Status.Conditions),
 			RequestID:          result.ResourceVersion,
 			StatusMessage:      j.statusMessage(result.Status),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -247,7 +247,7 @@ func (j *Job) Status(ctx context.Context, request *resource.StatusRequest) (*res
 			OperationStatus:    j.fromConditions(result.Status.Conditions),
 			RequestID:          request.RequestID,
 			StatusMessage:      j.statusMessage(result.Status),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -266,7 +266,7 @@ func (j *Job) List(ctx context.Context, request *resource.ListRequest) (*resourc
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, job := range result.Items {
-		nativeIDs = append(nativeIDs, string(job.ObjectMeta.UID))
+		nativeIDs = append(nativeIDs, string(job.UID))
 	}
 
 	return &resource.ListResult{

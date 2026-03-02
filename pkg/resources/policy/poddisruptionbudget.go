@@ -79,7 +79,7 @@ func (p *PodDisruptionBudget) Create(ctx context.Context, request *resource.Crea
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          fmt.Sprintf("%d", result.Generation),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -152,7 +152,7 @@ func (p *PodDisruptionBudget) Update(ctx context.Context, request *resource.Upda
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          result.ResourceVersion,
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -240,7 +240,7 @@ func (p *PodDisruptionBudget) Status(ctx context.Context, request *resource.Stat
 			Operation:          resource.OperationCheckStatus,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          request.RequestID,
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -259,7 +259,7 @@ func (p *PodDisruptionBudget) List(ctx context.Context, request *resource.ListRe
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, pdb := range result.Items {
-		nativeIDs = append(nativeIDs, string(pdb.ObjectMeta.UID))
+		nativeIDs = append(nativeIDs, string(pdb.UID))
 	}
 
 	return &resource.ListResult{

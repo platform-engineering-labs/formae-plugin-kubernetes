@@ -47,7 +47,7 @@ type Endpoints struct {
 var _ prov.Provisioner = &Endpoints{}
 
 func (e *Endpoints) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
-	var ep *v1coreac.EndpointsApplyConfiguration
+	var ep *v1coreac.EndpointsApplyConfiguration //nolint:staticcheck // Endpoints resource intentionally supported
 	if err := json.Unmarshal(request.Properties, &ep); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal endpoints properties: %w", err)
 	}
@@ -79,7 +79,7 @@ func (e *Endpoints) Create(ctx context.Context, request *resource.CreateRequest)
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          fmt.Sprintf("%d", result.Generation),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -120,7 +120,7 @@ func (e *Endpoints) Read(ctx context.Context, request *resource.ReadRequest) (*r
 }
 
 func (e *Endpoints) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	var ep *v1coreac.EndpointsApplyConfiguration
+	var ep *v1coreac.EndpointsApplyConfiguration //nolint:staticcheck // Endpoints resource intentionally supported
 	if err := json.Unmarshal(request.DesiredProperties, &ep); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal endpoints properties: %w", err)
 	}
@@ -152,7 +152,7 @@ func (e *Endpoints) Update(ctx context.Context, request *resource.UpdateRequest)
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          result.ResourceVersion,
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -240,7 +240,7 @@ func (e *Endpoints) Status(ctx context.Context, request *resource.StatusRequest)
 			Operation:          resource.OperationCheckStatus,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          request.RequestID,
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -259,7 +259,7 @@ func (e *Endpoints) List(ctx context.Context, request *resource.ListRequest) (*r
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, ep := range result.Items {
-		nativeIDs = append(nativeIDs, string(ep.ObjectMeta.UID))
+		nativeIDs = append(nativeIDs, string(ep.UID))
 	}
 
 	return &resource.ListResult{
@@ -268,7 +268,7 @@ func (e *Endpoints) List(ctx context.Context, request *resource.ListRequest) (*r
 }
 
 // findByUID finds an endpoints resource by its UID across all namespaces.
-func (e *Endpoints) findByUID(ctx context.Context, uid string) (*v1.Endpoints, error) {
+func (e *Endpoints) findByUID(ctx context.Context, uid string) (*v1.Endpoints, error) { //nolint:staticcheck // Endpoints resource intentionally supported
 	list, err := e.Client.CoreV1().Endpoints(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err

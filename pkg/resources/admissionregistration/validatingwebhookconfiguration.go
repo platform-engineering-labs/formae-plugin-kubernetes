@@ -74,7 +74,7 @@ func (v *ValidatingWebhookConfiguration) Create(ctx context.Context, request *re
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          fmt.Sprintf("%d", result.Generation),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -142,7 +142,7 @@ func (v *ValidatingWebhookConfiguration) Update(ctx context.Context, request *re
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          result.ResourceVersion,
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -230,7 +230,7 @@ func (v *ValidatingWebhookConfiguration) Status(ctx context.Context, request *re
 			Operation:          resource.OperationCheckStatus,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          request.RequestID,
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -244,7 +244,7 @@ func (v *ValidatingWebhookConfiguration) List(ctx context.Context, request *reso
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, vwc := range result.Items {
-		nativeIDs = append(nativeIDs, string(vwc.ObjectMeta.UID))
+		nativeIDs = append(nativeIDs, string(vwc.UID))
 	}
 
 	return &resource.ListResult{

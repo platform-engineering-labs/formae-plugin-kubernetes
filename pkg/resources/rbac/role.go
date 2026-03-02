@@ -79,7 +79,7 @@ func (r *Role) Create(ctx context.Context, request *resource.CreateRequest) (*re
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          fmt.Sprintf("%d", result.Generation),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -152,7 +152,7 @@ func (r *Role) Update(ctx context.Context, request *resource.UpdateRequest) (*re
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          result.ResourceVersion,
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -240,7 +240,7 @@ func (r *Role) Status(ctx context.Context, request *resource.StatusRequest) (*re
 			Operation:          resource.OperationCheckStatus,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          request.RequestID,
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -259,7 +259,7 @@ func (r *Role) List(ctx context.Context, request *resource.ListRequest) (*resour
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, role := range result.Items {
-		nativeIDs = append(nativeIDs, string(role.ObjectMeta.UID))
+		nativeIDs = append(nativeIDs, string(role.UID))
 	}
 
 	return &resource.ListResult{

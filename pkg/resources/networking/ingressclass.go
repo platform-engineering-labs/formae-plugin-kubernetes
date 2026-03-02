@@ -74,7 +74,7 @@ func (ic *IngressClass) Create(ctx context.Context, request *resource.CreateRequ
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          fmt.Sprintf("%d", result.Generation),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -142,7 +142,7 @@ func (ic *IngressClass) Update(ctx context.Context, request *resource.UpdateRequ
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          result.ResourceVersion,
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -230,7 +230,7 @@ func (ic *IngressClass) Status(ctx context.Context, request *resource.StatusRequ
 			Operation:          resource.OperationCheckStatus,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          request.RequestID,
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -244,7 +244,7 @@ func (ic *IngressClass) List(ctx context.Context, request *resource.ListRequest)
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, ingressClass := range result.Items {
-		nativeIDs = append(nativeIDs, string(ingressClass.ObjectMeta.UID))
+		nativeIDs = append(nativeIDs, string(ingressClass.UID))
 	}
 
 	return &resource.ListResult{

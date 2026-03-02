@@ -80,7 +80,7 @@ func (ds *DaemonSet) Create(ctx context.Context, request *resource.CreateRequest
 			OperationStatus:    ds.operationStatus(result.Status),
 			RequestID:          fmt.Sprintf("%d", result.Generation),
 			StatusMessage:      ds.statusMessage(result.Status),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -154,7 +154,7 @@ func (ds *DaemonSet) Update(ctx context.Context, request *resource.UpdateRequest
 			OperationStatus:    ds.operationStatus(result.Status),
 			RequestID:          result.ResourceVersion,
 			StatusMessage:      ds.statusMessage(result.Status),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -243,7 +243,7 @@ func (ds *DaemonSet) Status(ctx context.Context, request *resource.StatusRequest
 			OperationStatus:    ds.operationStatus(result.Status),
 			RequestID:          request.RequestID,
 			StatusMessage:      ds.statusMessage(result.Status),
-			NativeID:           string(result.ObjectMeta.UID),
+			NativeID:           string(result.UID),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -262,7 +262,7 @@ func (ds *DaemonSet) List(ctx context.Context, request *resource.ListRequest) (*
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, daemonset := range result.Items {
-		nativeIDs = append(nativeIDs, string(daemonset.ObjectMeta.UID))
+		nativeIDs = append(nativeIDs, string(daemonset.UID))
 	}
 
 	return &resource.ListResult{
