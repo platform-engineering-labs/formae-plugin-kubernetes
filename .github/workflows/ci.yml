@@ -98,13 +98,41 @@ jobs:
       - name: Verify schema
         run: make verify-schema
 
-  # Conformance tests run the full CRUD lifecycle against real K8S resources
-  # in an ephemeral kind cluster. All tests run sequentially in a single job.
-  conformance-tests:
+  # Discover test cases dynamically from testdata/
+  discover-tests:
     needs: [build, lint, pkl-validate, verify-schema, test-unit]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    outputs:
+      test-cases: ${{ steps.discover.outputs.test-cases }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Discover test cases
+        id: discover
+        run: |
+          TEST_CASES=$(ls testdata/*.pkl 2>/dev/null \
+            | xargs -n1 basename \
+            | grep -v '\-update\.pkl$' \
+            | grep -v '\-replace\.pkl$' \
+            | sed 's/\.pkl$//' \
+            | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "Discovered test cases: ${TEST_CASES}"
+          echo "test-cases=${TEST_CASES}" >> "$GITHUB_OUTPUT"
+
+  # Conformance tests run the full CRUD lifecycle against real K8S resources.
+  # Each test case gets its own kind cluster and fresh plugin process.
+  conformance-tests:
+    needs: [discover-tests]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 15
+    strategy:
+      matrix:
+        test-case: ${{ fromJson(needs.discover-tests.outputs.test-cases) }}
+      max-parallel: 10
+      fail-fast: false
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -127,10 +155,10 @@ jobs:
       - name: Install plugin
         run: make install
 
-      - name: Run conformance tests
+      - name: Run conformance tests (${{ matrix.test-case }})
         env:
           FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
-        run: make conformance-test-crud-run conformance-test-discovery-run PARALLEL=10
+        run: make conformance-test-crud-run conformance-test-discovery-run TEST=${{ matrix.test-case }} PARALLEL=1
 
   # Notify when build is fixed (was red, now green)
   notify-fixed:
