@@ -130,7 +130,7 @@ jobs:
       - name: Run conformance tests
         env:
           FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
-        run: make conformance-test-crud-run conformance-test-discovery-run PARALLEL=1
+        run: make conformance-test-crud-run conformance-test-discovery-run PARALLEL=10
 
   # Notify when build is fixed (was red, now green)
   notify-fixed:
