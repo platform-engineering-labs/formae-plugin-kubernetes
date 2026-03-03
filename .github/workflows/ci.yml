@@ -131,7 +131,7 @@ jobs:
     strategy:
       matrix:
         test-case: ${{ fromJson(needs.discover-tests.outputs.test-cases) }}
-      max-parallel: 5
+      max-parallel: 10
       fail-fast: false
     steps:
       - name: Checkout
