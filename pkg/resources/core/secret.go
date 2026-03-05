@@ -14,7 +14,6 @@ import (
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/registry"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/transport"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1coreac "k8s.io/client-go/applyconfigurations/core/v1"
@@ -79,14 +78,15 @@ func (s *Secret) Create(ctx context.Context, request *resource.CreateRequest) (*
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          fmt.Sprintf("%d", result.Generation),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (s *Secret) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	result, err := s.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := s.Client.CoreV1().Secrets(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.ReadResult{
@@ -95,12 +95,6 @@ func (s *Secret) Read(ctx context.Context, request *resource.ReadRequest) (*reso
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get secret: %w", err)
-	}
-	if result == nil {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
 	}
 
 	ext, err := v1coreac.ExtractSecret(result, "formae")
@@ -152,35 +146,15 @@ func (s *Secret) Update(ctx context.Context, request *resource.UpdateRequest) (*
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          result.ResourceVersion,
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (s *Secret) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	secret, err := s.findByUID(ctx, request.NativeID)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to find secret: %w", err)
-	}
-	if secret == nil {
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-			},
-		}, nil
-	}
-
-	err = s.Client.CoreV1().Secrets(secret.Namespace).Delete(ctx, secret.Name, metav1.DeleteOptions{})
+	ns, name := prov.ParseNativeID(request.NativeID)
+	err := s.Client.CoreV1().Secrets(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -202,7 +176,8 @@ func (s *Secret) Delete(ctx context.Context, request *resource.DeleteRequest) (*
 }
 
 func (s *Secret) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	result, err := s.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := s.Client.CoreV1().Secrets(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.StatusResult{
@@ -214,15 +189,6 @@ func (s *Secret) Status(ctx context.Context, request *resource.StatusRequest) (*
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get secret status: %w", err)
-	}
-	if result == nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCheckStatus,
-				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       resource.OperationErrorCodeNotFound,
-			},
-		}, nil
 	}
 
 	ext, err := v1coreac.ExtractSecret(result, "formae")
@@ -240,7 +206,7 @@ func (s *Secret) Status(ctx context.Context, request *resource.StatusRequest) (*
 			Operation:          resource.OperationCheckStatus,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          request.RequestID,
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -259,24 +225,10 @@ func (s *Secret) List(ctx context.Context, request *resource.ListRequest) (*reso
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, secret := range result.Items {
-		nativeIDs = append(nativeIDs, string(secret.UID))
+		nativeIDs = append(nativeIDs, prov.NativeID(secret.Namespace, secret.Name))
 	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,
 	}, nil
-}
-
-// findByUID finds a secret by its UID across all namespaces.
-func (s *Secret) findByUID(ctx context.Context, uid string) (*v1.Secret, error) {
-	list, err := s.Client.CoreV1().Secrets(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for i := range list.Items {
-		if string(list.Items[i].UID) == uid {
-			return &list.Items[i], nil
-		}
-	}
-	return nil, nil
 }

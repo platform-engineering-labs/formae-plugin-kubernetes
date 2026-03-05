@@ -21,7 +21,7 @@ open class MutatingWebhookConfigurationResolvable extends formae.Resolvable {
 /// Configures admission webhooks that mutate requests to the API server.
 @k8s.ResourceHint {
   type = module.type
-  identifier = "$.metadata.uid"
+  identifier = "$.metadata.name"
   discoverable = true
 }
 open class MutatingWebhookConfiguration extends k8s.Resource {

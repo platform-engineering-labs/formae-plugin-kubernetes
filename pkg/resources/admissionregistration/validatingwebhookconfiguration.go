@@ -14,7 +14,6 @@ import (
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/registry"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/transport"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
-	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	admissionregistrationv1ac "k8s.io/client-go/applyconfigurations/admissionregistration/v1"
@@ -74,14 +73,15 @@ func (v *ValidatingWebhookConfiguration) Create(ctx context.Context, request *re
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          fmt.Sprintf("%d", result.Generation),
-			NativeID:           string(result.UID),
+			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (v *ValidatingWebhookConfiguration) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	result, err := v.findByUID(ctx, request.NativeID)
+	_, name := prov.ParseNativeID(request.NativeID)
+	result, err := v.Client.AdmissionregistrationV1().ValidatingWebhookConfigurations().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.ReadResult{
@@ -90,12 +90,6 @@ func (v *ValidatingWebhookConfiguration) Read(ctx context.Context, request *reso
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get validatingwebhookconfiguration: %w", err)
-	}
-	if result == nil {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
 	}
 
 	ext, err := admissionregistrationv1ac.ExtractValidatingWebhookConfiguration(result, "formae")
@@ -142,35 +136,15 @@ func (v *ValidatingWebhookConfiguration) Update(ctx context.Context, request *re
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          result.ResourceVersion,
-			NativeID:           string(result.UID),
+			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (v *ValidatingWebhookConfiguration) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	vwc, err := v.findByUID(ctx, request.NativeID)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to find validatingwebhookconfiguration: %w", err)
-	}
-	if vwc == nil {
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-			},
-		}, nil
-	}
-
-	err = v.Client.AdmissionregistrationV1().ValidatingWebhookConfigurations().Delete(ctx, vwc.Name, metav1.DeleteOptions{})
+	_, name := prov.ParseNativeID(request.NativeID)
+	err := v.Client.AdmissionregistrationV1().ValidatingWebhookConfigurations().Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -192,7 +166,8 @@ func (v *ValidatingWebhookConfiguration) Delete(ctx context.Context, request *re
 }
 
 func (v *ValidatingWebhookConfiguration) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	result, err := v.findByUID(ctx, request.NativeID)
+	_, name := prov.ParseNativeID(request.NativeID)
+	result, err := v.Client.AdmissionregistrationV1().ValidatingWebhookConfigurations().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.StatusResult{
@@ -204,15 +179,6 @@ func (v *ValidatingWebhookConfiguration) Status(ctx context.Context, request *re
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get validatingwebhookconfiguration status: %w", err)
-	}
-	if result == nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCheckStatus,
-				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       resource.OperationErrorCodeNotFound,
-			},
-		}, nil
 	}
 
 	ext, err := admissionregistrationv1ac.ExtractValidatingWebhookConfiguration(result, "formae")
@@ -230,7 +196,7 @@ func (v *ValidatingWebhookConfiguration) Status(ctx context.Context, request *re
 			Operation:          resource.OperationCheckStatus,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          request.RequestID,
-			NativeID:           string(result.UID),
+			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -244,24 +210,10 @@ func (v *ValidatingWebhookConfiguration) List(ctx context.Context, request *reso
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, vwc := range result.Items {
-		nativeIDs = append(nativeIDs, string(vwc.UID))
+		nativeIDs = append(nativeIDs, vwc.Name)
 	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,
 	}, nil
-}
-
-// findByUID finds a ValidatingWebhookConfiguration by its UID.
-func (v *ValidatingWebhookConfiguration) findByUID(ctx context.Context, uid string) (*admissionregistrationv1.ValidatingWebhookConfiguration, error) {
-	list, err := v.Client.AdmissionregistrationV1().ValidatingWebhookConfigurations().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for i := range list.Items {
-		if string(list.Items[i].UID) == uid {
-			return &list.Items[i], nil
-		}
-	}
-	return nil, nil
 }

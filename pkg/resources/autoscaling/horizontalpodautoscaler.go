@@ -80,14 +80,15 @@ func (h *HorizontalPodAutoscaler) Create(ctx context.Context, request *resource.
 			OperationStatus:    h.fromConditions(result),
 			RequestID:          fmt.Sprintf("%d", result.Generation),
 			StatusMessage:      h.statusMessage(result),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (h *HorizontalPodAutoscaler) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	result, err := h.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := h.Client.AutoscalingV2().HorizontalPodAutoscalers(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.ReadResult{
@@ -96,12 +97,6 @@ func (h *HorizontalPodAutoscaler) Read(ctx context.Context, request *resource.Re
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get horizontalpodautoscaler: %w", err)
-	}
-	if result == nil {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
 	}
 
 	ext, err := autoscalingv2ac.ExtractHorizontalPodAutoscaler(result, "formae")
@@ -154,35 +149,15 @@ func (h *HorizontalPodAutoscaler) Update(ctx context.Context, request *resource.
 			OperationStatus:    h.fromConditions(result),
 			RequestID:          result.ResourceVersion,
 			StatusMessage:      h.statusMessage(result),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (h *HorizontalPodAutoscaler) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	hpa, err := h.findByUID(ctx, request.NativeID)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to find horizontalpodautoscaler: %w", err)
-	}
-	if hpa == nil {
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-			},
-		}, nil
-	}
-
-	err = h.Client.AutoscalingV2().HorizontalPodAutoscalers(hpa.Namespace).Delete(ctx, hpa.Name, metav1.DeleteOptions{})
+	ns, name := prov.ParseNativeID(request.NativeID)
+	err := h.Client.AutoscalingV2().HorizontalPodAutoscalers(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -204,7 +179,8 @@ func (h *HorizontalPodAutoscaler) Delete(ctx context.Context, request *resource.
 }
 
 func (h *HorizontalPodAutoscaler) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	result, err := h.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := h.Client.AutoscalingV2().HorizontalPodAutoscalers(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.StatusResult{
@@ -216,15 +192,6 @@ func (h *HorizontalPodAutoscaler) Status(ctx context.Context, request *resource.
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get horizontalpodautoscaler status: %w", err)
-	}
-	if result == nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCheckStatus,
-				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       resource.OperationErrorCodeNotFound,
-			},
-		}, nil
 	}
 
 	ext, err := autoscalingv2ac.ExtractHorizontalPodAutoscaler(result, "formae")
@@ -243,7 +210,7 @@ func (h *HorizontalPodAutoscaler) Status(ctx context.Context, request *resource.
 			OperationStatus:    h.fromConditions(result),
 			RequestID:          request.RequestID,
 			StatusMessage:      h.statusMessage(result),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -262,26 +229,12 @@ func (h *HorizontalPodAutoscaler) List(ctx context.Context, request *resource.Li
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, hpa := range result.Items {
-		nativeIDs = append(nativeIDs, string(hpa.UID))
+		nativeIDs = append(nativeIDs, prov.NativeID(hpa.Namespace, hpa.Name))
 	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,
 	}, nil
-}
-
-// findByUID finds a horizontalpodautoscaler by its UID across all namespaces.
-func (h *HorizontalPodAutoscaler) findByUID(ctx context.Context, uid string) (*autoscalingv2.HorizontalPodAutoscaler, error) {
-	list, err := h.Client.AutoscalingV2().HorizontalPodAutoscalers(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for i := range list.Items {
-		if string(list.Items[i].UID) == uid {
-			return &list.Items[i], nil
-		}
-	}
-	return nil, nil
 }
 
 // fromConditions maps HPA conditions to Formae OperationStatus.

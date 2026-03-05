@@ -21,7 +21,7 @@ open class CSIDriverResolvable extends formae.Resolvable {
 /// CSIDriver captures information about a Container Storage Interface (CSI) volume driver.
 @k8s.ResourceHint {
   type = module.type
-  identifier = "$.metadata.uid"
+  identifier = "$.metadata.name"
   discoverable = true
 }
 open class CSIDriver extends k8s.Resource {

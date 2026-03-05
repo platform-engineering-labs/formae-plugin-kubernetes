@@ -80,14 +80,15 @@ func (j *Job) Create(ctx context.Context, request *resource.CreateRequest) (*res
 			OperationStatus:    j.fromConditions(result.Status.Conditions),
 			RequestID:          fmt.Sprintf("%d", result.Generation),
 			StatusMessage:      j.statusMessage(result.Status),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (j *Job) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	result, err := j.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := j.Client.BatchV1().Jobs(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.ReadResult{
@@ -96,12 +97,6 @@ func (j *Job) Read(ctx context.Context, request *resource.ReadRequest) (*resourc
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get job: %w", err)
-	}
-	if result == nil {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
 	}
 
 	ext, err := batchv1ac.ExtractJob(result, "formae")
@@ -154,37 +149,18 @@ func (j *Job) Update(ctx context.Context, request *resource.UpdateRequest) (*res
 			OperationStatus:    j.fromConditions(result.Status.Conditions),
 			RequestID:          result.ResourceVersion,
 			StatusMessage:      j.statusMessage(result.Status),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (j *Job) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	job, err := j.findByUID(ctx, request.NativeID)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to find job: %w", err)
-	}
-	if job == nil {
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-			},
-		}, nil
-	}
+	ns, name := prov.ParseNativeID(request.NativeID)
 
 	// Use propagation policy to clean up child pods
 	propagation := metav1.DeletePropagationBackground
-	err = j.Client.BatchV1().Jobs(job.Namespace).Delete(ctx, job.Name, metav1.DeleteOptions{
+	err := j.Client.BatchV1().Jobs(ns).Delete(ctx, name, metav1.DeleteOptions{
 		PropagationPolicy: &propagation,
 	})
 	if err != nil {
@@ -208,7 +184,8 @@ func (j *Job) Delete(ctx context.Context, request *resource.DeleteRequest) (*res
 }
 
 func (j *Job) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	result, err := j.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := j.Client.BatchV1().Jobs(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.StatusResult{
@@ -220,15 +197,6 @@ func (j *Job) Status(ctx context.Context, request *resource.StatusRequest) (*res
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get job status: %w", err)
-	}
-	if result == nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCheckStatus,
-				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       resource.OperationErrorCodeNotFound,
-			},
-		}, nil
 	}
 
 	ext, err := batchv1ac.ExtractJob(result, "formae")
@@ -247,7 +215,7 @@ func (j *Job) Status(ctx context.Context, request *resource.StatusRequest) (*res
 			OperationStatus:    j.fromConditions(result.Status.Conditions),
 			RequestID:          request.RequestID,
 			StatusMessage:      j.statusMessage(result.Status),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -266,7 +234,7 @@ func (j *Job) List(ctx context.Context, request *resource.ListRequest) (*resourc
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, job := range result.Items {
-		nativeIDs = append(nativeIDs, string(job.UID))
+		nativeIDs = append(nativeIDs, prov.NativeID(job.Namespace, job.Name))
 	}
 
 	return &resource.ListResult{
@@ -274,19 +242,6 @@ func (j *Job) List(ctx context.Context, request *resource.ListRequest) (*resourc
 	}, nil
 }
 
-// findByUID finds a job by its UID across all namespaces.
-func (j *Job) findByUID(ctx context.Context, uid string) (*batchv1.Job, error) {
-	list, err := j.Client.BatchV1().Jobs(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for i := range list.Items {
-		if string(list.Items[i].UID) == uid {
-			return &list.Items[i], nil
-		}
-	}
-	return nil, nil
-}
 
 // fromConditions maps K8S Job conditions to Formae OperationStatus.
 func (j *Job) fromConditions(conditions []batchv1.JobCondition) resource.OperationStatus {

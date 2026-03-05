@@ -14,7 +14,6 @@ import (
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/registry"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/transport"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
-	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	schedulingv1ac "k8s.io/client-go/applyconfigurations/scheduling/v1"
@@ -74,14 +73,15 @@ func (pc *PriorityClass) Create(ctx context.Context, request *resource.CreateReq
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          fmt.Sprintf("%d", result.Generation),
-			NativeID:           string(result.UID),
+			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (pc *PriorityClass) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	result, err := pc.findByUID(ctx, request.NativeID)
+	_, name := prov.ParseNativeID(request.NativeID)
+	result, err := pc.Client.SchedulingV1().PriorityClasses().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.ReadResult{
@@ -90,12 +90,6 @@ func (pc *PriorityClass) Read(ctx context.Context, request *resource.ReadRequest
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get priorityclass: %w", err)
-	}
-	if result == nil {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
 	}
 
 	ext, err := schedulingv1ac.ExtractPriorityClass(result, "formae")
@@ -142,35 +136,15 @@ func (pc *PriorityClass) Update(ctx context.Context, request *resource.UpdateReq
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          result.ResourceVersion,
-			NativeID:           string(result.UID),
+			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (pc *PriorityClass) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	priorityClass, err := pc.findByUID(ctx, request.NativeID)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to find priorityclass: %w", err)
-	}
-	if priorityClass == nil {
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-			},
-		}, nil
-	}
-
-	err = pc.Client.SchedulingV1().PriorityClasses().Delete(ctx, priorityClass.Name, metav1.DeleteOptions{})
+	_, name := prov.ParseNativeID(request.NativeID)
+	err := pc.Client.SchedulingV1().PriorityClasses().Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -192,7 +166,8 @@ func (pc *PriorityClass) Delete(ctx context.Context, request *resource.DeleteReq
 }
 
 func (pc *PriorityClass) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	result, err := pc.findByUID(ctx, request.NativeID)
+	_, name := prov.ParseNativeID(request.NativeID)
+	result, err := pc.Client.SchedulingV1().PriorityClasses().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.StatusResult{
@@ -204,15 +179,6 @@ func (pc *PriorityClass) Status(ctx context.Context, request *resource.StatusReq
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get priorityclass status: %w", err)
-	}
-	if result == nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCheckStatus,
-				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       resource.OperationErrorCodeNotFound,
-			},
-		}, nil
 	}
 
 	ext, err := schedulingv1ac.ExtractPriorityClass(result, "formae")
@@ -230,7 +196,7 @@ func (pc *PriorityClass) Status(ctx context.Context, request *resource.StatusReq
 			Operation:          resource.OperationCheckStatus,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          request.RequestID,
-			NativeID:           string(result.UID),
+			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -244,24 +210,10 @@ func (pc *PriorityClass) List(ctx context.Context, request *resource.ListRequest
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, priorityClass := range result.Items {
-		nativeIDs = append(nativeIDs, string(priorityClass.UID))
+		nativeIDs = append(nativeIDs, priorityClass.Name)
 	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,
 	}, nil
-}
-
-// findByUID finds a priorityclass by its UID.
-func (pc *PriorityClass) findByUID(ctx context.Context, uid string) (*schedulingv1.PriorityClass, error) {
-	list, err := pc.Client.SchedulingV1().PriorityClasses().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for i := range list.Items {
-		if string(list.Items[i].UID) == uid {
-			return &list.Items[i], nil
-		}
-	}
-	return nil, nil
 }

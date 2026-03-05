@@ -14,7 +14,6 @@ import (
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/registry"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/transport"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
-	flowcontrolv1 "k8s.io/api/flowcontrol/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	flowcontrolv1ac "k8s.io/client-go/applyconfigurations/flowcontrol/v1"
@@ -74,14 +73,15 @@ func (p *PriorityLevelConfiguration) Create(ctx context.Context, request *resour
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          fmt.Sprintf("%d", result.Generation),
-			NativeID:           string(result.UID),
+			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (p *PriorityLevelConfiguration) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	result, err := p.findByUID(ctx, request.NativeID)
+	_, name := prov.ParseNativeID(request.NativeID)
+	result, err := p.Client.FlowcontrolV1().PriorityLevelConfigurations().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.ReadResult{
@@ -90,12 +90,6 @@ func (p *PriorityLevelConfiguration) Read(ctx context.Context, request *resource
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get prioritylevelconfiguration: %w", err)
-	}
-	if result == nil {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
 	}
 
 	ext, err := flowcontrolv1ac.ExtractPriorityLevelConfiguration(result, "formae")
@@ -142,35 +136,15 @@ func (p *PriorityLevelConfiguration) Update(ctx context.Context, request *resour
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          result.ResourceVersion,
-			NativeID:           string(result.UID),
+			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (p *PriorityLevelConfiguration) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	plc, err := p.findByUID(ctx, request.NativeID)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to find prioritylevelconfiguration: %w", err)
-	}
-	if plc == nil {
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-			},
-		}, nil
-	}
-
-	err = p.Client.FlowcontrolV1().PriorityLevelConfigurations().Delete(ctx, plc.Name, metav1.DeleteOptions{})
+	_, name := prov.ParseNativeID(request.NativeID)
+	err := p.Client.FlowcontrolV1().PriorityLevelConfigurations().Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -192,7 +166,8 @@ func (p *PriorityLevelConfiguration) Delete(ctx context.Context, request *resour
 }
 
 func (p *PriorityLevelConfiguration) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	result, err := p.findByUID(ctx, request.NativeID)
+	_, name := prov.ParseNativeID(request.NativeID)
+	result, err := p.Client.FlowcontrolV1().PriorityLevelConfigurations().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.StatusResult{
@@ -204,15 +179,6 @@ func (p *PriorityLevelConfiguration) Status(ctx context.Context, request *resour
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get prioritylevelconfiguration status: %w", err)
-	}
-	if result == nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCheckStatus,
-				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       resource.OperationErrorCodeNotFound,
-			},
-		}, nil
 	}
 
 	ext, err := flowcontrolv1ac.ExtractPriorityLevelConfiguration(result, "formae")
@@ -230,7 +196,7 @@ func (p *PriorityLevelConfiguration) Status(ctx context.Context, request *resour
 			Operation:          resource.OperationCheckStatus,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          request.RequestID,
-			NativeID:           string(result.UID),
+			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -244,24 +210,10 @@ func (p *PriorityLevelConfiguration) List(ctx context.Context, request *resource
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, plc := range result.Items {
-		nativeIDs = append(nativeIDs, string(plc.UID))
+		nativeIDs = append(nativeIDs, plc.Name)
 	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,
 	}, nil
-}
-
-// findByUID finds a PriorityLevelConfiguration by its UID.
-func (p *PriorityLevelConfiguration) findByUID(ctx context.Context, uid string) (*flowcontrolv1.PriorityLevelConfiguration, error) {
-	list, err := p.Client.FlowcontrolV1().PriorityLevelConfigurations().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for i := range list.Items {
-		if string(list.Items[i].UID) == uid {
-			return &list.Items[i], nil
-		}
-	}
-	return nil, nil
 }

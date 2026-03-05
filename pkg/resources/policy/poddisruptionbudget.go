@@ -14,7 +14,6 @@ import (
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/registry"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/transport"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
-	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	policyv1ac "k8s.io/client-go/applyconfigurations/policy/v1"
@@ -79,14 +78,15 @@ func (p *PodDisruptionBudget) Create(ctx context.Context, request *resource.Crea
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          fmt.Sprintf("%d", result.Generation),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (p *PodDisruptionBudget) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	result, err := p.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := p.Client.PolicyV1().PodDisruptionBudgets(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.ReadResult{
@@ -95,12 +95,6 @@ func (p *PodDisruptionBudget) Read(ctx context.Context, request *resource.ReadRe
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get poddisruptionbudget: %w", err)
-	}
-	if result == nil {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
 	}
 
 	ext, err := policyv1ac.ExtractPodDisruptionBudget(result, "formae")
@@ -152,35 +146,15 @@ func (p *PodDisruptionBudget) Update(ctx context.Context, request *resource.Upda
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          result.ResourceVersion,
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (p *PodDisruptionBudget) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	pdb, err := p.findByUID(ctx, request.NativeID)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to find poddisruptionbudget: %w", err)
-	}
-	if pdb == nil {
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-			},
-		}, nil
-	}
-
-	err = p.Client.PolicyV1().PodDisruptionBudgets(pdb.Namespace).Delete(ctx, pdb.Name, metav1.DeleteOptions{})
+	ns, name := prov.ParseNativeID(request.NativeID)
+	err := p.Client.PolicyV1().PodDisruptionBudgets(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -202,7 +176,8 @@ func (p *PodDisruptionBudget) Delete(ctx context.Context, request *resource.Dele
 }
 
 func (p *PodDisruptionBudget) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	result, err := p.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := p.Client.PolicyV1().PodDisruptionBudgets(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.StatusResult{
@@ -214,15 +189,6 @@ func (p *PodDisruptionBudget) Status(ctx context.Context, request *resource.Stat
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get poddisruptionbudget status: %w", err)
-	}
-	if result == nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCheckStatus,
-				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       resource.OperationErrorCodeNotFound,
-			},
-		}, nil
 	}
 
 	ext, err := policyv1ac.ExtractPodDisruptionBudget(result, "formae")
@@ -240,7 +206,7 @@ func (p *PodDisruptionBudget) Status(ctx context.Context, request *resource.Stat
 			Operation:          resource.OperationCheckStatus,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          request.RequestID,
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -259,24 +225,10 @@ func (p *PodDisruptionBudget) List(ctx context.Context, request *resource.ListRe
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, pdb := range result.Items {
-		nativeIDs = append(nativeIDs, string(pdb.UID))
+		nativeIDs = append(nativeIDs, prov.NativeID(pdb.Namespace, pdb.Name))
 	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,
 	}, nil
-}
-
-// findByUID finds a poddisruptionbudget by its UID across all namespaces.
-func (p *PodDisruptionBudget) findByUID(ctx context.Context, uid string) (*policyv1.PodDisruptionBudget, error) {
-	list, err := p.Client.PolicyV1().PodDisruptionBudgets(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for i := range list.Items {
-		if string(list.Items[i].UID) == uid {
-			return &list.Items[i], nil
-		}
-	}
-	return nil, nil
 }

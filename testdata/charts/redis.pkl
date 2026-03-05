@@ -1,0 +1,22 @@
+/*
+ * Chart Smoke Test: RedisChart
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@formae-charts/RedisChart.pkl"
+import "./config/vars.pkl" as v
+
+local chart = new RedisChart.Redis {
+  name = "test-redis-\(v.testRunID)"
+  namespace = "chart-redis-\(v.testRunID)"
+  createNamespace = true
+  replicas = 1
+  password = "test-redis-pass"
+  storageSize = "100Mi"
+}
+
+forma {
+  v.stack
+  v.target
+  for (r in chart.resources) { r }
+}

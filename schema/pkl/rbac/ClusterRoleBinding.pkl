@@ -19,7 +19,7 @@ open class ClusterRoleBindingResolvable extends formae.Resolvable {
 }
 @k8s.ResourceHint {
   type = module.type
-  identifier = "$.metadata.uid"
+  identifier = "$.metadata.name"
   discoverable = true
 }
 open class ClusterRoleBinding extends k8s.Resource {

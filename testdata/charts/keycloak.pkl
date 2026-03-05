@@ -1,0 +1,21 @@
+/*
+ * Chart Smoke Test: KeycloakChart
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@formae-charts/KeycloakChart.pkl"
+import "./config/vars.pkl" as v
+
+local chart = new KeycloakChart.Keycloak {
+  name = "test-kc-\(v.testRunID)"
+  namespace = "chart-kc-\(v.testRunID)"
+  createNamespace = true
+  replicas = 1
+  adminPassword = "test-admin-pass"
+}
+
+forma {
+  v.stack
+  v.target
+  for (r in chart.resources) { r }
+}

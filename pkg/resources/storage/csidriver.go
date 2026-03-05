@@ -14,7 +14,6 @@ import (
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/registry"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/transport"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
-	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	storagev1ac "k8s.io/client-go/applyconfigurations/storage/v1"
@@ -74,14 +73,15 @@ func (c *CSIDriver) Create(ctx context.Context, request *resource.CreateRequest)
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          fmt.Sprintf("%d", result.Generation),
-			NativeID:           string(result.UID),
+			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (c *CSIDriver) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	result, err := c.findByUID(ctx, request.NativeID)
+	_, name := prov.ParseNativeID(request.NativeID)
+	result, err := c.Client.StorageV1().CSIDrivers().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.ReadResult{
@@ -90,12 +90,6 @@ func (c *CSIDriver) Read(ctx context.Context, request *resource.ReadRequest) (*r
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get csidriver: %w", err)
-	}
-	if result == nil {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
 	}
 
 	ext, err := storagev1ac.ExtractCSIDriver(result, "formae")
@@ -142,35 +136,15 @@ func (c *CSIDriver) Update(ctx context.Context, request *resource.UpdateRequest)
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          result.ResourceVersion,
-			NativeID:           string(result.UID),
+			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (c *CSIDriver) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	cd, err := c.findByUID(ctx, request.NativeID)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to find csidriver: %w", err)
-	}
-	if cd == nil {
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-			},
-		}, nil
-	}
-
-	err = c.Client.StorageV1().CSIDrivers().Delete(ctx, cd.Name, metav1.DeleteOptions{})
+	_, name := prov.ParseNativeID(request.NativeID)
+	err := c.Client.StorageV1().CSIDrivers().Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -192,7 +166,8 @@ func (c *CSIDriver) Delete(ctx context.Context, request *resource.DeleteRequest)
 }
 
 func (c *CSIDriver) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	result, err := c.findByUID(ctx, request.NativeID)
+	_, name := prov.ParseNativeID(request.NativeID)
+	result, err := c.Client.StorageV1().CSIDrivers().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.StatusResult{
@@ -204,15 +179,6 @@ func (c *CSIDriver) Status(ctx context.Context, request *resource.StatusRequest)
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get csidriver status: %w", err)
-	}
-	if result == nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCheckStatus,
-				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       resource.OperationErrorCodeNotFound,
-			},
-		}, nil
 	}
 
 	ext, err := storagev1ac.ExtractCSIDriver(result, "formae")
@@ -230,7 +196,7 @@ func (c *CSIDriver) Status(ctx context.Context, request *resource.StatusRequest)
 			Operation:          resource.OperationCheckStatus,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          request.RequestID,
-			NativeID:           string(result.UID),
+			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -244,24 +210,10 @@ func (c *CSIDriver) List(ctx context.Context, request *resource.ListRequest) (*r
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, cd := range result.Items {
-		nativeIDs = append(nativeIDs, string(cd.UID))
+		nativeIDs = append(nativeIDs, cd.Name)
 	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,
 	}, nil
-}
-
-// findByUID finds a CSIDriver by its UID.
-func (c *CSIDriver) findByUID(ctx context.Context, uid string) (*storagev1.CSIDriver, error) {
-	list, err := c.Client.StorageV1().CSIDrivers().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for i := range list.Items {
-		if string(list.Items[i].UID) == uid {
-			return &list.Items[i], nil
-		}
-	}
-	return nil, nil
 }

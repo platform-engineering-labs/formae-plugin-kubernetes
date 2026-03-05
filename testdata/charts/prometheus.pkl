@@ -1,0 +1,23 @@
+/*
+ * Chart Smoke Test: PrometheusChart
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@formae-charts/PrometheusChart.pkl"
+import "./config/vars.pkl" as v
+
+local chart = new PrometheusChart.Prometheus {
+  name = "test-prom-\(v.testRunID)"
+  namespace = "chart-prom-\(v.testRunID)"
+  createNamespace = true
+  createServiceAccount = true
+  createClusterRole = true
+  replicas = 1
+  image = "prom/prometheus:latest"
+}
+
+forma {
+  v.stack
+  v.target
+  for (r in chart.resources) { r }
+}

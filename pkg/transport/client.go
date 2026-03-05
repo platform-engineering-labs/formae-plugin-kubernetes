@@ -6,6 +6,8 @@ package transport
 
 import (
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
+	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
@@ -13,7 +15,9 @@ import (
 // Client wraps the Kubernetes clientset with plugin configuration.
 type Client struct {
 	*kubernetes.Clientset
-	Config *config.Config
+	Dynamic       dynamic.Interface
+	ApiExtensions apiextensionsclientset.Interface
+	Config        *config.Config
 }
 
 // NewClient creates a new Kubernetes client from the provided config.
@@ -32,8 +36,20 @@ func NewClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	dynamicClient, err := dynamic.NewForConfig(restConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	apiextClient, err := apiextensionsclientset.NewForConfig(restConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Client{
-		Clientset: clientset,
-		Config:    cfg,
+		Clientset:     clientset,
+		Dynamic:       dynamicClient,
+		ApiExtensions: apiextClient,
+		Config:        cfg,
 	}, nil
 }

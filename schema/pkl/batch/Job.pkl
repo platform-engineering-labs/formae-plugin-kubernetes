@@ -21,7 +21,7 @@ open class JobResolvable extends formae.Resolvable {
 /// A Job creates one or more Pods and ensures a specified number of them successfully terminate.
 @k8s.ResourceHint {
   type = module.type
-  identifier = "$.metadata.uid"
+  identifier = "$.metadata.name"
   discoverable = true
   parent = "K8S::Core::Namespace"
   listParam = new formae.ListProperty {

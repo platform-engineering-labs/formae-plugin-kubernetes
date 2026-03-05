@@ -14,7 +14,6 @@ import (
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/registry"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/transport"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1coreac "k8s.io/client-go/applyconfigurations/core/v1"
@@ -79,14 +78,15 @@ func (l *LimitRange) Create(ctx context.Context, request *resource.CreateRequest
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          fmt.Sprintf("%d", result.Generation),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (l *LimitRange) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	result, err := l.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := l.Client.CoreV1().LimitRanges(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.ReadResult{
@@ -95,12 +95,6 @@ func (l *LimitRange) Read(ctx context.Context, request *resource.ReadRequest) (*
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get limitrange: %w", err)
-	}
-	if result == nil {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
 	}
 
 	ext, err := v1coreac.ExtractLimitRange(result, "formae")
@@ -152,35 +146,15 @@ func (l *LimitRange) Update(ctx context.Context, request *resource.UpdateRequest
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          result.ResourceVersion,
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (l *LimitRange) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	lr, err := l.findByUID(ctx, request.NativeID)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to find limitrange: %w", err)
-	}
-	if lr == nil {
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-			},
-		}, nil
-	}
-
-	err = l.Client.CoreV1().LimitRanges(lr.Namespace).Delete(ctx, lr.Name, metav1.DeleteOptions{})
+	ns, name := prov.ParseNativeID(request.NativeID)
+	err := l.Client.CoreV1().LimitRanges(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -202,7 +176,8 @@ func (l *LimitRange) Delete(ctx context.Context, request *resource.DeleteRequest
 }
 
 func (l *LimitRange) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	result, err := l.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := l.Client.CoreV1().LimitRanges(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.StatusResult{
@@ -214,15 +189,6 @@ func (l *LimitRange) Status(ctx context.Context, request *resource.StatusRequest
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get limitrange status: %w", err)
-	}
-	if result == nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCheckStatus,
-				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       resource.OperationErrorCodeNotFound,
-			},
-		}, nil
 	}
 
 	ext, err := v1coreac.ExtractLimitRange(result, "formae")
@@ -240,7 +206,7 @@ func (l *LimitRange) Status(ctx context.Context, request *resource.StatusRequest
 			Operation:          resource.OperationCheckStatus,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          request.RequestID,
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -259,24 +225,10 @@ func (l *LimitRange) List(ctx context.Context, request *resource.ListRequest) (*
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, lr := range result.Items {
-		nativeIDs = append(nativeIDs, string(lr.UID))
+		nativeIDs = append(nativeIDs, prov.NativeID(lr.Namespace, lr.Name))
 	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,
 	}, nil
-}
-
-// findByUID finds a limitrange by its UID across all namespaces.
-func (l *LimitRange) findByUID(ctx context.Context, uid string) (*v1.LimitRange, error) {
-	list, err := l.Client.CoreV1().LimitRanges(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for i := range list.Items {
-		if string(list.Items[i].UID) == uid {
-			return &list.Items[i], nil
-		}
-	}
-	return nil, nil
 }

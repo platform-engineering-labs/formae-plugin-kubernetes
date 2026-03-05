@@ -80,14 +80,15 @@ func (ss *StatefulSet) Create(ctx context.Context, request *resource.CreateReque
 			OperationStatus:    ss.operationStatus(result.Status),
 			RequestID:          fmt.Sprintf("%d", result.Generation),
 			StatusMessage:      ss.statusMessage(result.Status),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (ss *StatefulSet) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	result, err := ss.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := ss.Client.AppsV1().StatefulSets(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.ReadResult{
@@ -96,12 +97,6 @@ func (ss *StatefulSet) Read(ctx context.Context, request *resource.ReadRequest) 
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get statefulset: %w", err)
-	}
-	if result == nil {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
 	}
 
 	ext, err := appsv1ac.ExtractStatefulSet(result, "formae")
@@ -154,35 +149,15 @@ func (ss *StatefulSet) Update(ctx context.Context, request *resource.UpdateReque
 			OperationStatus:    ss.operationStatus(result.Status),
 			RequestID:          result.ResourceVersion,
 			StatusMessage:      ss.statusMessage(result.Status),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (ss *StatefulSet) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	sts, err := ss.findByUID(ctx, request.NativeID)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to find statefulset: %w", err)
-	}
-	if sts == nil {
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-			},
-		}, nil
-	}
-
-	err = ss.Client.AppsV1().StatefulSets(sts.Namespace).Delete(ctx, sts.Name, metav1.DeleteOptions{})
+	ns, name := prov.ParseNativeID(request.NativeID)
+	err := ss.Client.AppsV1().StatefulSets(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -204,7 +179,8 @@ func (ss *StatefulSet) Delete(ctx context.Context, request *resource.DeleteReque
 }
 
 func (ss *StatefulSet) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	result, err := ss.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := ss.Client.AppsV1().StatefulSets(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.StatusResult{
@@ -216,15 +192,6 @@ func (ss *StatefulSet) Status(ctx context.Context, request *resource.StatusReque
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get statefulset status: %w", err)
-	}
-	if result == nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCheckStatus,
-				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       resource.OperationErrorCodeNotFound,
-			},
-		}, nil
 	}
 
 	ext, err := appsv1ac.ExtractStatefulSet(result, "formae")
@@ -243,7 +210,7 @@ func (ss *StatefulSet) Status(ctx context.Context, request *resource.StatusReque
 			OperationStatus:    ss.operationStatus(result.Status),
 			RequestID:          request.RequestID,
 			StatusMessage:      ss.statusMessage(result.Status),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -262,26 +229,12 @@ func (ss *StatefulSet) List(ctx context.Context, request *resource.ListRequest) 
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, sts := range result.Items {
-		nativeIDs = append(nativeIDs, string(sts.UID))
+		nativeIDs = append(nativeIDs, prov.NativeID(sts.Namespace, sts.Name))
 	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,
 	}, nil
-}
-
-// findByUID finds a statefulset by its UID across all namespaces.
-func (ss *StatefulSet) findByUID(ctx context.Context, uid string) (*appsv1.StatefulSet, error) {
-	list, err := ss.Client.AppsV1().StatefulSets(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for i := range list.Items {
-		if string(list.Items[i].UID) == uid {
-			return &list.Items[i], nil
-		}
-	}
-	return nil, nil
 }
 
 // operationStatus maps StatefulSet status to Formae OperationStatus.

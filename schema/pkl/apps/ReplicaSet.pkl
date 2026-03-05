@@ -21,7 +21,7 @@ open class ReplicaSetResolvable extends formae.Resolvable {
 /// A ReplicaSet ensures that a specified number of pod replicas are running at any given time.
 @k8s.ResourceHint {
   type = module.type
-  identifier = "$.metadata.uid"
+  identifier = "$.metadata.name"
   discoverable = true
   parent = "K8S::Core::Namespace"
   listParam = new formae.ListProperty {

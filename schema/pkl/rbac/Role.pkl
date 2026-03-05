@@ -19,7 +19,7 @@ open class RoleResolvable extends formae.Resolvable {
 }
 @k8s.ResourceHint {
   type = module.type
-  identifier = "$.metadata.uid"
+  identifier = "$.metadata.name"
   discoverable = true
   parent = "K8S::Core::Namespace"
   listParam = new formae.ListProperty {

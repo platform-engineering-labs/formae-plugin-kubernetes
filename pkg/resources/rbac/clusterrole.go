@@ -14,7 +14,6 @@ import (
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/registry"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/transport"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
-	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	rbacv1ac "k8s.io/client-go/applyconfigurations/rbac/v1"
@@ -74,14 +73,15 @@ func (c *ClusterRole) Create(ctx context.Context, request *resource.CreateReques
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          fmt.Sprintf("%d", result.Generation),
-			NativeID:           string(result.UID),
+			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (c *ClusterRole) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	result, err := c.findByUID(ctx, request.NativeID)
+	_, name := prov.ParseNativeID(request.NativeID)
+	result, err := c.Client.RbacV1().ClusterRoles().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.ReadResult{
@@ -90,12 +90,6 @@ func (c *ClusterRole) Read(ctx context.Context, request *resource.ReadRequest) (
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get clusterrole: %w", err)
-	}
-	if result == nil {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
 	}
 
 	ext, err := rbacv1ac.ExtractClusterRole(result, "formae")
@@ -142,35 +136,15 @@ func (c *ClusterRole) Update(ctx context.Context, request *resource.UpdateReques
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          result.ResourceVersion,
-			NativeID:           string(result.UID),
+			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (c *ClusterRole) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	cr, err := c.findByUID(ctx, request.NativeID)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to find clusterrole: %w", err)
-	}
-	if cr == nil {
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-			},
-		}, nil
-	}
-
-	err = c.Client.RbacV1().ClusterRoles().Delete(ctx, cr.Name, metav1.DeleteOptions{})
+	_, name := prov.ParseNativeID(request.NativeID)
+	err := c.Client.RbacV1().ClusterRoles().Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -192,7 +166,8 @@ func (c *ClusterRole) Delete(ctx context.Context, request *resource.DeleteReques
 }
 
 func (c *ClusterRole) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	result, err := c.findByUID(ctx, request.NativeID)
+	_, name := prov.ParseNativeID(request.NativeID)
+	result, err := c.Client.RbacV1().ClusterRoles().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.StatusResult{
@@ -204,15 +179,6 @@ func (c *ClusterRole) Status(ctx context.Context, request *resource.StatusReques
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get clusterrole status: %w", err)
-	}
-	if result == nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCheckStatus,
-				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       resource.OperationErrorCodeNotFound,
-			},
-		}, nil
 	}
 
 	ext, err := rbacv1ac.ExtractClusterRole(result, "formae")
@@ -230,7 +196,7 @@ func (c *ClusterRole) Status(ctx context.Context, request *resource.StatusReques
 			Operation:          resource.OperationCheckStatus,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          request.RequestID,
-			NativeID:           string(result.UID),
+			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -244,27 +210,10 @@ func (c *ClusterRole) List(ctx context.Context, request *resource.ListRequest) (
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, cr := range result.Items {
-		nativeIDs = append(nativeIDs, string(cr.UID))
+		nativeIDs = append(nativeIDs, cr.Name)
 	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,
 	}, nil
-}
-
-// findByUID finds a clusterrole by its UID.
-// K8S doesn't support metadata.uid field selector for ClusterRoles,
-// so we list all and filter in memory.
-// Returns nil if not found (no error).
-func (c *ClusterRole) findByUID(ctx context.Context, uid string) (*rbacv1.ClusterRole, error) {
-	list, err := c.Client.RbacV1().ClusterRoles().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for i := range list.Items {
-		if string(list.Items[i].UID) == uid {
-			return &list.Items[i], nil
-		}
-	}
-	return nil, nil
 }

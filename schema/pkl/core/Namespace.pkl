@@ -21,7 +21,7 @@ open class NamespaceResolvable extends formae.Resolvable {
 /// Namespaces provide a scope for names and are used to divide cluster resources.
 @k8s.ResourceHint {
   type = module.type
-  identifier = "$.metadata.uid"
+  identifier = "$.metadata.name"
   discoverable = true
 }
 open class Namespace extends k8s.Resource {

@@ -14,7 +14,6 @@ import (
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/registry"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/transport"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
-	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	rbacv1ac "k8s.io/client-go/applyconfigurations/rbac/v1"
@@ -79,14 +78,15 @@ func (rb *RoleBinding) Create(ctx context.Context, request *resource.CreateReque
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          fmt.Sprintf("%d", result.Generation),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (rb *RoleBinding) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	result, err := rb.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := rb.Client.RbacV1().RoleBindings(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.ReadResult{
@@ -95,12 +95,6 @@ func (rb *RoleBinding) Read(ctx context.Context, request *resource.ReadRequest) 
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get rolebinding: %w", err)
-	}
-	if result == nil {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
 	}
 
 	ext, err := rbacv1ac.ExtractRoleBinding(result, "formae")
@@ -152,35 +146,16 @@ func (rb *RoleBinding) Update(ctx context.Context, request *resource.UpdateReque
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          result.ResourceVersion,
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (rb *RoleBinding) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	binding, err := rb.findByUID(ctx, request.NativeID)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to find rolebinding: %w", err)
-	}
-	if binding == nil {
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-			},
-		}, nil
-	}
+	ns, name := prov.ParseNativeID(request.NativeID)
 
-	err = rb.Client.RbacV1().RoleBindings(binding.Namespace).Delete(ctx, binding.Name, metav1.DeleteOptions{})
+	err := rb.Client.RbacV1().RoleBindings(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -202,7 +177,8 @@ func (rb *RoleBinding) Delete(ctx context.Context, request *resource.DeleteReque
 }
 
 func (rb *RoleBinding) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	result, err := rb.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := rb.Client.RbacV1().RoleBindings(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.StatusResult{
@@ -214,15 +190,6 @@ func (rb *RoleBinding) Status(ctx context.Context, request *resource.StatusReque
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get rolebinding status: %w", err)
-	}
-	if result == nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCheckStatus,
-				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       resource.OperationErrorCodeNotFound,
-			},
-		}, nil
 	}
 
 	ext, err := rbacv1ac.ExtractRoleBinding(result, "formae")
@@ -240,7 +207,7 @@ func (rb *RoleBinding) Status(ctx context.Context, request *resource.StatusReque
 			Operation:          resource.OperationCheckStatus,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          request.RequestID,
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -259,7 +226,7 @@ func (rb *RoleBinding) List(ctx context.Context, request *resource.ListRequest) 
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, binding := range result.Items {
-		nativeIDs = append(nativeIDs, string(binding.UID))
+		nativeIDs = append(nativeIDs, prov.NativeID(binding.Namespace, binding.Name))
 	}
 
 	return &resource.ListResult{
@@ -267,16 +234,3 @@ func (rb *RoleBinding) List(ctx context.Context, request *resource.ListRequest) 
 	}, nil
 }
 
-// findByUID finds a rolebinding by its UID across all namespaces.
-func (rb *RoleBinding) findByUID(ctx context.Context, uid string) (*rbacv1.RoleBinding, error) {
-	list, err := rb.Client.RbacV1().RoleBindings(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for i := range list.Items {
-		if string(list.Items[i].UID) == uid {
-			return &list.Items[i], nil
-		}
-	}
-	return nil, nil
-}

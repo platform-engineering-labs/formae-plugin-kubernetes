@@ -80,14 +80,15 @@ func (ing *Ingress) Create(ctx context.Context, request *resource.CreateRequest)
 			OperationStatus:    ing.operationStatus(result),
 			RequestID:          fmt.Sprintf("%d", result.Generation),
 			StatusMessage:      ing.statusMessage(result),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (ing *Ingress) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	result, err := ing.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := ing.Client.NetworkingV1().Ingresses(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.ReadResult{
@@ -96,12 +97,6 @@ func (ing *Ingress) Read(ctx context.Context, request *resource.ReadRequest) (*r
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get ingress: %w", err)
-	}
-	if result == nil {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
 	}
 
 	ext, err := networkingv1ac.ExtractIngress(result, "formae")
@@ -154,35 +149,16 @@ func (ing *Ingress) Update(ctx context.Context, request *resource.UpdateRequest)
 			OperationStatus:    ing.operationStatus(result),
 			RequestID:          result.ResourceVersion,
 			StatusMessage:      ing.statusMessage(result),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (ing *Ingress) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	ingress, err := ing.findByUID(ctx, request.NativeID)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to find ingress: %w", err)
-	}
-	if ingress == nil {
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-			},
-		}, nil
-	}
+	ns, name := prov.ParseNativeID(request.NativeID)
 
-	err = ing.Client.NetworkingV1().Ingresses(ingress.Namespace).Delete(ctx, ingress.Name, metav1.DeleteOptions{})
+	err := ing.Client.NetworkingV1().Ingresses(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -204,7 +180,8 @@ func (ing *Ingress) Delete(ctx context.Context, request *resource.DeleteRequest)
 }
 
 func (ing *Ingress) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	result, err := ing.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := ing.Client.NetworkingV1().Ingresses(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.StatusResult{
@@ -216,15 +193,6 @@ func (ing *Ingress) Status(ctx context.Context, request *resource.StatusRequest)
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get ingress status: %w", err)
-	}
-	if result == nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCheckStatus,
-				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       resource.OperationErrorCodeNotFound,
-			},
-		}, nil
 	}
 
 	ext, err := networkingv1ac.ExtractIngress(result, "formae")
@@ -243,7 +211,7 @@ func (ing *Ingress) Status(ctx context.Context, request *resource.StatusRequest)
 			OperationStatus:    ing.operationStatus(result),
 			RequestID:          request.RequestID,
 			StatusMessage:      ing.statusMessage(result),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -262,7 +230,7 @@ func (ing *Ingress) List(ctx context.Context, request *resource.ListRequest) (*r
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, ingress := range result.Items {
-		nativeIDs = append(nativeIDs, string(ingress.UID))
+		nativeIDs = append(nativeIDs, prov.NativeID(ingress.Namespace, ingress.Name))
 	}
 
 	return &resource.ListResult{
@@ -270,19 +238,6 @@ func (ing *Ingress) List(ctx context.Context, request *resource.ListRequest) (*r
 	}, nil
 }
 
-// findByUID finds an ingress by its UID across all namespaces.
-func (ing *Ingress) findByUID(ctx context.Context, uid string) (*networkingv1.Ingress, error) {
-	list, err := ing.Client.NetworkingV1().Ingresses(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for i := range list.Items {
-		if string(list.Items[i].UID) == uid {
-			return &list.Items[i], nil
-		}
-	}
-	return nil, nil
-}
 
 // operationStatus maps Ingress state to Formae OperationStatus.
 // When WaitForLoadBalancer is enabled, reports InProgress until a load balancer

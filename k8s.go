@@ -17,6 +17,7 @@ import (
 
 	// Import resources to trigger init() registration
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/admissionregistration"
+	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/apiextensions"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/apps"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/autoscaling"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/batch"
@@ -48,7 +49,7 @@ var _ plugin.ResourcePlugin = &Plugin{}
 func (p *Plugin) RateLimit() plugin.RateLimitConfig {
 	return plugin.RateLimitConfig{
 		Scope:                            plugin.RateLimitScopeNamespace,
-		MaxRequestsPerSecondForNamespace: 10,
+		MaxRequestsPerSecondForNamespace: 1,
 	}
 }
 

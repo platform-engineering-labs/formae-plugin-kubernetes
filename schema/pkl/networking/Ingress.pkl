@@ -21,7 +21,7 @@ open class IngressResolvable extends formae.Resolvable {
 /// An Ingress manages external HTTP(S) access to services in a cluster.
 @k8s.ResourceHint {
   type = module.type
-  identifier = "$.metadata.uid"
+  identifier = "$.metadata.name"
   discoverable = true
   parent = "K8S::Core::Namespace"
   listParam = new formae.ListProperty {

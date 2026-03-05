@@ -75,15 +75,15 @@ func (n *Namespace) Create(ctx context.Context, request *resource.CreateRequest)
 			Operation:          resource.OperationCreate,
 			OperationStatus:    n.fromPhase(result.Status.Phase),
 			RequestID:          fmt.Sprintf("%d", result.Generation),
-			NativeID:           string(result.UID),
+			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (n *Namespace) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	// K8S API needs name, but we have UID. Use field selector to find by UID.
-	result, err := n.findByUID(ctx, request.NativeID)
+	_, name := prov.ParseNativeID(request.NativeID)
+	result, err := n.Client.CoreV1().Namespaces().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.ReadResult{
@@ -92,12 +92,6 @@ func (n *Namespace) Read(ctx context.Context, request *resource.ReadRequest) (*r
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get namespace: %w", err)
-	}
-	if result == nil {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
 	}
 
 	// Extract only the fields managed by formae
@@ -146,38 +140,15 @@ func (n *Namespace) Update(ctx context.Context, request *resource.UpdateRequest)
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    n.fromPhase(result.Status.Phase),
 			RequestID:          result.ResourceVersion,
-			NativeID:           string(result.UID),
+			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (n *Namespace) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	// Find namespace by UID first to get the name
-	ns, err := n.findByUID(ctx, request.NativeID)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			// Already deleted, consider success
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to find namespace: %w", err)
-	}
-	if ns == nil {
-		// Already deleted
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-			},
-		}, nil
-	}
-
-	err = n.Client.CoreV1().Namespaces().Delete(ctx, ns.Name, metav1.DeleteOptions{})
+	_, name := prov.ParseNativeID(request.NativeID)
+	err := n.Client.CoreV1().Namespaces().Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -199,7 +170,8 @@ func (n *Namespace) Delete(ctx context.Context, request *resource.DeleteRequest)
 }
 
 func (n *Namespace) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	result, err := n.findByUID(ctx, request.NativeID)
+	_, name := prov.ParseNativeID(request.NativeID)
+	result, err := n.Client.CoreV1().Namespaces().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.StatusResult{
@@ -211,15 +183,6 @@ func (n *Namespace) Status(ctx context.Context, request *resource.StatusRequest)
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get namespace status: %w", err)
-	}
-	if result == nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCheckStatus,
-				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       resource.OperationErrorCodeNotFound,
-			},
-		}, nil
 	}
 
 	// Extract only the fields managed by formae
@@ -238,7 +201,7 @@ func (n *Namespace) Status(ctx context.Context, request *resource.StatusRequest)
 			Operation:          resource.OperationCheckStatus,
 			OperationStatus:    n.fromPhase(result.Status.Phase),
 			RequestID:          request.RequestID,
-			NativeID:           string(result.UID),
+			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -252,29 +215,12 @@ func (n *Namespace) List(ctx context.Context, request *resource.ListRequest) (*r
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, ns := range result.Items {
-		nativeIDs = append(nativeIDs, string(ns.UID))
+		nativeIDs = append(nativeIDs, ns.Name)
 	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,
 	}, nil
-}
-
-// findByUID finds a namespace by its UID.
-// K8S doesn't support metadata.uid field selector for Namespaces,
-// so we list all and filter in memory.
-// Returns nil if not found (no error).
-func (n *Namespace) findByUID(ctx context.Context, uid string) (*v1.Namespace, error) {
-	list, err := n.Client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for i := range list.Items {
-		if string(list.Items[i].UID) == uid {
-			return &list.Items[i], nil
-		}
-	}
-	return nil, nil
 }
 
 // fromPhase maps K8S NamespacePhase to Formae OperationStatus.

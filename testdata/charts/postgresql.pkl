@@ -1,0 +1,23 @@
+/*
+ * Chart Smoke Test: PostgreSQLChart
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@formae-charts/PostgreSQLChart.pkl"
+import "./config/vars.pkl" as v
+
+local chart = new PostgreSQLChart.PostgreSQL {
+  name = "test-pg-\(v.testRunID)"
+  namespace = "chart-pg-\(v.testRunID)"
+  createNamespace = true
+  replicas = 1
+  password = "test-pg-pass"
+  database = "testdb"
+  storageSize = "100Mi"
+}
+
+forma {
+  v.stack
+  v.target
+  for (r in chart.resources) { r }
+}

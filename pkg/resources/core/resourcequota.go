@@ -14,7 +14,6 @@ import (
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/registry"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/transport"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1coreac "k8s.io/client-go/applyconfigurations/core/v1"
@@ -79,14 +78,15 @@ func (r *ResourceQuota) Create(ctx context.Context, request *resource.CreateRequ
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          fmt.Sprintf("%d", result.Generation),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (r *ResourceQuota) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	result, err := r.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := r.Client.CoreV1().ResourceQuotas(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.ReadResult{
@@ -95,12 +95,6 @@ func (r *ResourceQuota) Read(ctx context.Context, request *resource.ReadRequest)
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get resourcequota: %w", err)
-	}
-	if result == nil {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
 	}
 
 	ext, err := v1coreac.ExtractResourceQuota(result, "formae")
@@ -152,35 +146,15 @@ func (r *ResourceQuota) Update(ctx context.Context, request *resource.UpdateRequ
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          result.ResourceVersion,
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (r *ResourceQuota) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	rq, err := r.findByUID(ctx, request.NativeID)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to find resourcequota: %w", err)
-	}
-	if rq == nil {
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-			},
-		}, nil
-	}
-
-	err = r.Client.CoreV1().ResourceQuotas(rq.Namespace).Delete(ctx, rq.Name, metav1.DeleteOptions{})
+	ns, name := prov.ParseNativeID(request.NativeID)
+	err := r.Client.CoreV1().ResourceQuotas(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -202,7 +176,8 @@ func (r *ResourceQuota) Delete(ctx context.Context, request *resource.DeleteRequ
 }
 
 func (r *ResourceQuota) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	result, err := r.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := r.Client.CoreV1().ResourceQuotas(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.StatusResult{
@@ -214,15 +189,6 @@ func (r *ResourceQuota) Status(ctx context.Context, request *resource.StatusRequ
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get resourcequota status: %w", err)
-	}
-	if result == nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCheckStatus,
-				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       resource.OperationErrorCodeNotFound,
-			},
-		}, nil
 	}
 
 	ext, err := v1coreac.ExtractResourceQuota(result, "formae")
@@ -240,7 +206,7 @@ func (r *ResourceQuota) Status(ctx context.Context, request *resource.StatusRequ
 			Operation:          resource.OperationCheckStatus,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          request.RequestID,
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -259,24 +225,10 @@ func (r *ResourceQuota) List(ctx context.Context, request *resource.ListRequest)
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, rq := range result.Items {
-		nativeIDs = append(nativeIDs, string(rq.UID))
+		nativeIDs = append(nativeIDs, prov.NativeID(rq.Namespace, rq.Name))
 	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,
 	}, nil
-}
-
-// findByUID finds a resourcequota by its UID across all namespaces.
-func (r *ResourceQuota) findByUID(ctx context.Context, uid string) (*v1.ResourceQuota, error) {
-	list, err := r.Client.CoreV1().ResourceQuotas(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for i := range list.Items {
-		if string(list.Items[i].UID) == uid {
-			return &list.Items[i], nil
-		}
-	}
-	return nil, nil
 }

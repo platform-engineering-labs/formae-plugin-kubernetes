@@ -27,7 +27,7 @@ FORMAE_BINARY ?= $(shell realpath $(firstword $(wildcard $(CURDIR)/../../formae/
 PLUGIN_BASE_DIR := $(HOME)/.pel/formae/plugins
 INSTALL_DIR := $(PLUGIN_BASE_DIR)/$(PLUGIN_NAME)/v$(PLUGIN_VERSION)
 
-.PHONY: all build test test-unit test-integration lint verify-schema clean install help setup-credentials clean-environment conformance-test conformance-test-crud conformance-test-discovery conformance-test-crud-run conformance-test-discovery-run generate-schema
+.PHONY: all build test test-unit test-integration lint verify-schema clean install help setup-credentials clean-environment conformance-test conformance-test-crud conformance-test-discovery conformance-test-crud-run conformance-test-discovery-run generate-schema chart-test
 
 all: build
 
@@ -156,3 +156,14 @@ conformance-test-crud-run:
 conformance-test-discovery-run:
 	@echo "Running discovery conformance tests..."
 	@FORMAE_BINARY="$(FORMAE_BINARY)" FORMAE_TEST_FILTER="$(TEST)" FORMAE_TEST_TYPE=discovery FORMAE_TEST_PARALLEL="$(PARALLEL)" FORMAE_TEST_TIMEOUT="$(TIMEOUT)" ./scripts/run-conformance-tests.sh $(VERSION)
+
+## chart-test: Run chart smoke tests (deploy + verify + cleanup)
+## Usage: make chart-test [CHART=nginx] [TIMEOUT=10]
+## Deploys each chart via formae apply, waits for pods, then destroys.
+##
+## Parameters:
+##   CHART   - Filter charts by name (e.g., CHART=nginx)
+##   TIMEOUT - Pod readiness timeout in seconds (default: 120)
+chart-test: install
+	@echo "Running chart smoke tests..."
+	@FORMAE_BINARY="$(FORMAE_BINARY)" CHART_TEST_TIMEOUT="$(or $(TIMEOUT),120)" ./scripts/run-chart-tests.sh $(CHART)

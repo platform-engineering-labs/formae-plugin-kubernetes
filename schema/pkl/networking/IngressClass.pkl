@@ -19,7 +19,7 @@ open class IngressClassResolvable extends formae.Resolvable {
 }
 @k8s.ResourceHint {
   type = module.type
-  identifier = "$.metadata.uid"
+  identifier = "$.metadata.name"
   discoverable = true
 }
 open class IngressClass extends k8s.Resource {

@@ -80,14 +80,15 @@ func (p *PersistentVolumeClaim) Create(ctx context.Context, request *resource.Cr
 			OperationStatus:    p.fromPhase(result.Status.Phase),
 			RequestID:          fmt.Sprintf("%d", result.Generation),
 			StatusMessage:      p.statusMessage(result.Status.Phase),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (p *PersistentVolumeClaim) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	result, err := p.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := p.Client.CoreV1().PersistentVolumeClaims(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.ReadResult{
@@ -96,12 +97,6 @@ func (p *PersistentVolumeClaim) Read(ctx context.Context, request *resource.Read
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get persistentvolumeclaim: %w", err)
-	}
-	if result == nil {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
 	}
 
 	ext, err := v1coreac.ExtractPersistentVolumeClaim(result, "formae")
@@ -154,35 +149,15 @@ func (p *PersistentVolumeClaim) Update(ctx context.Context, request *resource.Up
 			OperationStatus:    p.fromPhase(result.Status.Phase),
 			RequestID:          result.ResourceVersion,
 			StatusMessage:      p.statusMessage(result.Status.Phase),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (p *PersistentVolumeClaim) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	pvc, err := p.findByUID(ctx, request.NativeID)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to find persistentvolumeclaim: %w", err)
-	}
-	if pvc == nil {
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-			},
-		}, nil
-	}
-
-	err = p.Client.CoreV1().PersistentVolumeClaims(pvc.Namespace).Delete(ctx, pvc.Name, metav1.DeleteOptions{})
+	ns, name := prov.ParseNativeID(request.NativeID)
+	err := p.Client.CoreV1().PersistentVolumeClaims(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -204,7 +179,8 @@ func (p *PersistentVolumeClaim) Delete(ctx context.Context, request *resource.De
 }
 
 func (p *PersistentVolumeClaim) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	result, err := p.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := p.Client.CoreV1().PersistentVolumeClaims(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.StatusResult{
@@ -216,15 +192,6 @@ func (p *PersistentVolumeClaim) Status(ctx context.Context, request *resource.St
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get persistentvolumeclaim status: %w", err)
-	}
-	if result == nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCheckStatus,
-				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       resource.OperationErrorCodeNotFound,
-			},
-		}, nil
 	}
 
 	ext, err := v1coreac.ExtractPersistentVolumeClaim(result, "formae")
@@ -243,7 +210,7 @@ func (p *PersistentVolumeClaim) Status(ctx context.Context, request *resource.St
 			OperationStatus:    p.fromPhase(result.Status.Phase),
 			RequestID:          request.RequestID,
 			StatusMessage:      p.statusMessage(result.Status.Phase),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -262,26 +229,12 @@ func (p *PersistentVolumeClaim) List(ctx context.Context, request *resource.List
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, pvc := range result.Items {
-		nativeIDs = append(nativeIDs, string(pvc.UID))
+		nativeIDs = append(nativeIDs, prov.NativeID(pvc.Namespace, pvc.Name))
 	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,
 	}, nil
-}
-
-// findByUID finds a persistentvolumeclaim by its UID across all namespaces.
-func (p *PersistentVolumeClaim) findByUID(ctx context.Context, uid string) (*v1.PersistentVolumeClaim, error) {
-	list, err := p.Client.CoreV1().PersistentVolumeClaims(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for i := range list.Items {
-		if string(list.Items[i].UID) == uid {
-			return &list.Items[i], nil
-		}
-	}
-	return nil, nil
 }
 
 // fromPhase maps K8S PersistentVolumeClaimPhase to Formae OperationStatus.

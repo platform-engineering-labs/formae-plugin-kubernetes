@@ -1,0 +1,22 @@
+/*
+ * Chart Smoke Test: GrafanaChart
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@formae-charts/GrafanaChart.pkl"
+import "./config/vars.pkl" as v
+
+local chart = new GrafanaChart.Grafana {
+  name = "test-grafana-\(v.testRunID)"
+  namespace = "chart-grafana-\(v.testRunID)"
+  createNamespace = true
+  replicas = 1
+  adminPassword = "test-pass"
+  datasourceUrl = "http://localhost:9090"
+}
+
+forma {
+  v.stack
+  v.target
+  for (r in chart.resources) { r }
+}

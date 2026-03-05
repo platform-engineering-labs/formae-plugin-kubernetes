@@ -21,7 +21,7 @@ open class ValidatingWebhookConfigurationResolvable extends formae.Resolvable {
 /// Configures admission webhooks that validate requests to the API server.
 @k8s.ResourceHint {
   type = module.type
-  identifier = "$.metadata.uid"
+  identifier = "$.metadata.name"
   discoverable = true
 }
 open class ValidatingWebhookConfiguration extends k8s.Resource {

@@ -21,7 +21,7 @@ open class ServiceResolvable extends formae.Resolvable {
 /// A Service exposes a set of Pods as a network service.
 @k8s.ResourceHint {
   type = module.type
-  identifier = "$.metadata.uid"
+  identifier = "$.metadata.name"
   discoverable = true
   parent = "K8S::Core::Namespace"
   listParam = new formae.ListProperty {

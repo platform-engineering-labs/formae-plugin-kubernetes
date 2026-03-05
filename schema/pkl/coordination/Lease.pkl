@@ -21,7 +21,7 @@ open class LeaseResolvable extends formae.Resolvable {
 /// Leases provide a mechanism for distributed lease-based leader election.
 @k8s.ResourceHint {
   type = module.type
-  identifier = "$.metadata.uid"
+  identifier = "$.metadata.name"
   discoverable = true
   parent = "K8S::Core::Namespace"
   listParam = new formae.ListProperty {

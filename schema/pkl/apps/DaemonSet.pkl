@@ -21,7 +21,7 @@ open class DaemonSetResolvable extends formae.Resolvable {
 /// A DaemonSet ensures that all (or some) nodes run a copy of a Pod.
 @k8s.ResourceHint {
   type = module.type
-  identifier = "$.metadata.uid"
+  identifier = "$.metadata.name"
   discoverable = true
   parent = "K8S::Core::Namespace"
   listParam = new formae.ListProperty {

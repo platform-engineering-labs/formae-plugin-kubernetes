@@ -19,7 +19,7 @@ open class PriorityClassResolvable extends formae.Resolvable {
 }
 @k8s.ResourceHint {
   type = module.type
-  identifier = "$.metadata.uid"
+  identifier = "$.metadata.name"
   discoverable = true
 }
 open class PriorityClass extends k8s.Resource {

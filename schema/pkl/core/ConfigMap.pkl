@@ -21,7 +21,7 @@ open class ConfigMapResolvable extends formae.Resolvable {
 /// ConfigMaps hold configuration data as key-value pairs for pods to consume.
 @k8s.ResourceHint {
   type = module.type
-  identifier = "$.metadata.uid"
+  identifier = "$.metadata.name"
   discoverable = true
   parent = "K8S::Core::Namespace"
   listParam = new formae.ListProperty {

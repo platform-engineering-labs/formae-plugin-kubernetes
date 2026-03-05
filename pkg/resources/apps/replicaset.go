@@ -81,15 +81,15 @@ func (r *ReplicaSet) Create(ctx context.Context, request *resource.CreateRequest
 			OperationStatus:    r.fromConditions(result.Status.Conditions),
 			RequestID:          fmt.Sprintf("%d", result.Generation),
 			StatusMessage:      r.statusMessage(result.Status),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (r *ReplicaSet) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	// K8S API needs name, but we have UID. Use field selector to find by UID.
-	result, err := r.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := r.Client.AppsV1().ReplicaSets(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.ReadResult{
@@ -98,12 +98,6 @@ func (r *ReplicaSet) Read(ctx context.Context, request *resource.ReadRequest) (*
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get replicaset: %w", err)
-	}
-	if result == nil {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
 	}
 
 	// Extract only the fields managed by formae
@@ -158,36 +152,15 @@ func (r *ReplicaSet) Update(ctx context.Context, request *resource.UpdateRequest
 			OperationStatus:    r.fromConditions(result.Status.Conditions),
 			RequestID:          result.ResourceVersion,
 			StatusMessage:      r.statusMessage(result.Status),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (r *ReplicaSet) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	// Find replicaset by UID first to get the name and namespace
-	rs, err := r.findByUID(ctx, request.NativeID)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to find replicaset: %w", err)
-	}
-	if rs == nil {
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-			},
-		}, nil
-	}
-
-	err = r.Client.AppsV1().ReplicaSets(rs.Namespace).Delete(ctx, rs.Name, metav1.DeleteOptions{})
+	ns, name := prov.ParseNativeID(request.NativeID)
+	err := r.Client.AppsV1().ReplicaSets(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -209,7 +182,8 @@ func (r *ReplicaSet) Delete(ctx context.Context, request *resource.DeleteRequest
 }
 
 func (r *ReplicaSet) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	result, err := r.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := r.Client.AppsV1().ReplicaSets(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.StatusResult{
@@ -221,15 +195,6 @@ func (r *ReplicaSet) Status(ctx context.Context, request *resource.StatusRequest
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get replicaset status: %w", err)
-	}
-	if result == nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCheckStatus,
-				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       resource.OperationErrorCodeNotFound,
-			},
-		}, nil
 	}
 
 	// Extract only the fields managed by formae
@@ -249,7 +214,7 @@ func (r *ReplicaSet) Status(ctx context.Context, request *resource.StatusRequest
 			OperationStatus:    r.fromConditions(result.Status.Conditions),
 			RequestID:          request.RequestID,
 			StatusMessage:      r.statusMessage(result.Status),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -268,26 +233,12 @@ func (r *ReplicaSet) List(ctx context.Context, request *resource.ListRequest) (*
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, rs := range result.Items {
-		nativeIDs = append(nativeIDs, string(rs.UID))
+		nativeIDs = append(nativeIDs, prov.NativeID(rs.Namespace, rs.Name))
 	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,
 	}, nil
-}
-
-// findByUID finds a replicaset by its UID across all namespaces.
-func (r *ReplicaSet) findByUID(ctx context.Context, uid string) (*appsv1.ReplicaSet, error) {
-	list, err := r.Client.AppsV1().ReplicaSets(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for i := range list.Items {
-		if string(list.Items[i].UID) == uid {
-			return &list.Items[i], nil
-		}
-	}
-	return nil, nil
 }
 
 // fromConditions maps K8S ReplicaSet conditions to Formae OperationStatus.

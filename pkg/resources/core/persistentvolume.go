@@ -75,14 +75,15 @@ func (p *PersistentVolume) Create(ctx context.Context, request *resource.CreateR
 			OperationStatus:    p.fromPhase(result.Status.Phase),
 			RequestID:          fmt.Sprintf("%d", result.Generation),
 			StatusMessage:      p.statusMessage(result.Status.Phase),
-			NativeID:           string(result.UID),
+			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (p *PersistentVolume) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	result, err := p.findByUID(ctx, request.NativeID)
+	_, name := prov.ParseNativeID(request.NativeID)
+	result, err := p.Client.CoreV1().PersistentVolumes().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.ReadResult{
@@ -91,12 +92,6 @@ func (p *PersistentVolume) Read(ctx context.Context, request *resource.ReadReque
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get persistentvolume: %w", err)
-	}
-	if result == nil {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
 	}
 
 	ext, err := v1coreac.ExtractPersistentVolume(result, "formae")
@@ -144,35 +139,15 @@ func (p *PersistentVolume) Update(ctx context.Context, request *resource.UpdateR
 			OperationStatus:    p.fromPhase(result.Status.Phase),
 			RequestID:          result.ResourceVersion,
 			StatusMessage:      p.statusMessage(result.Status.Phase),
-			NativeID:           string(result.UID),
+			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (p *PersistentVolume) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	pv, err := p.findByUID(ctx, request.NativeID)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to find persistentvolume: %w", err)
-	}
-	if pv == nil {
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-			},
-		}, nil
-	}
-
-	err = p.Client.CoreV1().PersistentVolumes().Delete(ctx, pv.Name, metav1.DeleteOptions{})
+	_, name := prov.ParseNativeID(request.NativeID)
+	err := p.Client.CoreV1().PersistentVolumes().Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -194,7 +169,8 @@ func (p *PersistentVolume) Delete(ctx context.Context, request *resource.DeleteR
 }
 
 func (p *PersistentVolume) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	result, err := p.findByUID(ctx, request.NativeID)
+	_, name := prov.ParseNativeID(request.NativeID)
+	result, err := p.Client.CoreV1().PersistentVolumes().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.StatusResult{
@@ -206,15 +182,6 @@ func (p *PersistentVolume) Status(ctx context.Context, request *resource.StatusR
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get persistentvolume status: %w", err)
-	}
-	if result == nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCheckStatus,
-				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       resource.OperationErrorCodeNotFound,
-			},
-		}, nil
 	}
 
 	ext, err := v1coreac.ExtractPersistentVolume(result, "formae")
@@ -233,7 +200,7 @@ func (p *PersistentVolume) Status(ctx context.Context, request *resource.StatusR
 			OperationStatus:    p.fromPhase(result.Status.Phase),
 			RequestID:          request.RequestID,
 			StatusMessage:      p.statusMessage(result.Status.Phase),
-			NativeID:           string(result.UID),
+			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -247,27 +214,12 @@ func (p *PersistentVolume) List(ctx context.Context, request *resource.ListReque
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, pv := range result.Items {
-		nativeIDs = append(nativeIDs, string(pv.UID))
+		nativeIDs = append(nativeIDs, pv.Name)
 	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,
 	}, nil
-}
-
-// findByUID finds a persistentvolume by its UID.
-// PersistentVolumes are cluster-scoped, so no namespace filtering is needed.
-func (p *PersistentVolume) findByUID(ctx context.Context, uid string) (*v1.PersistentVolume, error) {
-	list, err := p.Client.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for i := range list.Items {
-		if string(list.Items[i].UID) == uid {
-			return &list.Items[i], nil
-		}
-	}
-	return nil, nil
 }
 
 // fromPhase maps K8S PersistentVolumePhase to Formae OperationStatus.

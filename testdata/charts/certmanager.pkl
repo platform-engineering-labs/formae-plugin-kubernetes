@@ -1,0 +1,23 @@
+/*
+ * Chart Smoke Test: CertManagerChart
+ * Note: cert-manager pods will NOT be Ready without CRDs installed.
+ * This test validates that the chart's K8S resources are created correctly.
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@formae-charts/CertManagerChart.pkl"
+import "./config/vars.pkl" as v
+
+local chart = new CertManagerChart.CertManager {
+  name = "test-cm-\(v.testRunID)"
+  namespace = "chart-cm-\(v.testRunID)"
+  createNamespace = true
+  createServiceAccount = true
+  createClusterRoles = true
+}
+
+forma {
+  v.stack
+  v.target
+  for (r in chart.resources) { r }
+}

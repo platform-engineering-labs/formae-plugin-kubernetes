@@ -19,7 +19,7 @@ open class PersistentVolumeResolvable extends formae.Resolvable {
 }
 @k8s.ResourceHint {
   type = module.type
-  identifier = "$.metadata.uid"
+  identifier = "$.metadata.name"
   discoverable = true
 }
 open class PersistentVolume extends k8s.Resource {

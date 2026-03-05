@@ -1,0 +1,17 @@
+import "@formae/formae.pkl"
+import "@formae-plugin-k8s/k8s.pkl"
+
+testRunID = read("env:FORMAE_TEST_RUN_ID")
+
+stack = new formae.Stack {
+  label = "chart-test-stack"
+  description = "Chart integration test stack"
+}
+
+target = new formae.Target {
+  label = "k8s-target"
+  namespace = "K8S"
+  config = new k8s.Config {
+    waitForLoadBalancer = false
+  }
+}

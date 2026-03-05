@@ -82,15 +82,15 @@ func (p *Pod) Create(ctx context.Context, request *resource.CreateRequest) (*res
 			RequestID:          fmt.Sprintf("%d", result.Generation),
 			StatusMessage:      result.Status.Message,
 			ErrorCode:          p.fromReason(result.Status.Reason),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (p *Pod) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	// K8S API needs name, but we have UID. Use field selector to find by UID.
-	result, err := p.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := p.Client.CoreV1().Pods(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.ReadResult{
@@ -99,12 +99,6 @@ func (p *Pod) Read(ctx context.Context, request *resource.ReadRequest) (*resourc
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get pod: %w", err)
-	}
-	if result == nil {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
 	}
 
 	// Extract only the fields managed by formae
@@ -160,36 +154,15 @@ func (p *Pod) Update(ctx context.Context, request *resource.UpdateRequest) (*res
 			RequestID:          result.ResourceVersion,
 			StatusMessage:      result.Status.Message,
 			ErrorCode:          p.fromReason(result.Status.Reason),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (p *Pod) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	// Find pod by UID first to get the name and namespace
-	pod, err := p.findByUID(ctx, request.NativeID)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to find pod: %w", err)
-	}
-	if pod == nil {
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-			},
-		}, nil
-	}
-
-	err = p.Client.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
+	ns, name := prov.ParseNativeID(request.NativeID)
+	err := p.Client.CoreV1().Pods(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -211,7 +184,8 @@ func (p *Pod) Delete(ctx context.Context, request *resource.DeleteRequest) (*res
 }
 
 func (p *Pod) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	result, err := p.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := p.Client.CoreV1().Pods(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.StatusResult{
@@ -223,15 +197,6 @@ func (p *Pod) Status(ctx context.Context, request *resource.StatusRequest) (*res
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get pod status: %w", err)
-	}
-	if result == nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCheckStatus,
-				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       resource.OperationErrorCodeNotFound,
-			},
-		}, nil
 	}
 
 	// Extract only the fields managed by formae
@@ -252,7 +217,7 @@ func (p *Pod) Status(ctx context.Context, request *resource.StatusRequest) (*res
 			RequestID:          request.RequestID,
 			StatusMessage:      result.Status.Message,
 			ErrorCode:          p.fromReason(result.Status.Reason),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -271,30 +236,12 @@ func (p *Pod) List(ctx context.Context, request *resource.ListRequest) (*resourc
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, pod := range result.Items {
-		nativeIDs = append(nativeIDs, string(pod.UID))
+		nativeIDs = append(nativeIDs, prov.NativeID(pod.Namespace, pod.Name))
 	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,
 	}, nil
-}
-
-// findByUID finds a pod by its UID.
-// K8S doesn't universally support metadata.uid field selector,
-// so we list all pods across all namespaces and filter in memory.
-// We search all namespaces because discovery may find resources outside
-// the configured default namespace.
-func (p *Pod) findByUID(ctx context.Context, uid string) (*v1.Pod, error) {
-	list, err := p.Client.CoreV1().Pods(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for i := range list.Items {
-		if string(list.Items[i].UID) == uid {
-			return &list.Items[i], nil
-		}
-	}
-	return nil, nil
 }
 
 // fromPhase maps K8S PodPhase to Formae OperationStatus.

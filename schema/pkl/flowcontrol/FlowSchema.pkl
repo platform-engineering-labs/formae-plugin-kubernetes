@@ -21,7 +21,7 @@ open class FlowSchemaResolvable extends formae.Resolvable {
 /// FlowSchemas define how requests to the API server are classified into flows for priority and fairness.
 @k8s.ResourceHint {
   type = module.type
-  identifier = "$.metadata.uid"
+  identifier = "$.metadata.name"
   discoverable = true
 }
 open class FlowSchema extends k8s.Resource {

@@ -21,7 +21,7 @@ open class PriorityLevelConfigurationResolvable extends formae.Resolvable {
 /// PriorityLevelConfiguration defines the configuration of a priority level for API request handling.
 @k8s.ResourceHint {
   type = module.type
-  identifier = "$.metadata.uid"
+  identifier = "$.metadata.name"
   discoverable = true
 }
 open class PriorityLevelConfiguration extends k8s.Resource {

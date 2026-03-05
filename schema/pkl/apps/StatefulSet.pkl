@@ -21,7 +21,7 @@ open class StatefulSetResolvable extends formae.Resolvable {
 /// A StatefulSet manages stateful applications with stable network identities and persistent storage.
 @k8s.ResourceHint {
   type = module.type
-  identifier = "$.metadata.uid"
+  identifier = "$.metadata.name"
   discoverable = true
   parent = "K8S::Core::Namespace"
   listParam = new formae.ListProperty {

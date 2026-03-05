@@ -14,7 +14,6 @@ import (
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/registry"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/transport"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
-	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	rbacv1ac "k8s.io/client-go/applyconfigurations/rbac/v1"
@@ -79,14 +78,15 @@ func (r *Role) Create(ctx context.Context, request *resource.CreateRequest) (*re
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          fmt.Sprintf("%d", result.Generation),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (r *Role) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	result, err := r.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := r.Client.RbacV1().Roles(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.ReadResult{
@@ -95,12 +95,6 @@ func (r *Role) Read(ctx context.Context, request *resource.ReadRequest) (*resour
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get role: %w", err)
-	}
-	if result == nil {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
 	}
 
 	ext, err := rbacv1ac.ExtractRole(result, "formae")
@@ -152,35 +146,16 @@ func (r *Role) Update(ctx context.Context, request *resource.UpdateRequest) (*re
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          result.ResourceVersion,
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (r *Role) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	role, err := r.findByUID(ctx, request.NativeID)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to find role: %w", err)
-	}
-	if role == nil {
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-			},
-		}, nil
-	}
+	ns, name := prov.ParseNativeID(request.NativeID)
 
-	err = r.Client.RbacV1().Roles(role.Namespace).Delete(ctx, role.Name, metav1.DeleteOptions{})
+	err := r.Client.RbacV1().Roles(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -202,7 +177,8 @@ func (r *Role) Delete(ctx context.Context, request *resource.DeleteRequest) (*re
 }
 
 func (r *Role) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	result, err := r.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := r.Client.RbacV1().Roles(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.StatusResult{
@@ -214,15 +190,6 @@ func (r *Role) Status(ctx context.Context, request *resource.StatusRequest) (*re
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get role status: %w", err)
-	}
-	if result == nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCheckStatus,
-				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       resource.OperationErrorCodeNotFound,
-			},
-		}, nil
 	}
 
 	ext, err := rbacv1ac.ExtractRole(result, "formae")
@@ -240,7 +207,7 @@ func (r *Role) Status(ctx context.Context, request *resource.StatusRequest) (*re
 			Operation:          resource.OperationCheckStatus,
 			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          request.RequestID,
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -259,7 +226,7 @@ func (r *Role) List(ctx context.Context, request *resource.ListRequest) (*resour
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, role := range result.Items {
-		nativeIDs = append(nativeIDs, string(role.UID))
+		nativeIDs = append(nativeIDs, prov.NativeID(role.Namespace, role.Name))
 	}
 
 	return &resource.ListResult{
@@ -267,16 +234,3 @@ func (r *Role) List(ctx context.Context, request *resource.ListRequest) (*resour
 	}, nil
 }
 
-// findByUID finds a role by its UID across all namespaces.
-func (r *Role) findByUID(ctx context.Context, uid string) (*rbacv1.Role, error) {
-	list, err := r.Client.RbacV1().Roles(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for i := range list.Items {
-		if string(list.Items[i].UID) == uid {
-			return &list.Items[i], nil
-		}
-	}
-	return nil, nil
-}

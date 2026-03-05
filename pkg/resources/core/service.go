@@ -80,14 +80,15 @@ func (svc *Service) Create(ctx context.Context, request *resource.CreateRequest)
 			OperationStatus:    svc.operationStatus(result),
 			RequestID:          fmt.Sprintf("%d", result.Generation),
 			StatusMessage:      svc.statusMessage(result),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (svc *Service) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	result, err := svc.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := svc.Client.CoreV1().Services(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.ReadResult{
@@ -96,12 +97,6 @@ func (svc *Service) Read(ctx context.Context, request *resource.ReadRequest) (*r
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get service: %w", err)
-	}
-	if result == nil {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
 	}
 
 	ext, err := v1coreac.ExtractService(result, "formae")
@@ -154,35 +149,15 @@ func (svc *Service) Update(ctx context.Context, request *resource.UpdateRequest)
 			OperationStatus:    svc.operationStatus(result),
 			RequestID:          result.ResourceVersion,
 			StatusMessage:      svc.statusMessage(result),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (svc *Service) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	s, err := svc.findByUID(ctx, request.NativeID)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to find service: %w", err)
-	}
-	if s == nil {
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-			},
-		}, nil
-	}
-
-	err = svc.Client.CoreV1().Services(s.Namespace).Delete(ctx, s.Name, metav1.DeleteOptions{})
+	ns, name := prov.ParseNativeID(request.NativeID)
+	err := svc.Client.CoreV1().Services(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -204,7 +179,8 @@ func (svc *Service) Delete(ctx context.Context, request *resource.DeleteRequest)
 }
 
 func (svc *Service) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	result, err := svc.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := svc.Client.CoreV1().Services(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.StatusResult{
@@ -216,15 +192,6 @@ func (svc *Service) Status(ctx context.Context, request *resource.StatusRequest)
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get service status: %w", err)
-	}
-	if result == nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCheckStatus,
-				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       resource.OperationErrorCodeNotFound,
-			},
-		}, nil
 	}
 
 	ext, err := v1coreac.ExtractService(result, "formae")
@@ -243,7 +210,7 @@ func (svc *Service) Status(ctx context.Context, request *resource.StatusRequest)
 			OperationStatus:    svc.operationStatus(result),
 			RequestID:          request.RequestID,
 			StatusMessage:      svc.statusMessage(result),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -262,26 +229,12 @@ func (svc *Service) List(ctx context.Context, request *resource.ListRequest) (*r
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, s := range result.Items {
-		nativeIDs = append(nativeIDs, string(s.UID))
+		nativeIDs = append(nativeIDs, prov.NativeID(s.Namespace, s.Name))
 	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,
 	}, nil
-}
-
-// findByUID finds a service by its UID across all namespaces.
-func (svc *Service) findByUID(ctx context.Context, uid string) (*v1.Service, error) {
-	list, err := svc.Client.CoreV1().Services(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for i := range list.Items {
-		if string(list.Items[i].UID) == uid {
-			return &list.Items[i], nil
-		}
-	}
-	return nil, nil
 }
 
 // operationStatus maps Service state to Formae OperationStatus.

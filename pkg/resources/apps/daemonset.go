@@ -80,14 +80,15 @@ func (ds *DaemonSet) Create(ctx context.Context, request *resource.CreateRequest
 			OperationStatus:    ds.operationStatus(result.Status),
 			RequestID:          fmt.Sprintf("%d", result.Generation),
 			StatusMessage:      ds.statusMessage(result.Status),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (ds *DaemonSet) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	result, err := ds.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := ds.Client.AppsV1().DaemonSets(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.ReadResult{
@@ -96,12 +97,6 @@ func (ds *DaemonSet) Read(ctx context.Context, request *resource.ReadRequest) (*
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get daemonset: %w", err)
-	}
-	if result == nil {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
 	}
 
 	ext, err := appsv1ac.ExtractDaemonSet(result, "formae")
@@ -154,35 +149,15 @@ func (ds *DaemonSet) Update(ctx context.Context, request *resource.UpdateRequest
 			OperationStatus:    ds.operationStatus(result.Status),
 			RequestID:          result.ResourceVersion,
 			StatusMessage:      ds.statusMessage(result.Status),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (ds *DaemonSet) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	daemonset, err := ds.findByUID(ctx, request.NativeID)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to find daemonset: %w", err)
-	}
-	if daemonset == nil {
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-			},
-		}, nil
-	}
-
-	err = ds.Client.AppsV1().DaemonSets(daemonset.Namespace).Delete(ctx, daemonset.Name, metav1.DeleteOptions{})
+	ns, name := prov.ParseNativeID(request.NativeID)
+	err := ds.Client.AppsV1().DaemonSets(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -204,7 +179,8 @@ func (ds *DaemonSet) Delete(ctx context.Context, request *resource.DeleteRequest
 }
 
 func (ds *DaemonSet) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	result, err := ds.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := ds.Client.AppsV1().DaemonSets(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.StatusResult{
@@ -216,15 +192,6 @@ func (ds *DaemonSet) Status(ctx context.Context, request *resource.StatusRequest
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get daemonset status: %w", err)
-	}
-	if result == nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCheckStatus,
-				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       resource.OperationErrorCodeNotFound,
-			},
-		}, nil
 	}
 
 	ext, err := appsv1ac.ExtractDaemonSet(result, "formae")
@@ -243,7 +210,7 @@ func (ds *DaemonSet) Status(ctx context.Context, request *resource.StatusRequest
 			OperationStatus:    ds.operationStatus(result.Status),
 			RequestID:          request.RequestID,
 			StatusMessage:      ds.statusMessage(result.Status),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -262,26 +229,12 @@ func (ds *DaemonSet) List(ctx context.Context, request *resource.ListRequest) (*
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, daemonset := range result.Items {
-		nativeIDs = append(nativeIDs, string(daemonset.UID))
+		nativeIDs = append(nativeIDs, prov.NativeID(daemonset.Namespace, daemonset.Name))
 	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,
 	}, nil
-}
-
-// findByUID finds a daemonset by its UID across all namespaces.
-func (ds *DaemonSet) findByUID(ctx context.Context, uid string) (*appsv1.DaemonSet, error) {
-	list, err := ds.Client.AppsV1().DaemonSets(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for i := range list.Items {
-		if string(list.Items[i].UID) == uid {
-			return &list.Items[i], nil
-		}
-	}
-	return nil, nil
 }
 
 // operationStatus maps DaemonSet status to Formae OperationStatus.

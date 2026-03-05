@@ -21,7 +21,7 @@ open class RuntimeClassResolvable extends formae.Resolvable {
 /// RuntimeClass defines a class of container runtime supported in the cluster.
 @k8s.ResourceHint {
   type = module.type
-  identifier = "$.metadata.uid"
+  identifier = "$.metadata.name"
   discoverable = true
 }
 open class RuntimeClass extends k8s.Resource {

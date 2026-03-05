@@ -80,14 +80,15 @@ func (d *Deployment) Create(ctx context.Context, request *resource.CreateRequest
 			OperationStatus:    d.fromConditions(result.Status.Conditions),
 			RequestID:          fmt.Sprintf("%d", result.Generation),
 			StatusMessage:      d.statusMessage(result.Status),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (d *Deployment) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	result, err := d.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := d.Client.AppsV1().Deployments(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.ReadResult{
@@ -96,12 +97,6 @@ func (d *Deployment) Read(ctx context.Context, request *resource.ReadRequest) (*
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get deployment: %w", err)
-	}
-	if result == nil {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
 	}
 
 	ext, err := appsv1ac.ExtractDeployment(result, "formae")
@@ -154,35 +149,15 @@ func (d *Deployment) Update(ctx context.Context, request *resource.UpdateRequest
 			OperationStatus:    d.fromConditions(result.Status.Conditions),
 			RequestID:          result.ResourceVersion,
 			StatusMessage:      d.statusMessage(result.Status),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
 }
 
 func (d *Deployment) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	deploy, err := d.findByUID(ctx, request.NativeID)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to find deployment: %w", err)
-	}
-	if deploy == nil {
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-			},
-		}, nil
-	}
-
-	err = d.Client.AppsV1().Deployments(deploy.Namespace).Delete(ctx, deploy.Name, metav1.DeleteOptions{})
+	ns, name := prov.ParseNativeID(request.NativeID)
+	err := d.Client.AppsV1().Deployments(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -204,7 +179,8 @@ func (d *Deployment) Delete(ctx context.Context, request *resource.DeleteRequest
 }
 
 func (d *Deployment) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	result, err := d.findByUID(ctx, request.NativeID)
+	ns, name := prov.ParseNativeID(request.NativeID)
+	result, err := d.Client.AppsV1().Deployments(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.StatusResult{
@@ -216,15 +192,6 @@ func (d *Deployment) Status(ctx context.Context, request *resource.StatusRequest
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get deployment status: %w", err)
-	}
-	if result == nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCheckStatus,
-				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       resource.OperationErrorCodeNotFound,
-			},
-		}, nil
 	}
 
 	ext, err := appsv1ac.ExtractDeployment(result, "formae")
@@ -243,7 +210,7 @@ func (d *Deployment) Status(ctx context.Context, request *resource.StatusRequest
 			OperationStatus:    d.fromConditions(result.Status.Conditions),
 			RequestID:          request.RequestID,
 			StatusMessage:      d.statusMessage(result.Status),
-			NativeID:           string(result.UID),
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -262,26 +229,12 @@ func (d *Deployment) List(ctx context.Context, request *resource.ListRequest) (*
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, deploy := range result.Items {
-		nativeIDs = append(nativeIDs, string(deploy.UID))
+		nativeIDs = append(nativeIDs, prov.NativeID(deploy.Namespace, deploy.Name))
 	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,
 	}, nil
-}
-
-// findByUID finds a deployment by its UID across all namespaces.
-func (d *Deployment) findByUID(ctx context.Context, uid string) (*appsv1.Deployment, error) {
-	list, err := d.Client.AppsV1().Deployments(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for i := range list.Items {
-		if string(list.Items[i].UID) == uid {
-			return &list.Items[i], nil
-		}
-	}
-	return nil, nil
 }
 
 // fromConditions maps K8S Deployment conditions to Formae OperationStatus.
