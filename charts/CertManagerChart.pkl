@@ -1,0 +1,473 @@
+// CertManagerChart: A native Formae chart for deploying cert-manager.
+//
+// Pure PKL — no Helm, no pkl-reader-helm, no external tools.
+//
+// cert-manager is a Kubernetes add-on that automates the management and
+// issuance of TLS certificates. It has three components:
+//   - Controller (cert-manager-controller) — core certificate lifecycle
+//   - Webhook (cert-manager-webhook) — admission webhook for validation
+//   - CA Injector (cert-manager-cainjector) — injects CA bundles into webhooks
+//
+// External dependencies:
+//   - cert-manager CRDs must be installed separately
+//
+// Usage:
+//
+//   ```pkl
+//   amends "@formae/forma.pkl"
+//
+//   import "@formae/formae.pkl"
+//   import "@formae-charts/CertManagerChart.pkl"
+//
+//   local certManager = new CertManagerChart.CertManager {
+//     name = "cert-manager"
+//     namespace = "cert-manager"
+//     createNamespace = true
+//   }
+//
+//   forma {
+//     new formae.Stack { label = "cert-manager" }
+//     new formae.Target {
+//       label = "prod"
+//       namespace = "K8S"
+//       config { ["context"] = "my-cluster"; ["namespace"] = "cert-manager" }
+//     }
+//     for (r in certManager.resources) { r }
+//   }
+//   ```
+module CertManagerChart
+
+import "@formae-plugin-k8s/k8s.pkl"
+import "@formae-plugin-k8s/apps/Deployment.pkl" as dep
+import "@formae-plugin-k8s/core/Service.pkl" as svc
+import "@formae-plugin-k8s/core/ServiceAccount.pkl" as sa
+import "@formae-plugin-k8s/core/Namespace.pkl" as ns
+import "@formae-plugin-k8s/rbac/ClusterRole.pkl" as cr
+import "@formae-plugin-k8s/rbac/ClusterRoleBinding.pkl" as crb
+
+/// cert-manager deployment chart.
+open class CertManager {
+
+  // ── Identity ────────────────────────────────────────────────────────────────
+
+  /// Application name. Used for resource names, labels, and formae label prefixes.
+  name: String = "cert-manager"
+
+  /// Target namespace.
+  namespace: String = "cert-manager"
+
+  // ── Images ──────────────────────────────────────────────────────────────────
+
+  /// Controller image.
+  controllerImage: String = "quay.io/jetstack/cert-manager-controller:v1.17.1"
+
+  /// Webhook image.
+  webhookImage: String = "quay.io/jetstack/cert-manager-webhook:v1.17.1"
+
+  /// CA Injector image.
+  cainjectorImage: String = "quay.io/jetstack/cert-manager-cainjector:v1.17.1"
+
+  // ── Scaling ─────────────────────────────────────────────────────────────────
+
+  /// Controller replicas.
+  controllerReplicas: Int = 1
+
+  /// Webhook replicas.
+  webhookReplicas: Int = 1
+
+  /// CA Injector replicas.
+  cainjectorReplicas: Int = 1
+
+  // ── Resources ───────────────────────────────────────────────────────────────
+
+  /// CPU request (e.g., "100m").
+  cpuRequest: String?
+
+  /// CPU limit (e.g., "500m").
+  cpuLimit: String?
+
+  /// Memory request (e.g., "128Mi").
+  memoryRequest: String?
+
+  /// Memory limit (e.g., "512Mi").
+  memoryLimit: String?
+
+  // ── Optional features ─────────────────────────────────────────────────────
+
+  /// Create a Namespace resource.
+  createNamespace: Boolean = true
+
+  /// Create ServiceAccounts for each component.
+  createServiceAccount: Boolean = true
+
+  /// Create ClusterRole and ClusterRoleBinding for the controller.
+  createClusterRoles: Boolean = true
+
+  /// Extra labels added to all resources.
+  extraLabels: Mapping<String, String>?
+
+  // ── Output ────────────────────────────────────────────────────────────────
+
+  /// All generated Formae resources. Use in a `forma { }` block:
+  ///
+  ///   for (r in certManager.resources) { r }
+  resources: Listing = let (_self = this)
+    new Listing {
+      when (_self.createNamespace) { _self._namespace }
+      when (_self.createServiceAccount) { _self._controllerServiceAccount }
+      when (_self.createServiceAccount) { _self._webhookServiceAccount }
+      when (_self.createServiceAccount) { _self._cainjectorServiceAccount }
+      when (_self.createClusterRoles) { _self._clusterRole }
+      when (_self.createClusterRoles) { _self._clusterRoleBinding }
+      _self._controllerDeployment
+      _self._webhookDeployment
+      _self._cainjectorDeployment
+      _self._webhookService
+    }
+
+  // ── Internal: computed labels ─────────────────────────────────────────────
+
+  hidden _appLabels: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      ["app.kubernetes.io/name"] = "cert-manager"
+      ["app.kubernetes.io/instance"] = _self.name
+      when (_self.extraLabels != null) {
+        for (_k, _v in _self.extraLabels) {
+          [_k] = _v
+        }
+      }
+    }
+
+  hidden _controllerSelectorLabels: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      ["app.kubernetes.io/name"] = "cert-manager"
+      ["app.kubernetes.io/instance"] = _self.name
+      ["app.kubernetes.io/component"] = "controller"
+    }
+
+  hidden _webhookSelectorLabels: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      ["app.kubernetes.io/name"] = "cert-manager"
+      ["app.kubernetes.io/instance"] = _self.name
+      ["app.kubernetes.io/component"] = "webhook"
+    }
+
+  hidden _cainjectorSelectorLabels: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      ["app.kubernetes.io/name"] = "cert-manager"
+      ["app.kubernetes.io/instance"] = _self.name
+      ["app.kubernetes.io/component"] = "cainjector"
+    }
+
+  hidden _controllerLabels: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      for (_k, _v in _self._appLabels) { [_k] = _v }
+      ["app.kubernetes.io/component"] = "controller"
+    }
+
+  hidden _webhookLabels: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      for (_k, _v in _self._appLabels) { [_k] = _v }
+      ["app.kubernetes.io/component"] = "webhook"
+    }
+
+  hidden _cainjectorLabels: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      for (_k, _v in _self._appLabels) { [_k] = _v }
+      ["app.kubernetes.io/component"] = "cainjector"
+    }
+
+  // ── Internal: metadata helpers ────────────────────────────────────────────
+
+  hidden _objectMeta: (String) -> k8s.ObjectMeta = (n) -> let (_self = this)
+    new k8s.ObjectMeta {
+      name = n
+      namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
+      labels = _self._appLabels
+    }
+
+  hidden _clusterMeta: (String) -> k8s.ObjectMeta = (suffix) -> let (_self = this)
+    new k8s.ObjectMeta {
+      name = _self.name + "-" + suffix
+      labels = _self._appLabels
+    }
+
+  // ── Internal: resource requirements ───────────────────────────────────────
+
+  hidden _resourceReqs: k8s.ResourceRequirements? = let (_self = this)
+    if (_self.cpuRequest == null && _self.cpuLimit == null && _self.memoryRequest == null && _self.memoryLimit == null) null
+    else new k8s.ResourceRequirements {
+      when (_self.cpuRequest != null || _self.memoryRequest != null) {
+        requests {
+          when (_self.cpuRequest != null) { ["cpu"] = _self.cpuRequest }
+          when (_self.memoryRequest != null) { ["memory"] = _self.memoryRequest }
+        }
+      }
+      when (_self.cpuLimit != null || _self.memoryLimit != null) {
+        limits {
+          when (_self.cpuLimit != null) { ["cpu"] = _self.cpuLimit }
+          when (_self.memoryLimit != null) { ["memory"] = _self.memoryLimit }
+        }
+      }
+    }
+
+  // ── Internal: resource builders ───────────────────────────────────────────
+
+  hidden _namespace: ns.Namespace = let (_self = this)
+    new ns.Namespace {
+      label = _self.name + "-namespace"
+      metadata = new ns.NamespaceMetadata {
+        name = _self.namespace
+      }
+    }
+
+  hidden _controllerServiceAccount: sa.ServiceAccount = let (_self = this)
+    new sa.ServiceAccount {
+      label = _self.name + "-controller-serviceaccount"
+      metadata = _self._objectMeta.apply(_self.name + "-controller")
+      automountServiceAccountToken = true
+    }
+
+  hidden _webhookServiceAccount: sa.ServiceAccount = let (_self = this)
+    new sa.ServiceAccount {
+      label = _self.name + "-webhook-serviceaccount"
+      metadata = _self._objectMeta.apply(_self.name + "-webhook")
+      automountServiceAccountToken = true
+    }
+
+  hidden _cainjectorServiceAccount: sa.ServiceAccount = let (_self = this)
+    new sa.ServiceAccount {
+      label = _self.name + "-cainjector-serviceaccount"
+      metadata = _self._objectMeta.apply(_self.name + "-cainjector")
+      automountServiceAccountToken = true
+    }
+
+  hidden _clusterRole: cr.ClusterRole = let (_self = this)
+    new cr.ClusterRole {
+      label = _self.name + "-controller-clusterrole"
+      metadata = _self._clusterMeta.apply("controller")
+      rules {
+        new {
+          apiGroups { "cert-manager.io"; "acme.cert-manager.io" }
+          resources { "*" }
+          verbs { "*" }
+        }
+        new {
+          apiGroups { "" }
+          resources { "events" }
+          verbs { "create"; "patch" }
+        }
+        new {
+          apiGroups { "" }
+          resources { "secrets" }
+          verbs { "get"; "list"; "watch"; "create"; "update"; "delete" }
+        }
+        new {
+          apiGroups { "" }
+          resources { "configmaps" }
+          verbs { "get"; "list"; "watch"; "create"; "update"; "delete" }
+        }
+        new {
+          apiGroups { "coordination.k8s.io" }
+          resources { "leases" }
+          verbs { "get"; "list"; "watch"; "create"; "update"; "patch" }
+        }
+        new {
+          apiGroups { "networking.k8s.io" }
+          resources { "ingresses"; "ingresses/finalizers" }
+          verbs { "get"; "list"; "watch"; "update" }
+        }
+        new {
+          apiGroups { "gateway.networking.k8s.io" }
+          resources { "gateways"; "httproutes" }
+          verbs { "get"; "list"; "watch" }
+        }
+        new {
+          apiGroups { "gateway.networking.k8s.io" }
+          resources { "gateways/finalizers"; "httproutes/finalizers" }
+          verbs { "update" }
+        }
+        new {
+          apiGroups { "apiextensions.k8s.io" }
+          resources { "customresourcedefinitions" }
+          verbs { "get"; "list"; "watch"; "update" }
+        }
+      }
+    }
+
+  hidden _clusterRoleBinding: crb.ClusterRoleBinding = let (_self = this)
+    new crb.ClusterRoleBinding {
+      label = _self.name + "-controller-clusterrolebinding"
+      metadata = _self._clusterMeta.apply("controller")
+      roleRef = new k8s.RoleRef {
+        apiGroup = "rbac.authorization.k8s.io"
+        kind = "ClusterRole"
+        name = _self.name + "-controller"
+      }
+      subjects {
+        new {
+          kind = "ServiceAccount"
+          name = _self.name + "-controller"
+          namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
+        }
+      }
+    }
+
+  hidden _controllerDeployment: dep.Deployment = let (_self = this)
+    new dep.Deployment {
+      label = _self.name + "-controller-deployment"
+      metadata = new k8s.ObjectMeta {
+        name = _self.name + "-controller"
+        namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
+        labels = _self._controllerLabels
+      }
+      spec = new dep.DeploymentSpec {
+        replicas = _self.controllerReplicas
+        selector = new k8s.LabelSelector {
+          matchLabels = _self._controllerSelectorLabels
+        }
+        template = new k8s.PodTemplateSpec {
+          metadata = new k8s.ObjectMeta {
+            name = _self.name + "-controller"
+            labels = _self._controllerLabels
+          }
+          spec = new k8s.PodSpec {
+            containers {
+              new {
+                name = "cert-manager-controller"
+                image = _self.controllerImage
+                ports {
+                  new {
+                    name = "metrics"
+                    containerPort = 9402
+                  }
+                }
+                env {
+                  new {
+                    name = "POD_NAMESPACE"
+                    valueFrom = new k8s.EnvVarSource {
+                      fieldRef = new k8s.ObjectFieldSelector {
+                        fieldPath = "metadata.namespace"
+                      }
+                    }
+                  }
+                }
+                when (_self._resourceReqs != null) {
+                  resources = _self._resourceReqs
+                }
+              }
+            }
+            when (_self.createServiceAccount) {
+              serviceAccountName = _self._controllerServiceAccount.res.name
+            }
+          }
+        }
+      }
+    }
+
+  hidden _webhookDeployment: dep.Deployment = let (_self = this)
+    new dep.Deployment {
+      label = _self.name + "-webhook-deployment"
+      metadata = new k8s.ObjectMeta {
+        name = _self.name + "-webhook"
+        namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
+        labels = _self._webhookLabels
+      }
+      spec = new dep.DeploymentSpec {
+        replicas = _self.webhookReplicas
+        selector = new k8s.LabelSelector {
+          matchLabels = _self._webhookSelectorLabels
+        }
+        template = new k8s.PodTemplateSpec {
+          metadata = new k8s.ObjectMeta {
+            name = _self.name + "-webhook"
+            labels = _self._webhookLabels
+          }
+          spec = new k8s.PodSpec {
+            containers {
+              new {
+                name = "cert-manager-webhook"
+                image = _self.webhookImage
+                args {
+                  "--v=2"
+                  "--secure-port=10250"
+                  "--dynamic-serving-ca-secret-namespace=\(_self.namespace)"
+                  "--dynamic-serving-ca-secret-name=\(_self.name)-webhook-ca"
+                  "--dynamic-serving-dns-names=\(_self.name)-webhook.\(_self.namespace).svc"
+                }
+                ports {
+                  new {
+                    name = "https"
+                    containerPort = 10250
+                  }
+                }
+                when (_self._resourceReqs != null) {
+                  resources = _self._resourceReqs
+                }
+              }
+            }
+            when (_self.createServiceAccount) {
+              serviceAccountName = _self._webhookServiceAccount.res.name
+            }
+          }
+        }
+      }
+    }
+
+  hidden _cainjectorDeployment: dep.Deployment = let (_self = this)
+    new dep.Deployment {
+      label = _self.name + "-cainjector-deployment"
+      metadata = new k8s.ObjectMeta {
+        name = _self.name + "-cainjector"
+        namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
+        labels = _self._cainjectorLabels
+      }
+      spec = new dep.DeploymentSpec {
+        replicas = _self.cainjectorReplicas
+        selector = new k8s.LabelSelector {
+          matchLabels = _self._cainjectorSelectorLabels
+        }
+        template = new k8s.PodTemplateSpec {
+          metadata = new k8s.ObjectMeta {
+            name = _self.name + "-cainjector"
+            labels = _self._cainjectorLabels
+          }
+          spec = new k8s.PodSpec {
+            containers {
+              new {
+                name = "cert-manager-cainjector"
+                image = _self.cainjectorImage
+                when (_self._resourceReqs != null) {
+                  resources = _self._resourceReqs
+                }
+              }
+            }
+            when (_self.createServiceAccount) {
+              serviceAccountName = _self._cainjectorServiceAccount.res.name
+            }
+          }
+        }
+      }
+    }
+
+  hidden _webhookService: svc.Service = let (_self = this)
+    new svc.Service {
+      label = _self.name + "-webhook-service"
+      metadata = new k8s.ObjectMeta {
+        name = _self.name + "-webhook"
+        namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
+        labels = _self._webhookLabels
+      }
+      spec = new svc.ServiceSpec {
+        `type` = "ClusterIP"
+        selector = _self._webhookSelectorLabels
+        ports {
+          new {
+            name = "https"
+            port = 443
+            targetPort = 10250
+          }
+        }
+      }
+    }
+}

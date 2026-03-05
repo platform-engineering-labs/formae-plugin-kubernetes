@@ -1,0 +1,653 @@
+// LangfuseChart: A native Formae chart for deploying Langfuse.
+//
+// Pure PKL — no Helm, no pkl-reader-helm, no external tools.
+//
+// Langfuse is an open-source LLM engineering platform with two components:
+//   - Web server (langfuse/langfuse) — API + UI on port 3000
+//   - Worker (langfuse/langfuse-worker) — background processing on port 3030
+//
+// External dependencies (deploy separately or use managed services):
+//   - PostgreSQL (required)
+//   - Redis (required)
+//   - ClickHouse (optional, for analytics)
+//   - S3-compatible storage (optional, for media/exports)
+//
+// Usage:
+//
+//   ```pkl
+//   amends "@formae/forma.pkl"
+//
+//   import "@formae/formae.pkl"
+//   import "@formae-charts/LangfuseChart.pkl"
+//
+//   local langfuse = new LangfuseChart.Langfuse {
+//     name = "langfuse"
+//     namespace = "langfuse"
+//     nextauthSecret = "my-secret-key"
+//     salt = "my-salt-value"
+//     encryptionKey = "my-encryption-key-min-32-chars!!"
+//     databaseHost = "postgres.langfuse.svc"
+//     databasePassword = "dbpass"
+//     redisHost = "redis.langfuse.svc"
+//   }
+//
+//   forma {
+//     new formae.Stack { label = "langfuse" }
+//     new formae.Target { ... }
+//     for (r in langfuse.resources) { r }
+//   }
+//   ```
+module LangfuseChart
+
+import "@formae-plugin-k8s/k8s.pkl"
+import "@formae-plugin-k8s/apps/Deployment.pkl" as dep
+import "@formae-plugin-k8s/core/Service.pkl" as svc
+import "@formae-plugin-k8s/core/ServiceAccount.pkl" as sa
+import "@formae-plugin-k8s/core/Secret.pkl" as secret
+import "@formae-plugin-k8s/core/Namespace.pkl" as ns
+import "@formae-plugin-k8s/networking/Ingress.pkl" as ing
+
+/// Langfuse deployment chart.
+open class Langfuse {
+
+  // ── Identity ────────────────────────────────────────────────────────────────
+
+  /// Application name. Used for resource names and formae labels.
+  name: String
+
+  /// Target namespace.
+  namespace: String = "default"
+
+  // ── Images ──────────────────────────────────────────────────────────────────
+
+  /// Web server image.
+  webImage: String = "langfuse/langfuse"
+
+  /// Worker image.
+  workerImage: String = "langfuse/langfuse-worker"
+
+  /// Image tag for both web and worker.
+  imageTag: String = "3"
+
+  // ── Scaling ─────────────────────────────────────────────────────────────────
+
+  /// Web server replicas.
+  webReplicas: Int = 1
+
+  /// Worker replicas.
+  workerReplicas: Int = 1
+
+  // ── Auth & Security (required) ──────────────────────────────────────────────
+
+  /// NextAuth secret — used for JWT signing. Must be a strong random string.
+  nextauthSecret: String
+
+  /// Salt for hashing. Must be a strong random string.
+  salt: String
+
+  /// Encryption key for sensitive data. Must be at least 32 characters.
+  encryptionKey: String
+
+  /// NextAuth URL — the canonical URL of the web server.
+  /// Defaults to http://<name>-web:<webServicePort>.
+  nextauthUrl: String?
+
+  // ── PostgreSQL (required) ───────────────────────────────────────────────────
+
+  /// PostgreSQL host.
+  databaseHost: String
+
+  /// PostgreSQL port.
+  databasePort: Int = 5432
+
+  /// PostgreSQL database name.
+  databaseName: String = "langfuse"
+
+  /// PostgreSQL username.
+  databaseUsername: String = "postgres"
+
+  /// PostgreSQL password.
+  databasePassword: String
+
+  // ── Redis (required) ────────────────────────────────────────────────────────
+
+  /// Redis host.
+  redisHost: String
+
+  /// Redis port.
+  redisPort: Int = 6379
+
+  /// Redis password. Null for no auth.
+  redisPassword: String?
+
+  // ── ClickHouse (optional) ───────────────────────────────────────────────────
+
+  /// ClickHouse URL (e.g., "http://clickhouse:8123").
+  clickhouseUrl: String?
+
+  /// ClickHouse database name.
+  clickhouseDb: String = "langfuse"
+
+  /// ClickHouse username.
+  clickhouseUser: String = "default"
+
+  /// ClickHouse password.
+  clickhousePassword: String?
+
+  /// ClickHouse migration URL (defaults to clickhouseUrl).
+  clickhouseMigrationUrl: String?
+
+  // ── S3 / Object Storage (optional) ──────────────────────────────────────────
+
+  /// S3 endpoint URL (e.g., "http://minio:9000").
+  s3Endpoint: String?
+
+  /// S3 access key.
+  s3AccessKeyId: String?
+
+  /// S3 secret key.
+  s3SecretAccessKey: String?
+
+  /// S3 bucket name for event uploads.
+  s3EventUploadBucket: String?
+
+  /// S3 region.
+  s3Region: String = "auto"
+
+  /// Force S3 path-style access (required for MinIO).
+  s3ForcePathStyle: Boolean = true
+
+  // ── Web Service ─────────────────────────────────────────────────────────────
+
+  /// Web service type.
+  webServiceType: String = "ClusterIP"
+
+  /// Web service port.
+  webServicePort: Int = 3000
+
+  // ── Web Resources ───────────────────────────────────────────────────────────
+
+  /// Web CPU request.
+  webCpuRequest: String?
+
+  /// Web CPU limit.
+  webCpuLimit: String?
+
+  /// Web memory request.
+  webMemoryRequest: String?
+
+  /// Web memory limit.
+  webMemoryLimit: String?
+
+  // ── Worker Resources ────────────────────────────────────────────────────────
+
+  /// Worker CPU request.
+  workerCpuRequest: String?
+
+  /// Worker CPU limit.
+  workerCpuLimit: String?
+
+  /// Worker memory request.
+  workerMemoryRequest: String?
+
+  /// Worker memory limit.
+  workerMemoryLimit: String?
+
+  // ── Logging ─────────────────────────────────────────────────────────────────
+
+  /// Log level: trace, debug, info, warn, error, fatal.
+  logLevel: String = "info"
+
+  /// Log format: text or json.
+  logFormat: String = "text"
+
+  // ── Features ────────────────────────────────────────────────────────────────
+
+  /// Enable telemetry reporting to Langfuse.
+  telemetryEnabled: Boolean = true
+
+  /// Disable user sign-up (existing users can still log in).
+  disableSignup: Boolean = false
+
+  /// Enable experimental features.
+  experimentalFeatures: Boolean = false
+
+  /// Langfuse Enterprise Edition license key.
+  licenseKey: String?
+
+  // ── SMTP (optional) ─────────────────────────────────────────────────────────
+
+  /// SMTP connection URL (e.g., "smtp://user:pass@smtp.example.com:587").
+  smtpConnectionUrl: String?
+
+  /// Email from address for transactional emails.
+  emailFromAddress: String?
+
+  // ── Ingress ─────────────────────────────────────────────────────────────────
+
+  /// Ingress hostname. When set, creates an Ingress resource.
+  ingressHost: String?
+
+  /// Ingress path.
+  ingressPath: String = "/"
+
+  /// Ingress path type.
+  ingressPathType: String = "Prefix"
+
+  /// Ingress class name.
+  ingressClassName: String?
+
+  /// Ingress TLS secret name.
+  ingressTLSSecret: String?
+
+  // ── Optional features ───────────────────────────────────────────────────────
+
+  /// Create a Namespace resource.
+  createNamespace: Boolean = false
+
+  /// Create a ServiceAccount.
+  createServiceAccount: Boolean = true
+
+  /// Extra environment variables for the web deployment.
+  webExtraEnv: Listing<k8s.EnvVar>?
+
+  /// Extra environment variables for the worker deployment.
+  workerExtraEnv: Listing<k8s.EnvVar>?
+
+  /// Extra labels on all resources.
+  extraLabels: Mapping<String, String>?
+
+  /// Node selector for web pods.
+  webNodeSelector: Mapping<String, String>?
+
+  /// Node selector for worker pods.
+  workerNodeSelector: Mapping<String, String>?
+
+  // ── Output ──────────────────────────────────────────────────────────────────
+
+  /// All generated Formae resources.
+  resources: Listing = let (_self = this)
+    new Listing {
+      when (_self.createNamespace) { _self._namespace }
+      when (_self.createServiceAccount) { _self._serviceAccount }
+      _self._secret
+      _self._webService
+      _self._webDeployment
+      _self._workerDeployment
+      when (_self.ingressHost != null) { _self._ingress }
+    }
+
+  // ── Internal: labels ────────────────────────────────────────────────────────
+
+  hidden _appLabels: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      ["app.kubernetes.io/name"] = "langfuse"
+      ["app.kubernetes.io/instance"] = _self.name
+      when (_self.extraLabels != null) {
+        for (_k, _v in _self.extraLabels) {
+          [_k] = _v
+        }
+      }
+    }
+
+  hidden _webSelectorLabels: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      ["app.kubernetes.io/name"] = "langfuse"
+      ["app.kubernetes.io/instance"] = _self.name
+      ["app.kubernetes.io/component"] = "web"
+    }
+
+  hidden _workerSelectorLabels: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      ["app.kubernetes.io/name"] = "langfuse"
+      ["app.kubernetes.io/instance"] = _self.name
+      ["app.kubernetes.io/component"] = "worker"
+    }
+
+  hidden _webLabels: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      for (_k, _v in _self._appLabels) { [_k] = _v }
+      ["app.kubernetes.io/component"] = "web"
+    }
+
+  hidden _workerLabels: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      for (_k, _v in _self._appLabels) { [_k] = _v }
+      ["app.kubernetes.io/component"] = "worker"
+    }
+
+  // ── Internal: metadata helpers ──────────────────────────────────────────────
+
+  hidden _metaFor: (String) -> k8s.ObjectMeta = (n) -> let (_self = this)
+    new k8s.ObjectMeta {
+      name = n
+      namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
+      labels = _self._appLabels
+    }
+
+  // ── Internal: env vars ──────────────────────────────────────────────────────
+
+  hidden _resolvedNextauthUrl: String = let (_self = this)
+    if (_self.nextauthUrl != null) _self.nextauthUrl
+    else "http://\(_self.name)-web:\(_self.webServicePort)"
+
+  hidden _redisConnectionString: String = let (_self = this)
+    if (_self.redisPassword != null)
+      "redis://:\(_self.redisPassword)@\(_self.redisHost):\(_self.redisPort)/0"
+    else
+      "redis://\(_self.redisHost):\(_self.redisPort)/0"
+
+  hidden _ev: (String, String) -> k8s.EnvVar = (n, v) -> new k8s.EnvVar { name = n; value = v }
+
+  hidden _commonEnv: Listing = let (_self = this)
+    new Listing {
+      _self._ev.apply("NODE_ENV", "production")
+      _self._ev.apply("LANGFUSE_LOG_LEVEL", _self.logLevel)
+      _self._ev.apply("LANGFUSE_LOG_FORMAT", _self.logFormat)
+      _self._ev.apply("NEXTAUTH_URL", _self._resolvedNextauthUrl)
+      _self._ev.apply("NEXTAUTH_SECRET", _self.nextauthSecret)
+      _self._ev.apply("SALT", _self.salt)
+      _self._ev.apply("ENCRYPTION_KEY", _self.encryptionKey)
+      _self._ev.apply("TELEMETRY_ENABLED", if (_self.telemetryEnabled) "true" else "false")
+      _self._ev.apply("AUTH_DISABLE_SIGNUP", if (_self.disableSignup) "true" else "false")
+      when (_self.experimentalFeatures) {
+        _self._ev.apply("ENABLE_EXPERIMENTAL_FEATURES", "true")
+      }
+      when (_self.licenseKey != null) {
+        _self._ev.apply("LANGFUSE_EE_LICENSE_KEY", _self.licenseKey)
+      }
+      // Database
+      _self._ev.apply("DATABASE_HOST", _self.databaseHost)
+      _self._ev.apply("DATABASE_PORT", "\(_self.databasePort)")
+      _self._ev.apply("DATABASE_NAME", _self.databaseName)
+      _self._ev.apply("DATABASE_USERNAME", _self.databaseUsername)
+      _self._ev.apply("DATABASE_PASSWORD", _self.databasePassword)
+      // Redis
+      _self._ev.apply("REDIS_CONNECTION_STRING", _self._redisConnectionString)
+      // ClickHouse
+      when (_self.clickhouseUrl != null) {
+        _self._ev.apply("CLICKHOUSE_URL", _self.clickhouseUrl)
+        _self._ev.apply("CLICKHOUSE_DB", _self.clickhouseDb)
+        _self._ev.apply("CLICKHOUSE_USER", _self.clickhouseUser)
+        when (_self.clickhousePassword != null) {
+          _self._ev.apply("CLICKHOUSE_PASSWORD", _self.clickhousePassword)
+        }
+        _self._ev.apply("CLICKHOUSE_MIGRATION_URL",
+          if (_self.clickhouseMigrationUrl != null) _self.clickhouseMigrationUrl
+          else _self.clickhouseUrl
+        )
+      }
+      // S3
+      when (_self.s3Endpoint != null) {
+        _self._ev.apply("LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT", _self.s3Endpoint)
+        _self._ev.apply("LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE", if (_self.s3ForcePathStyle) "true" else "false")
+        _self._ev.apply("LANGFUSE_S3_EVENT_UPLOAD_REGION", _self.s3Region)
+        when (_self.s3AccessKeyId != null) {
+          _self._ev.apply("LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID", _self.s3AccessKeyId)
+        }
+        when (_self.s3SecretAccessKey != null) {
+          _self._ev.apply("LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY", _self.s3SecretAccessKey)
+        }
+        when (_self.s3EventUploadBucket != null) {
+          _self._ev.apply("LANGFUSE_S3_EVENT_UPLOAD_BUCKET", _self.s3EventUploadBucket)
+        }
+      }
+      // SMTP
+      when (_self.smtpConnectionUrl != null) {
+        _self._ev.apply("SMTP_CONNECTION_URL", _self.smtpConnectionUrl)
+      }
+      when (_self.emailFromAddress != null) {
+        _self._ev.apply("EMAIL_FROM_ADDRESS", _self.emailFromAddress)
+      }
+    }
+
+  // ── Internal: resource builders ─────────────────────────────────────────────
+
+  hidden _namespace: ns.Namespace = let (_self = this)
+    new ns.Namespace {
+      label = _self.name + "-namespace"
+      metadata = new ns.NamespaceMetadata {
+        name = _self.namespace
+      }
+    }
+
+  hidden _serviceAccount: sa.ServiceAccount = let (_self = this)
+    new sa.ServiceAccount {
+      label = _self.name + "-serviceaccount"
+      metadata = _self._metaFor.apply(_self.name)
+      automountServiceAccountToken = false
+    }
+
+  hidden _secret: secret.Secret = let (_self = this)
+    new secret.Secret {
+      label = _self.name + "-secret"
+      metadata = _self._metaFor.apply(_self.name)
+      type = "Opaque"
+      stringData {
+        ["nextauth-secret"] = _self.nextauthSecret
+        ["salt"] = _self.salt
+        ["encryption-key"] = _self.encryptionKey
+        ["database-password"] = _self.databasePassword
+        when (_self.redisPassword != null) {
+          ["redis-password"] = _self.redisPassword
+        }
+        when (_self.clickhousePassword != null) {
+          ["clickhouse-password"] = _self.clickhousePassword
+        }
+        when (_self.s3SecretAccessKey != null) {
+          ["s3-secret-access-key"] = _self.s3SecretAccessKey
+        }
+      }
+    }
+
+  hidden _webResourceReqs: k8s.ResourceRequirements? = let (_self = this)
+    if (_self.webCpuRequest == null && _self.webCpuLimit == null && _self.webMemoryRequest == null && _self.webMemoryLimit == null) null
+    else new k8s.ResourceRequirements {
+      when (_self.webCpuRequest != null || _self.webMemoryRequest != null) {
+        requests {
+          when (_self.webCpuRequest != null) { ["cpu"] = _self.webCpuRequest }
+          when (_self.webMemoryRequest != null) { ["memory"] = _self.webMemoryRequest }
+        }
+      }
+      when (_self.webCpuLimit != null || _self.webMemoryLimit != null) {
+        limits {
+          when (_self.webCpuLimit != null) { ["cpu"] = _self.webCpuLimit }
+          when (_self.webMemoryLimit != null) { ["memory"] = _self.webMemoryLimit }
+        }
+      }
+    }
+
+  hidden _workerResourceReqs: k8s.ResourceRequirements? = let (_self = this)
+    if (_self.workerCpuRequest == null && _self.workerCpuLimit == null && _self.workerMemoryRequest == null && _self.workerMemoryLimit == null) null
+    else new k8s.ResourceRequirements {
+      when (_self.workerCpuRequest != null || _self.workerMemoryRequest != null) {
+        requests {
+          when (_self.workerCpuRequest != null) { ["cpu"] = _self.workerCpuRequest }
+          when (_self.workerMemoryRequest != null) { ["memory"] = _self.workerMemoryRequest }
+        }
+      }
+      when (_self.workerCpuLimit != null || _self.workerMemoryLimit != null) {
+        limits {
+          when (_self.workerCpuLimit != null) { ["cpu"] = _self.workerCpuLimit }
+          when (_self.workerMemoryLimit != null) { ["memory"] = _self.workerMemoryLimit }
+        }
+      }
+    }
+
+  hidden _webEnv: Listing = let (_self = this)
+    new Listing {
+      for (_e in _self._commonEnv) { _e }
+      _self._ev.apply("PORT", "\(_self.webServicePort)")
+      _self._ev.apply("HOSTNAME", "0.0.0.0")
+      when (_self.webExtraEnv != null) {
+        for (_e in _self.webExtraEnv) { _e }
+      }
+    }
+
+  hidden _workerEnv: Listing = let (_self = this)
+    new Listing {
+      for (_e in _self._commonEnv) { _e }
+      when (_self.workerExtraEnv != null) {
+        for (_e in _self.workerExtraEnv) { _e }
+      }
+    }
+
+  hidden _webDeployment: dep.Deployment = let (_self = this)
+    new dep.Deployment {
+      label = _self.name + "-web-deployment"
+      metadata = new k8s.ObjectMeta {
+        name = _self.name + "-web"
+        namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
+        labels = _self._webLabels
+      }
+      spec = new dep.DeploymentSpec {
+        replicas = _self.webReplicas
+        selector = new k8s.LabelSelector {
+          matchLabels = _self._webSelectorLabels
+        }
+        strategy = new dep.DeploymentStrategy {
+          type = "RollingUpdate"
+        }
+        template = new k8s.PodTemplateSpec {
+          metadata = new k8s.ObjectMeta {
+            name = _self.name + "-web"
+            labels = _self._webLabels
+          }
+          spec = new k8s.PodSpec {
+            containers {
+              new {
+                name = "langfuse-web"
+                image = _self.webImage + ":" + _self.imageTag
+                ports {
+                  new {
+                    name = "http"
+                    containerPort = _self.webServicePort
+                  }
+                }
+                env = _self._webEnv
+                when (_self._webResourceReqs != null) {
+                  resources = _self._webResourceReqs
+                }
+              }
+            }
+            when (_self.createServiceAccount) {
+              serviceAccountName = _self._serviceAccount.res.name
+            }
+            when (_self.webNodeSelector != null) {
+              nodeSelector = _self.webNodeSelector
+            }
+          }
+        }
+      }
+    }
+
+  hidden _workerDeployment: dep.Deployment = let (_self = this)
+    new dep.Deployment {
+      label = _self.name + "-worker-deployment"
+      metadata = new k8s.ObjectMeta {
+        name = _self.name + "-worker"
+        namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
+        labels = _self._workerLabels
+      }
+      spec = new dep.DeploymentSpec {
+        replicas = _self.workerReplicas
+        selector = new k8s.LabelSelector {
+          matchLabels = _self._workerSelectorLabels
+        }
+        strategy = new dep.DeploymentStrategy {
+          type = "RollingUpdate"
+        }
+        template = new k8s.PodTemplateSpec {
+          metadata = new k8s.ObjectMeta {
+            name = _self.name + "-worker"
+            labels = _self._workerLabels
+          }
+          spec = new k8s.PodSpec {
+            containers {
+              new {
+                name = "langfuse-worker"
+                image = _self.workerImage + ":" + _self.imageTag
+                ports {
+                  new {
+                    name = "http"
+                    containerPort = 3030
+                  }
+                }
+                env = _self._workerEnv
+                when (_self._workerResourceReqs != null) {
+                  resources = _self._workerResourceReqs
+                }
+              }
+            }
+            when (_self.createServiceAccount) {
+              serviceAccountName = _self._serviceAccount.res.name
+            }
+            when (_self.workerNodeSelector != null) {
+              nodeSelector = _self.workerNodeSelector
+            }
+          }
+        }
+      }
+    }
+
+  hidden _webService: svc.Service = let (_self = this)
+    new svc.Service {
+      label = _self.name + "-web-service"
+      metadata = new k8s.ObjectMeta {
+        name = _self.name + "-web"
+        namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
+        labels = _self._webLabels
+      }
+      spec = new svc.ServiceSpec {
+        type = _self.webServiceType
+        selector = _self._webSelectorLabels
+        ports {
+          new {
+            name = "http"
+            port = _self.webServicePort
+            targetPort = "http"
+          }
+        }
+      }
+    }
+
+  hidden _ingress: ing.Ingress = let (_self = this)
+    new ing.Ingress {
+      label = _self.name + "-ingress"
+      metadata = _self._metaFor.apply(_self.name)
+      spec = new ing.IngressSpec {
+        when (_self.ingressClassName != null) {
+          ingressClassName = _self.ingressClassName
+        }
+        when (_self.ingressTLSSecret != null) {
+          tls {
+            new {
+              hosts { _self.ingressHost }
+              secretName = _self.ingressTLSSecret
+            }
+          }
+        }
+        rules {
+          new {
+            host = _self.ingressHost
+            http = new ing.HTTPIngressRuleValue {
+              paths {
+                new {
+                  path = _self.ingressPath
+                  pathType = _self.ingressPathType
+                  backend = new ing.IngressBackend {
+                    service = new ing.IngressServiceBackend {
+                      name = _self.name + "-web"
+                      port = new ing.ServiceBackendPort {
+                        number = _self.webServicePort
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+}

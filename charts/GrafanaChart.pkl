@@ -1,0 +1,344 @@
+// GrafanaChart: A native Formae chart for deploying Grafana.
+//
+// Pure PKL — no Helm, no pkl-reader-helm, no external tools.
+//
+// Usage:
+//
+//   ```pkl
+//   amends "@formae/forma.pkl"
+//
+//   import "@formae-charts/GrafanaChart.pkl"
+//   import "@formae/formae.pkl"
+//
+//   local grafana = new GrafanaChart.Grafana {
+//     name = "my-grafana"
+//     namespace = "monitoring"
+//     adminPassword = "s3cret"
+//     datasourceUrl = "http://prometheus:9090"
+//   }
+//
+//   forma {
+//     new formae.Stack { label = "monitoring" }
+//     new formae.Target {
+//       label = "prod"
+//       namespace = "K8S"
+//       config { ["context"] = "my-cluster"; ["namespace"] = "monitoring" }
+//     }
+//     for (r in grafana.resources) { r }
+//   }
+//   ```
+module GrafanaChart
+
+import "@formae-plugin-k8s/k8s.pkl"
+import "@formae-plugin-k8s/apps/Deployment.pkl" as dep
+import "@formae-plugin-k8s/core/Service.pkl" as svc
+import "@formae-plugin-k8s/core/Secret.pkl" as secret
+import "@formae-plugin-k8s/core/ConfigMap.pkl" as cm
+import "@formae-plugin-k8s/core/Namespace.pkl" as ns
+import "@formae-plugin-k8s/networking/Ingress.pkl" as ing
+
+/// Grafana deployment chart.
+open class Grafana {
+
+  // ── Identity ────────────────────────────────────────────────────────────────
+
+  /// Application name. Used for resource names, labels, and formae label prefixes.
+  name: String
+
+  /// Target namespace.
+  namespace: String = "default"
+
+  // ── Container ───────────────────────────────────────────────────────────────
+
+  /// Grafana image.
+  image: String = "grafana/grafana:latest"
+
+  /// Number of replicas.
+  replicas: Int = 1
+
+  // ── Admin credentials ─────────────────────────────────────────────────────
+
+  /// Grafana admin password (GF_SECURITY_ADMIN_PASSWORD).
+  adminPassword: String = "admin"
+
+  /// Grafana admin user (GF_SECURITY_ADMIN_USER).
+  adminUser: String = "admin"
+
+  // ── Networking ────────────────────────────────────────────────────────────
+
+  /// Grafana HTTP port.
+  port: Int = 3000
+
+  /// Service type: "ClusterIP", "NodePort", or "LoadBalancer".
+  serviceType: String = "ClusterIP"
+
+  // ── Resources ─────────────────────────────────────────────────────────────
+
+  /// CPU request (e.g., "100m").
+  cpuRequest: String?
+
+  /// CPU limit (e.g., "200m").
+  cpuLimit: String?
+
+  /// Memory request (e.g., "128Mi").
+  memoryRequest: String?
+
+  /// Memory limit (e.g., "256Mi").
+  memoryLimit: String?
+
+  // ── Datasource provisioning ───────────────────────────────────────────────
+
+  /// Prometheus URL for auto-provisioned datasource. When set, creates a ConfigMap
+  /// with datasource provisioning configuration.
+  datasourceUrl: String?
+
+  // ── Optional features ─────────────────────────────────────────────────────
+
+  /// Create a Namespace resource.
+  createNamespace: Boolean = false
+
+  /// Extra labels added to all resources.
+  extraLabels: Mapping<String, String>?
+
+  /// Extra annotations added to all resources.
+  extraAnnotations: Mapping<String, String>?
+
+  // ── Ingress ───────────────────────────────────────────────────────────────
+
+  /// Ingress hostname. When set, creates an Ingress resource.
+  ingressHost: String?
+
+  /// Ingress path.
+  ingressPath: String = "/"
+
+  /// Ingress path type.
+  ingressPathType: String = "Prefix"
+
+  /// Ingress class name.
+  ingressClassName: String?
+
+  /// Ingress TLS secret name. When set with ingressHost, enables TLS.
+  ingressTLSSecret: String?
+
+  // ── Output ────────────────────────────────────────────────────────────────
+
+  /// All generated Formae resources. Use in a `forma { }` block:
+  ///
+  ///   for (r in grafana.resources) { r }
+  resources: Listing = let (_self = this)
+    new Listing {
+      when (_self.createNamespace) { _self._namespace }
+      _self._secret
+      when (_self.datasourceUrl != null) { _self._configMap }
+      _self._service
+      _self._deployment
+      when (_self.ingressHost != null) { _self._ingress }
+    }
+
+  // ── Internal: computed labels ─────────────────────────────────────────────
+
+  hidden _appLabels: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      ["app.kubernetes.io/name"] = "grafana"
+      ["app.kubernetes.io/instance"] = _self.name
+      when (_self.extraLabels != null) {
+        for (_k, _v in _self.extraLabels) {
+          [_k] = _v
+        }
+      }
+    }
+
+  hidden _selectorLabels: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      ["app.kubernetes.io/name"] = "grafana"
+      ["app.kubernetes.io/instance"] = _self.name
+    }
+
+  hidden _objectMeta: k8s.ObjectMeta = let (_self = this)
+    new k8s.ObjectMeta {
+      name = _self.name
+      namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
+      labels = _self._appLabels
+      when (_self.extraAnnotations != null) {
+        annotations = _self.extraAnnotations
+      }
+    }
+
+  // ── Internal: resource builders ───────────────────────────────────────────
+
+  hidden _namespace: ns.Namespace = let (_self = this)
+    new ns.Namespace {
+      label = _self.name + "-namespace"
+      metadata = new ns.NamespaceMetadata {
+        name = _self.namespace
+      }
+    }
+
+  hidden _secret: secret.Secret = let (_self = this)
+    new secret.Secret {
+      label = _self.name + "-secret"
+      metadata = _self._objectMeta
+      stringData {
+        ["admin-user"] = _self.adminUser
+        ["admin-password"] = _self.adminPassword
+      }
+    }
+
+  hidden _configMap: cm.ConfigMap = let (_self = this)
+    new cm.ConfigMap {
+      label = _self.name + "-datasource-configmap"
+      metadata = _self._objectMeta
+      data {
+        ["datasources.yaml"] = new Listing {
+          "apiVersion: 1"
+          "datasources:"
+          "  - name: Prometheus"
+          "    type: prometheus"
+          "    access: proxy"
+          "    url: \(_self.datasourceUrl)"
+          "    isDefault: true"
+          "    editable: true"
+        }.toList().join("\n")
+      }
+    }
+
+  hidden _resourceReqs: k8s.ResourceRequirements? = let (_self = this)
+    if (_self.cpuRequest == null && _self.cpuLimit == null && _self.memoryRequest == null && _self.memoryLimit == null) null
+    else new k8s.ResourceRequirements {
+      when (_self.cpuRequest != null || _self.memoryRequest != null) {
+        requests {
+          when (_self.cpuRequest != null) { ["cpu"] = _self.cpuRequest }
+          when (_self.memoryRequest != null) { ["memory"] = _self.memoryRequest }
+        }
+      }
+      when (_self.cpuLimit != null || _self.memoryLimit != null) {
+        limits {
+          when (_self.cpuLimit != null) { ["cpu"] = _self.cpuLimit }
+          when (_self.memoryLimit != null) { ["memory"] = _self.memoryLimit }
+        }
+      }
+    }
+
+  hidden _container: k8s.Container = let (_self = this)
+    new k8s.Container {
+      name = "grafana"
+      image = _self.image
+      ports {
+        new {
+          name = "http"
+          containerPort = _self.port
+        }
+      }
+      env {
+        new {
+          name = "GF_SECURITY_ADMIN_USER"
+          value = _self.adminUser
+        }
+        new {
+          name = "GF_SECURITY_ADMIN_PASSWORD"
+          value = _self.adminPassword
+        }
+      }
+      when (_self.datasourceUrl != null) {
+        volumeMounts {
+          new {
+            name = "datasource-config"
+            mountPath = "/etc/grafana/provisioning/datasources"
+          }
+        }
+      }
+      when (_self._resourceReqs != null) {
+        resources = _self._resourceReqs
+      }
+    }
+
+  hidden _deployment: dep.Deployment = let (_self = this)
+    new dep.Deployment {
+      label = _self.name + "-deployment"
+      metadata = _self._objectMeta
+      spec = new dep.DeploymentSpec {
+        replicas = _self.replicas
+        selector = new k8s.LabelSelector {
+          matchLabels = _self._selectorLabels
+        }
+        template = new k8s.PodTemplateSpec {
+          metadata = new k8s.ObjectMeta {
+            name = _self.name
+            labels = _self._appLabels
+          }
+          spec = new k8s.PodSpec {
+            containers {
+              _self._container
+            }
+            when (_self.datasourceUrl != null) {
+              volumes {
+                new {
+                  name = "datasource-config"
+                  configMap = new k8s.ConfigMapVolumeSource {
+                    name = _self.name
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+  hidden _service: svc.Service = let (_self = this)
+    new svc.Service {
+      label = _self.name + "-service"
+      metadata = _self._objectMeta
+      spec = new svc.ServiceSpec {
+        type = _self.serviceType
+        selector = _self._selectorLabels
+        ports {
+          new {
+            name = "http"
+            port = _self.port
+            targetPort = "http"
+          }
+        }
+      }
+    }
+
+  hidden _ingress: ing.Ingress = let (_self = this)
+    new ing.Ingress {
+      label = _self.name + "-ingress"
+      metadata = _self._objectMeta
+      spec = new ing.IngressSpec {
+        when (_self.ingressClassName != null) {
+          ingressClassName = _self.ingressClassName
+        }
+        when (_self.ingressTLSSecret != null) {
+          tls {
+            new {
+              hosts { _self.ingressHost }
+              secretName = _self.ingressTLSSecret
+            }
+          }
+        }
+        rules {
+          new {
+            host = _self.ingressHost
+            http = new ing.HTTPIngressRuleValue {
+              paths {
+                new {
+                  path = _self.ingressPath
+                  pathType = _self.ingressPathType
+                  backend = new ing.IngressBackend {
+                    service = new ing.IngressServiceBackend {
+                      name = _self.name
+                      port = new ing.ServiceBackendPort {
+                        number = _self.port
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+}

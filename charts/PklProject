@@ -1,0 +1,15 @@
+amends "pkl:Project"
+
+package {
+  name = "formae-charts"
+  baseUri = "package://hub.platform.engineering/plugins/k8s/charts"
+  version = "0.1.0"
+  packageZipUrl = "https://hub.platform.engineering/plugins/k8s/charts/formae-charts@\(version).zip"
+}
+
+dependencies {
+  ["formae"] {
+    uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.82.1"
+  }
+  ["formae-plugin-k8s"] = import("../schema/pkl/PklProject")
+}
