@@ -236,6 +236,11 @@ func (p *Pod) List(ctx context.Context, request *resource.ListRequest) (*resourc
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, pod := range result.Items {
+		// Skip pods owned by a controller (ReplicaSet, DaemonSet, Job, etc.)
+		// Only discover standalone pods that were created directly.
+		if len(pod.OwnerReferences) > 0 {
+			continue
+		}
 		nativeIDs = append(nativeIDs, prov.NativeID(pod.Namespace, pod.Name))
 	}
 
