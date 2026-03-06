@@ -18,7 +18,7 @@ class ResourceEntry {
   kind: String
 
   /// JSONPath identifier (default: "$.metadata.uid")
-  identifier: String = "$.metadata.uid"
+  identifier: String = "$.metadata.name"
 
   /// Whether cluster-scoped (no parent/listParam)
   clusterScoped: Boolean = false
