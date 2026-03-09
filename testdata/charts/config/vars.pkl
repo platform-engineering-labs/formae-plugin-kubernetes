@@ -1,5 +1,5 @@
 import "@formae/formae.pkl"
-import "@formae-plugin-k8s/k8s.pkl"
+import "@k8s/k8s.pkl"
 
 testRunID = read("env:FORMAE_TEST_RUN_ID")
 

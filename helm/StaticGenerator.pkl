@@ -32,7 +32,7 @@
 ///   ```
 ///
 /// The output file is a complete, editable PKL forma that uses typed
-/// formae-plugin-k8s resources.  It does NOT need pkl-reader-helm.
+/// k8s resources.  It does NOT need pkl-reader-helm.
 module StaticGenerator
 
 import "@helm/helm.pkl" as helm

@@ -12,7 +12,7 @@ import (
 
 const ResourceTypeCustomResourceDefinition = "K8S::ApiExtensions::CustomResourceDefinition"
 
-func noinit() {
+func noinit() { //nolint:unused // registration disabled until CRD schema is ready
 	generic.RegisterCRD(ResourceTypeCustomResourceDefinition, generic.CRDInfo{
 		GVR: schema.GroupVersionResource{
 			Group:    "apiextensions.k8s.io",

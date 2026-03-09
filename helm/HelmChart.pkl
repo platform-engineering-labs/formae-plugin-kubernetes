@@ -1,4 +1,4 @@
-/// HelmChart: Render a Helm chart and map its output to formae-plugin-k8s types.
+/// HelmChart: Render a Helm chart and map its output to k8s types.
 ///
 /// Usage in a forma file:
 /// ```pkl
@@ -47,11 +47,11 @@ values: Dynamic?
 /// Prefix for Formae resource labels. Defaults to releaseName.
 labelPrefix: String = releaseName
 
-/// When true, silently skip resource types not supported by formae-plugin-k8s.
+/// When true, silently skip resource types not supported by k8s.
 /// When false, throw on unsupported types.
 skipUnsupported: Boolean = true
 
-/// The rendered Helm chart resources, mapped to formae-plugin-k8s types.
+/// The rendered Helm chart resources, mapped to k8s types.
 /// Ready to be spread into a `forma {}` block.
 resources: Listing<formae.Resource> = new Listing {
   for (_key, _res in _rendered) {

@@ -72,7 +72,7 @@ function isSupported(apiVersion: String, kind: String): Boolean =
   else if (apiVersion == "flowcontrol.apiserver.k8s.io/v1" && kind == "PriorityLevelConfiguration") true
   else false
 
-/// Map a K8S resource to its formae-plugin-k8s typed equivalent.
+/// Map a K8S resource to its k8s typed equivalent.
 /// The caller must verify isSupported() first; calling with unsupported types will throw.
 function mapResource(src: Any, prefix: String, namespace: String): formae.Resource =
   let (apiVersion = src.apiVersion)

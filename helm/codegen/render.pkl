@@ -1,7 +1,7 @@
 /// Static PKL code generator for Formae Helm resources.
 ///
 /// Takes raw K8S manifests from helm template and generates typed PKL source
-/// that uses formae-plugin-k8s types — no pkl-reader-helm needed at deploy time.
+/// that uses k8s types — no pkl-reader-helm needed at deploy time.
 module render
 
 import "writer.pkl" as w
@@ -33,99 +33,99 @@ function filterAnnotations(meta: Any?): Mapping<String, String>? =
 // lines required by all resources in the forma.
 
 /// Import line for k8s.pkl (ObjectMeta).
-const k8sImport: String = "import \"@formae-plugin-k8s/k8s.pkl\""
+const k8sImport: String = "import \"@k8s/k8s.pkl\""
 
 /// Import line for ReplicaSet.pkl (LabelSelector, PodTemplateSpec).
-const rsImport: String = "import \"@formae-plugin-k8s/apps/ReplicaSet.pkl\" as rs"
+const rsImport: String = "import \"@k8s/apps/ReplicaSet.pkl\" as rs"
 
 /// Import line for Pod.pkl (PodSpec, Container).
-const podImport: String = "import \"@formae-plugin-k8s/core/Pod.pkl\" as pod"
+const podImport: String = "import \"@k8s/core/Pod.pkl\" as pod"
 
 /// Returns the set of import lines needed for a given type.
 function importsForType(apiVersion: String, kind: String): Listing<String> =
   // core/v1
   if (apiVersion == "v1" && kind == "Namespace")
-    new Listing { "import \"@formae-plugin-k8s/core/Namespace.pkl\" as ns" }
+    new Listing { "import \"@k8s/core/Namespace.pkl\" as ns" }
   else if (apiVersion == "v1" && kind == "Pod")
     new Listing { k8sImport; podImport }
   else if (apiVersion == "v1" && kind == "ConfigMap")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/core/ConfigMap.pkl\" as cm" }
+    new Listing { k8sImport; "import \"@k8s/core/ConfigMap.pkl\" as cm" }
   else if (apiVersion == "v1" && kind == "Secret")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/core/Secret.pkl\" as secret" }
+    new Listing { k8sImport; "import \"@k8s/core/Secret.pkl\" as secret" }
   else if (apiVersion == "v1" && kind == "ServiceAccount")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/core/ServiceAccount.pkl\" as sa" }
+    new Listing { k8sImport; "import \"@k8s/core/ServiceAccount.pkl\" as sa" }
   else if (apiVersion == "v1" && kind == "Service")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/core/Service.pkl\" as svc" }
+    new Listing { k8sImport; "import \"@k8s/core/Service.pkl\" as svc" }
   else if (apiVersion == "v1" && kind == "Endpoints")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/core/Endpoints.pkl\" as ep" }
+    new Listing { k8sImport; "import \"@k8s/core/Endpoints.pkl\" as ep" }
   else if (apiVersion == "v1" && kind == "LimitRange")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/core/LimitRange.pkl\" as lr" }
+    new Listing { k8sImport; "import \"@k8s/core/LimitRange.pkl\" as lr" }
   else if (apiVersion == "v1" && kind == "PersistentVolume")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/core/PersistentVolume.pkl\" as pv" }
+    new Listing { k8sImport; "import \"@k8s/core/PersistentVolume.pkl\" as pv" }
   else if (apiVersion == "v1" && kind == "PersistentVolumeClaim")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/core/PersistentVolumeClaim.pkl\" as pvc" }
+    new Listing { k8sImport; "import \"@k8s/core/PersistentVolumeClaim.pkl\" as pvc" }
   else if (apiVersion == "v1" && kind == "ResourceQuota")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/core/ResourceQuota.pkl\" as rq" }
+    new Listing { k8sImport; "import \"@k8s/core/ResourceQuota.pkl\" as rq" }
   // apps/v1
   else if (apiVersion == "apps/v1" && kind == "Deployment")
-    new Listing { k8sImport; rsImport; podImport; "import \"@formae-plugin-k8s/apps/Deployment.pkl\" as dep" }
+    new Listing { k8sImport; rsImport; podImport; "import \"@k8s/apps/Deployment.pkl\" as dep" }
   else if (apiVersion == "apps/v1" && kind == "ReplicaSet")
     new Listing { k8sImport; rsImport; podImport }
   else if (apiVersion == "apps/v1" && kind == "StatefulSet")
-    new Listing { k8sImport; rsImport; podImport; "import \"@formae-plugin-k8s/apps/StatefulSet.pkl\" as sts" }
+    new Listing { k8sImport; rsImport; podImport; "import \"@k8s/apps/StatefulSet.pkl\" as sts" }
   else if (apiVersion == "apps/v1" && kind == "DaemonSet")
-    new Listing { k8sImport; rsImport; podImport; "import \"@formae-plugin-k8s/apps/DaemonSet.pkl\" as ds" }
+    new Listing { k8sImport; rsImport; podImport; "import \"@k8s/apps/DaemonSet.pkl\" as ds" }
   // batch/v1
   else if (apiVersion == "batch/v1" && kind == "Job")
-    new Listing { k8sImport; rsImport; podImport; "import \"@formae-plugin-k8s/batch/Job.pkl\" as job" }
+    new Listing { k8sImport; rsImport; podImport; "import \"@k8s/batch/Job.pkl\" as job" }
   else if (apiVersion == "batch/v1" && kind == "CronJob")
-    new Listing { k8sImport; rsImport; podImport; "import \"@formae-plugin-k8s/batch/CronJob.pkl\" as cj" }
+    new Listing { k8sImport; rsImport; podImport; "import \"@k8s/batch/CronJob.pkl\" as cj" }
   // networking
   else if (apiVersion == "networking.k8s.io/v1" && kind == "Ingress")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/networking/Ingress.pkl\" as ing" }
+    new Listing { k8sImport; "import \"@k8s/networking/Ingress.pkl\" as ing" }
   else if (apiVersion == "networking.k8s.io/v1" && kind == "IngressClass")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/networking/IngressClass.pkl\" as ic" }
+    new Listing { k8sImport; "import \"@k8s/networking/IngressClass.pkl\" as ic" }
   else if (apiVersion == "networking.k8s.io/v1" && kind == "NetworkPolicy")
-    new Listing { k8sImport; rsImport; "import \"@formae-plugin-k8s/networking/NetworkPolicy.pkl\" as np" }
+    new Listing { k8sImport; rsImport; "import \"@k8s/networking/NetworkPolicy.pkl\" as np" }
   // rbac
   else if (apiVersion == "rbac.authorization.k8s.io/v1" && kind == "Role")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/rbac/Role.pkl\" as role" }
+    new Listing { k8sImport; "import \"@k8s/rbac/Role.pkl\" as role" }
   else if (apiVersion == "rbac.authorization.k8s.io/v1" && kind == "RoleBinding")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/rbac/RoleBinding.pkl\" as rb" }
+    new Listing { k8sImport; "import \"@k8s/rbac/RoleBinding.pkl\" as rb" }
   else if (apiVersion == "rbac.authorization.k8s.io/v1" && kind == "ClusterRole")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/rbac/ClusterRole.pkl\" as cr" }
+    new Listing { k8sImport; "import \"@k8s/rbac/ClusterRole.pkl\" as cr" }
   else if (apiVersion == "rbac.authorization.k8s.io/v1" && kind == "ClusterRoleBinding")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/rbac/ClusterRoleBinding.pkl\" as crb" }
+    new Listing { k8sImport; "import \"@k8s/rbac/ClusterRoleBinding.pkl\" as crb" }
   // policy
   else if (apiVersion == "policy/v1" && kind == "PodDisruptionBudget")
-    new Listing { k8sImport; rsImport; "import \"@formae-plugin-k8s/policy/PodDisruptionBudget.pkl\" as pdb" }
+    new Listing { k8sImport; rsImport; "import \"@k8s/policy/PodDisruptionBudget.pkl\" as pdb" }
   // storage
   else if (apiVersion == "storage.k8s.io/v1" && kind == "StorageClass")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/storage/StorageClass.pkl\" as sc" }
+    new Listing { k8sImport; "import \"@k8s/storage/StorageClass.pkl\" as sc" }
   else if (apiVersion == "storage.k8s.io/v1" && kind == "CSIDriver")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/storage/CSIDriver.pkl\" as csi" }
+    new Listing { k8sImport; "import \"@k8s/storage/CSIDriver.pkl\" as csi" }
   // scheduling
   else if (apiVersion == "scheduling.k8s.io/v1" && kind == "PriorityClass")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/scheduling/PriorityClass.pkl\" as pc" }
+    new Listing { k8sImport; "import \"@k8s/scheduling/PriorityClass.pkl\" as pc" }
   // autoscaling
   else if (apiVersion == "autoscaling/v2" && kind == "HorizontalPodAutoscaler")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/autoscaling/HorizontalPodAutoscaler.pkl\" as hpa" }
+    new Listing { k8sImport; "import \"@k8s/autoscaling/HorizontalPodAutoscaler.pkl\" as hpa" }
   // coordination
   else if (apiVersion == "coordination.k8s.io/v1" && kind == "Lease")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/coordination/Lease.pkl\" as lease" }
+    new Listing { k8sImport; "import \"@k8s/coordination/Lease.pkl\" as lease" }
   // node
   else if (apiVersion == "node.k8s.io/v1" && kind == "RuntimeClass")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/node/RuntimeClass.pkl\" as rc" }
+    new Listing { k8sImport; "import \"@k8s/node/RuntimeClass.pkl\" as rc" }
   // admissionregistration
   else if (apiVersion == "admissionregistration.k8s.io/v1" && kind == "ValidatingWebhookConfiguration")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/admissionregistration/ValidatingWebhookConfiguration.pkl\" as vwc" }
+    new Listing { k8sImport; "import \"@k8s/admissionregistration/ValidatingWebhookConfiguration.pkl\" as vwc" }
   else if (apiVersion == "admissionregistration.k8s.io/v1" && kind == "MutatingWebhookConfiguration")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/admissionregistration/MutatingWebhookConfiguration.pkl\" as mwc" }
+    new Listing { k8sImport; "import \"@k8s/admissionregistration/MutatingWebhookConfiguration.pkl\" as mwc" }
   // flowcontrol
   else if (apiVersion == "flowcontrol.apiserver.k8s.io/v1" && kind == "FlowSchema")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/flowcontrol/FlowSchema.pkl\" as fs" }
+    new Listing { k8sImport; "import \"@k8s/flowcontrol/FlowSchema.pkl\" as fs" }
   else if (apiVersion == "flowcontrol.apiserver.k8s.io/v1" && kind == "PriorityLevelConfiguration")
-    new Listing { k8sImport; "import \"@formae-plugin-k8s/flowcontrol/PriorityLevelConfiguration.pkl\" as plc" }
+    new Listing { k8sImport; "import \"@k8s/flowcontrol/PriorityLevelConfiguration.pkl\" as plc" }
   else new Listing {}
 
 function isSupported(apiVersion: String, kind: String): Boolean =
@@ -1594,7 +1594,7 @@ function renderResource(src: Any, prefix: String, ns: String): String =
 
 /// Generate a complete, self-contained forma PKL file from Helm chart config.
 ///
-/// The output is valid PKL source that uses typed formae-plugin-k8s resources
+/// The output is valid PKL source that uses typed k8s resources
 /// and does NOT require pkl-reader-helm at deploy time.
 function renderForma(
   stackLabel: String,
@@ -1629,7 +1629,7 @@ function renderForma(
   // Add namespace import if creating namespace
   let (finalImports =
     if (createNamespace)
-      (uniqueImports + List("import \"@formae-plugin-k8s/core/Namespace.pkl\" as ns")).distinct.sort()
+      (uniqueImports + List("import \"@k8s/core/Namespace.pkl\" as ns")).distinct.sort()
     else uniqueImports
   )
   // Build the module

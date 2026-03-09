@@ -32,14 +32,14 @@
  */
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
-import "@formae-plugin-k8s/core/Namespace.pkl" as ns
-import "@formae-plugin-k8s/core/ConfigMap.pkl" as cm
-import "@formae-plugin-k8s/core/Secret.pkl" as sec
-import "@formae-plugin-k8s/core/Service.pkl" as svc
-import "@formae-plugin-k8s/core/ServiceAccount.pkl" as sa
-import "@formae-plugin-k8s/apps/Deployment.pkl" as dep
-import "@formae-plugin-k8s/networking/Ingress.pkl" as ing
-import "@formae-plugin-k8s/k8s.pkl" as k8s
+import "@k8s/core/Namespace.pkl" as ns
+import "@k8s/core/ConfigMap.pkl" as cm
+import "@k8s/core/Secret.pkl" as sec
+import "@k8s/core/Service.pkl" as svc
+import "@k8s/core/ServiceAccount.pkl" as sa
+import "@k8s/apps/Deployment.pkl" as dep
+import "@k8s/networking/Ingress.pkl" as ing
+import "@k8s/k8s.pkl" as k8s
 
 // ---------------------------------------------------------------------------
 // Configuration — change these values to customize the deployment

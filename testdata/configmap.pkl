@@ -3,9 +3,9 @@
  */
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
-import "@formae-plugin-k8s/core/Namespace.pkl" as ns
-import "@formae-plugin-k8s/core/ConfigMap.pkl" as cm
-import "@formae-plugin-k8s/k8s.pkl" as k8s
+import "@k8s/core/Namespace.pkl" as ns
+import "@k8s/core/ConfigMap.pkl" as cm
+import "@k8s/k8s.pkl" as k8s
 import "./config/vars.pkl" as v
 
 forma {

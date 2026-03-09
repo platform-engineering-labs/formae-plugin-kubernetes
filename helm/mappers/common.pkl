@@ -1,14 +1,14 @@
-/// Shared mapper functions for converting pkl-k8s types to formae-plugin-k8s types.
+/// Shared mapper functions for converting pkl-k8s types to k8s types.
 ///
 /// All mapper functions accept `Any` as the source parameter — a pragmatic trade-off
 /// because pkl-k8s module-level types aren't cleanly importable as function parameter types.
 /// Runtime errors from field access are clear and actionable.
 module common
 
-import "@formae-plugin-k8s/k8s.pkl" as k8s
-import "@formae-plugin-k8s/core/Namespace.pkl" as ns
-import "@formae-plugin-k8s/core/Pod.pkl" as pod
-import "@formae-plugin-k8s/apps/ReplicaSet.pkl" as rs
+import "@k8s/k8s.pkl" as k8s
+import "@k8s/core/Namespace.pkl" as ns
+import "@k8s/core/Pod.pkl" as pod
+import "@k8s/apps/ReplicaSet.pkl" as rs
 
 // =============================================================================
 // Label generation
@@ -23,7 +23,7 @@ function makeLabel(prefix: String, kind: String, name: String): String =
 // ObjectMeta mappers
 // =============================================================================
 
-/// Map a pkl-k8s ObjectMeta to formae-plugin-k8s ObjectMeta (namespaced resource).
+/// Map a pkl-k8s ObjectMeta to k8s ObjectMeta (namespaced resource).
 function mapObjectMeta(src: Any, defaultNamespace: String): k8s.ObjectMeta =
   new k8s.ObjectMeta {
     name = src.name
@@ -36,7 +36,7 @@ function mapObjectMeta(src: Any, defaultNamespace: String): k8s.ObjectMeta =
     }
   }
 
-/// Map a pkl-k8s ObjectMeta to formae-plugin-k8s ObjectMeta for cluster-scoped resources (no namespace).
+/// Map a pkl-k8s ObjectMeta to k8s ObjectMeta for cluster-scoped resources (no namespace).
 function mapClusterMeta(src: Any): k8s.ObjectMeta =
   new k8s.ObjectMeta {
     name = src.name
@@ -64,7 +64,7 @@ function mapNamespaceMetadata(src: Any): ns.NamespaceMetadata =
 // LabelSelector mappers
 // =============================================================================
 
-/// Map a pkl-k8s LabelSelector to formae-plugin-k8s LabelSelector.
+/// Map a pkl-k8s LabelSelector to k8s LabelSelector.
 function mapLabelSelector(src: Any): rs.LabelSelector =
   new rs.LabelSelector {
     when (src.matchLabels != null) {
@@ -127,7 +127,7 @@ function mapLabelSelectorRequirement(src: Any): rs.LabelSelectorRequirement =
 // Pod-related mappers
 // =============================================================================
 
-/// Map a pkl-k8s PodSpec to formae-plugin-k8s PodSpec.
+/// Map a pkl-k8s PodSpec to k8s PodSpec.
 function mapPodSpec(src: Any): pod.PodSpec =
   new pod.PodSpec {
     containers = new Listing {
@@ -146,7 +146,7 @@ function mapPodSpec(src: Any): pod.PodSpec =
     }
   }
 
-/// Map a pkl-k8s Container to formae-plugin-k8s Container.
+/// Map a pkl-k8s Container to k8s Container.
 function mapContainer(src: Any): pod.Container =
   new pod.Container {
     name = src.name

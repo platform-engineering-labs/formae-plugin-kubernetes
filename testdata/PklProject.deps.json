@@ -3,14 +3,14 @@
   "resolvedDependencies": {
     "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0": {
       "type": "remote",
-      "uri": "projectpackage://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.82.2",
+      "uri": "projectpackage://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.82.3",
       "checksums": {
-        "sha256": "afd7e508fe1c7da4da24cd75644a58e34b127f52a19e90cc5d233b39c70b592a"
+        "sha256": "af24dfda79158bf286b548832ce540096c59a65acad39763b847eaa6e98dcfb9"
       }
     },
-    "package://hub.platform.engineering/plugins/k8s/schema/pkl@0": {
+    "package://hub.platform.engineering/plugins/k8s/schema/pkl/k8s/k8s@0": {
       "type": "local",
-      "uri": "projectpackage://hub.platform.engineering/plugins/k8s/schema/pkl@0.1.0",
+      "uri": "projectpackage://hub.platform.engineering/plugins/k8s/schema/pkl/k8s/k8s@0.1.0",
       "path": "../schema/pkl"
     }
   }

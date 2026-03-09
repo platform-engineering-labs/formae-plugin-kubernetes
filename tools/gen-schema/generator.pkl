@@ -1,4 +1,4 @@
-/// PKL Schema Generator for formae-plugin-k8s.
+/// PKL Schema Generator for k8s.
 /// Uses pkl:reflect to introspect pkl-k8s types and generate formae-compatible schemas.
 /// Usage: pkl eval --multiple-file-output-path schema/pkl/ tools/gen-schema/generator.pkl
 module generator

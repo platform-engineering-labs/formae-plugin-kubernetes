@@ -38,12 +38,12 @@
 //   ```
 module KeycloakChart
 
-import "@formae-plugin-k8s/k8s.pkl"
-import "@formae-plugin-k8s/apps/Deployment.pkl" as dep
-import "@formae-plugin-k8s/core/Service.pkl" as svc
-import "@formae-plugin-k8s/core/Secret.pkl" as secret
-import "@formae-plugin-k8s/core/Namespace.pkl" as ns
-import "@formae-plugin-k8s/networking/Ingress.pkl" as ing
+import "@k8s/k8s.pkl"
+import "@k8s/apps/Deployment.pkl" as dep
+import "@k8s/core/Service.pkl" as svc
+import "@k8s/core/Secret.pkl" as secret
+import "@k8s/core/Namespace.pkl" as ns
+import "@k8s/networking/Ingress.pkl" as ing
 
 /// Keycloak deployment chart.
 open class Keycloak {

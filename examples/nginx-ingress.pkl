@@ -25,15 +25,15 @@
  */
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
-import "@formae-plugin-k8s/core/Namespace.pkl" as ns
-import "@formae-plugin-k8s/core/ConfigMap.pkl" as cm
-import "@formae-plugin-k8s/core/ServiceAccount.pkl" as sa
-import "@formae-plugin-k8s/core/Service.pkl" as svc
-import "@formae-plugin-k8s/apps/Deployment.pkl" as dep
-import "@formae-plugin-k8s/rbac/ClusterRole.pkl" as cr
-import "@formae-plugin-k8s/rbac/ClusterRoleBinding.pkl" as crb
-import "@formae-plugin-k8s/networking/IngressClass.pkl" as ic
-import "@formae-plugin-k8s/k8s.pkl" as k8s
+import "@k8s/core/Namespace.pkl" as ns
+import "@k8s/core/ConfigMap.pkl" as cm
+import "@k8s/core/ServiceAccount.pkl" as sa
+import "@k8s/core/Service.pkl" as svc
+import "@k8s/apps/Deployment.pkl" as dep
+import "@k8s/rbac/ClusterRole.pkl" as cr
+import "@k8s/rbac/ClusterRoleBinding.pkl" as crb
+import "@k8s/networking/IngressClass.pkl" as ic
+import "@k8s/k8s.pkl" as k8s
 
 // ---------------------------------------------------------------------------
 // Configuration

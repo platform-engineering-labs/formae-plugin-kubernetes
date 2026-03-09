@@ -36,7 +36,7 @@
 module Generator
 
 import "@formae/formae.pkl"
-import "@formae-plugin-k8s/core/Namespace.pkl" as ns
+import "@k8s/core/Namespace.pkl" as ns
 import "HelmChart.pkl"
 
 /// A Helm release configuration that produces Formae forma entries.

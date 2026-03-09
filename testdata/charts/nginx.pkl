@@ -15,7 +15,11 @@ local chart = new NginxChart.Nginx {
 }
 
 forma {
-  v.stack
+  local stack = new formae.Stack {
+  label = "chart-test-stack"
+  description = "Chart integration test stack"
+}
+stack
   v.target
   for (r in chart.resources) { r }
 }
