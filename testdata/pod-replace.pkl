@@ -30,7 +30,7 @@ forma {
     label = "test-pod"
     metadata = new k8s.ObjectMeta {
       name = "test-pod-\(v.testRunID)-replaced"
-      namespace = "formae-test-\(v.testRunID)"
+      namespace = ns.res.name
     }
     spec = new k8s.PodSpec {
       containers = new Listing {

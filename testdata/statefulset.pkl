@@ -30,7 +30,7 @@ forma {
     label = "test-sts-svc"
     metadata = new k8s.ObjectMeta {
       name = "test-sts-svc-\(v.testRunID)"
-      namespace = "formae-test-\(v.testRunID)"
+      namespace = ns.res.name
     }
     spec = new svc.ServiceSpec {
       clusterIP = "None"
@@ -50,7 +50,7 @@ forma {
     label = "test-statefulset"
     metadata = new k8s.ObjectMeta {
       name = "test-sts-\(v.testRunID)"
-      namespace = "formae-test-\(v.testRunID)"
+      namespace = ns.res.name
     }
     spec = new sts.StatefulSetSpec {
       replicas = 1

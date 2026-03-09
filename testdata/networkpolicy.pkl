@@ -29,7 +29,7 @@ forma {
     label = "test-networkpolicy"
     metadata = new k8s.ObjectMeta {
       name = "test-np-\(v.testRunID)"
-      namespace = "formae-test-\(v.testRunID)"
+      namespace = ns.res.name
     }
     spec = new np.NetworkPolicySpec {
       podSelector = new k8s.LabelSelector {

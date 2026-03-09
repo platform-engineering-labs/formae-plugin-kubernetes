@@ -30,7 +30,7 @@ forma {
     label = "test-configmap"
     metadata = new k8s.ObjectMeta {
       name = "test-cm-\(v.testRunID)-replaced"
-      namespace = "formae-test-\(v.testRunID)"
+      namespace = ns.res.name
     }
     data = new Mapping {
       ["greeting"] = "hello"

@@ -29,7 +29,7 @@ forma {
     label = "test-lease"
     metadata = new k8s.ObjectMeta {
       name = "test-lease-\(v.testRunID)"
-      namespace = "formae-test-\(v.testRunID)"
+      namespace = ns.res.name
     }
     spec = new l.LeaseSpec {
       holderIdentity = "test-holder"

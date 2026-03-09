@@ -30,7 +30,7 @@ forma {
     label = "backend-svc"
     metadata = new k8s.ObjectMeta {
       name = "backend-\(v.testRunID)"
-      namespace = "formae-test-\(v.testRunID)"
+      namespace = ns.res.name
     }
     spec = new svc.ServiceSpec {
       type = "ClusterIP"
@@ -51,7 +51,7 @@ forma {
     label = "test-ingress"
     metadata = new k8s.ObjectMeta {
       name = "test-ing-\(v.testRunID)"
-      namespace = "formae-test-\(v.testRunID)"
+      namespace = ns.res.name
     }
     spec = new ing.IngressSpec {
       rules = new Listing {

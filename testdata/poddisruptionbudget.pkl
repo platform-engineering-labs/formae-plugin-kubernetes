@@ -29,7 +29,7 @@ forma {
     label = "test-pdb"
     metadata = new k8s.ObjectMeta {
       name = "test-pdb-\(v.testRunID)"
-      namespace = "formae-test-\(v.testRunID)"
+      namespace = ns.res.name
     }
     spec = new pdb.PodDisruptionBudgetSpec {
       minAvailable = 1

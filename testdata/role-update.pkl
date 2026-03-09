@@ -30,7 +30,7 @@ forma {
     label = "test-role"
     metadata = new k8s.ObjectMeta {
       name = "test-role-\(v.testRunID)"
-      namespace = "formae-test-\(v.testRunID)"
+      namespace = ns.res.name
     }
     rules = new Listing {
       new k8s.PolicyRule {

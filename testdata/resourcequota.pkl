@@ -29,7 +29,7 @@ forma {
     label = "test-resourcequota"
     metadata = new k8s.ObjectMeta {
       name = "test-rq-\(v.testRunID)"
-      namespace = "formae-test-\(v.testRunID)"
+      namespace = ns.res.name
     }
     spec = new rq.ResourceQuotaSpec {
       hard = new Mapping {

@@ -30,7 +30,7 @@ forma {
     label = "test-limitrange"
     metadata = new k8s.ObjectMeta {
       name = "test-lr-\(v.testRunID)"
-      namespace = "formae-test-\(v.testRunID)"
+      namespace = ns.res.name
       annotations = new Mapping {
         ["updated"] = "true"
       }

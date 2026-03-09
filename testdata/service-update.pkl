@@ -30,7 +30,7 @@ forma {
     label = "test-service"
     metadata = new k8s.ObjectMeta {
       name = "test-svc-\(v.testRunID)"
-      namespace = "formae-test-\(v.testRunID)"
+      namespace = ns.res.name
     }
     spec = new svc.ServiceSpec {
       type = "ClusterIP"
