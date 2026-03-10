@@ -92,14 +92,9 @@ func (c *CSIDriver) Read(ctx context.Context, request *resource.ReadRequest) (*r
 		return nil, fmt.Errorf("failed to get csidriver: %w", err)
 	}
 
-	ext, err := storagev1ac.ExtractCSIDriver(result, "formae")
+	properties, err := prov.LiveState[storagev1ac.CSIDriverApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract csidriver: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal csidriver properties: %w", err)
+		return nil, fmt.Errorf("failed to get csidriver live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -116,6 +111,7 @@ func (c *CSIDriver) Update(ctx context.Context, request *resource.UpdateRequest)
 
 	result, err := c.Client.StorageV1().CSIDrivers().Apply(ctx, cd, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply csidriver: %w", err)
@@ -181,14 +177,9 @@ func (c *CSIDriver) Status(ctx context.Context, request *resource.StatusRequest)
 		return nil, fmt.Errorf("failed to get csidriver status: %w", err)
 	}
 
-	ext, err := storagev1ac.ExtractCSIDriver(result, "formae")
+	properties, err := prov.LiveState[storagev1ac.CSIDriverApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract csidriver: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal csidriver properties: %w", err)
+		return nil, fmt.Errorf("failed to get csidriver live state: %w", err)
 	}
 
 	return &resource.StatusResult{

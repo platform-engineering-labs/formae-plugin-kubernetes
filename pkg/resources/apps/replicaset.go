@@ -100,15 +100,9 @@ func (r *ReplicaSet) Read(ctx context.Context, request *resource.ReadRequest) (*
 		return nil, fmt.Errorf("failed to get replicaset: %w", err)
 	}
 
-	// Extract only the fields managed by formae
-	ext, err := appsv1ac.ExtractReplicaSet(result, "formae")
+	properties, err := prov.LiveState[appsv1ac.ReplicaSetApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract replicaset: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal replicaset properties: %w", err)
+		return nil, fmt.Errorf("failed to get replicaset live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -130,6 +124,7 @@ func (r *ReplicaSet) Update(ctx context.Context, request *resource.UpdateRequest
 
 	result, err := r.Client.AppsV1().ReplicaSets(namespace).Apply(ctx, rs, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply replicaset: %w", err)
@@ -197,15 +192,9 @@ func (r *ReplicaSet) Status(ctx context.Context, request *resource.StatusRequest
 		return nil, fmt.Errorf("failed to get replicaset status: %w", err)
 	}
 
-	// Extract only the fields managed by formae
-	ext, err := appsv1ac.ExtractReplicaSet(result, "formae")
+	properties, err := prov.LiveState[appsv1ac.ReplicaSetApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract replicaset: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal replicaset properties: %w", err)
+		return nil, fmt.Errorf("failed to get replicaset live state: %w", err)
 	}
 
 	return &resource.StatusResult{

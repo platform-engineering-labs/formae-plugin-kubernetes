@@ -92,14 +92,9 @@ func (p *PriorityLevelConfiguration) Read(ctx context.Context, request *resource
 		return nil, fmt.Errorf("failed to get prioritylevelconfiguration: %w", err)
 	}
 
-	ext, err := flowcontrolv1ac.ExtractPriorityLevelConfiguration(result, "formae")
+	properties, err := prov.LiveState[flowcontrolv1ac.PriorityLevelConfigurationApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract prioritylevelconfiguration: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal prioritylevelconfiguration properties: %w", err)
+		return nil, fmt.Errorf("failed to get prioritylevelconfiguration live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -116,6 +111,7 @@ func (p *PriorityLevelConfiguration) Update(ctx context.Context, request *resour
 
 	result, err := p.Client.FlowcontrolV1().PriorityLevelConfigurations().Apply(ctx, plc, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply prioritylevelconfiguration: %w", err)
@@ -181,14 +177,9 @@ func (p *PriorityLevelConfiguration) Status(ctx context.Context, request *resour
 		return nil, fmt.Errorf("failed to get prioritylevelconfiguration status: %w", err)
 	}
 
-	ext, err := flowcontrolv1ac.ExtractPriorityLevelConfiguration(result, "formae")
+	properties, err := prov.LiveState[flowcontrolv1ac.PriorityLevelConfigurationApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract prioritylevelconfiguration: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal prioritylevelconfiguration properties: %w", err)
+		return nil, fmt.Errorf("failed to get prioritylevelconfiguration live state: %w", err)
 	}
 
 	return &resource.StatusResult{

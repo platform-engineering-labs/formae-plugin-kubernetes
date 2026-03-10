@@ -97,14 +97,9 @@ func (p *PodDisruptionBudget) Read(ctx context.Context, request *resource.ReadRe
 		return nil, fmt.Errorf("failed to get poddisruptionbudget: %w", err)
 	}
 
-	ext, err := policyv1ac.ExtractPodDisruptionBudget(result, "formae")
+	properties, err := prov.LiveState[policyv1ac.PodDisruptionBudgetApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract poddisruptionbudget: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal poddisruptionbudget properties: %w", err)
+		return nil, fmt.Errorf("failed to get poddisruptionbudget live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -126,6 +121,7 @@ func (p *PodDisruptionBudget) Update(ctx context.Context, request *resource.Upda
 
 	result, err := p.Client.PolicyV1().PodDisruptionBudgets(namespace).Apply(ctx, pdb, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply poddisruptionbudget: %w", err)
@@ -191,14 +187,9 @@ func (p *PodDisruptionBudget) Status(ctx context.Context, request *resource.Stat
 		return nil, fmt.Errorf("failed to get poddisruptionbudget status: %w", err)
 	}
 
-	ext, err := policyv1ac.ExtractPodDisruptionBudget(result, "formae")
+	properties, err := prov.LiveState[policyv1ac.PodDisruptionBudgetApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract poddisruptionbudget: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal poddisruptionbudget properties: %w", err)
+		return nil, fmt.Errorf("failed to get poddisruptionbudget live state: %w", err)
 	}
 
 	return &resource.StatusResult{

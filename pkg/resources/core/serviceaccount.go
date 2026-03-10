@@ -97,14 +97,9 @@ func (sa *ServiceAccount) Read(ctx context.Context, request *resource.ReadReques
 		return nil, fmt.Errorf("failed to get serviceaccount: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractServiceAccount(result, "formae")
+	properties, err := prov.LiveState[v1coreac.ServiceAccountApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract serviceaccount: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal serviceaccount properties: %w", err)
+		return nil, fmt.Errorf("failed to get serviceaccount live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -126,6 +121,7 @@ func (sa *ServiceAccount) Update(ctx context.Context, request *resource.UpdateRe
 
 	result, err := sa.Client.CoreV1().ServiceAccounts(namespace).Apply(ctx, svcAcct, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply serviceaccount: %w", err)
@@ -191,14 +187,9 @@ func (sa *ServiceAccount) Status(ctx context.Context, request *resource.StatusRe
 		return nil, fmt.Errorf("failed to get serviceaccount status: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractServiceAccount(result, "formae")
+	properties, err := prov.LiveState[v1coreac.ServiceAccountApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract serviceaccount: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal serviceaccount properties: %w", err)
+		return nil, fmt.Errorf("failed to get serviceaccount live state: %w", err)
 	}
 
 	return &resource.StatusResult{

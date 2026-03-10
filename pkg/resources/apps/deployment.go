@@ -99,14 +99,9 @@ func (d *Deployment) Read(ctx context.Context, request *resource.ReadRequest) (*
 		return nil, fmt.Errorf("failed to get deployment: %w", err)
 	}
 
-	ext, err := appsv1ac.ExtractDeployment(result, "formae")
+	properties, err := prov.LiveState[appsv1ac.DeploymentApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract deployment: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal deployment properties: %w", err)
+		return nil, fmt.Errorf("failed to get deployment live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -128,6 +123,7 @@ func (d *Deployment) Update(ctx context.Context, request *resource.UpdateRequest
 
 	result, err := d.Client.AppsV1().Deployments(namespace).Apply(ctx, deploy, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply deployment: %w", err)
@@ -194,14 +190,9 @@ func (d *Deployment) Status(ctx context.Context, request *resource.StatusRequest
 		return nil, fmt.Errorf("failed to get deployment status: %w", err)
 	}
 
-	ext, err := appsv1ac.ExtractDeployment(result, "formae")
+	properties, err := prov.LiveState[appsv1ac.DeploymentApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract deployment: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal deployment properties: %w", err)
+		return nil, fmt.Errorf("failed to get deployment live state: %w", err)
 	}
 
 	return &resource.StatusResult{

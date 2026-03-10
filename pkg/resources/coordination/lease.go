@@ -97,14 +97,9 @@ func (l *Lease) Read(ctx context.Context, request *resource.ReadRequest) (*resou
 		return nil, fmt.Errorf("failed to get lease: %w", err)
 	}
 
-	ext, err := coordinationv1ac.ExtractLease(result, "formae")
+	properties, err := prov.LiveState[coordinationv1ac.LeaseApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract lease: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal lease properties: %w", err)
+		return nil, fmt.Errorf("failed to get lease live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -126,6 +121,7 @@ func (l *Lease) Update(ctx context.Context, request *resource.UpdateRequest) (*r
 
 	result, err := l.Client.CoordinationV1().Leases(namespace).Apply(ctx, lease, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply lease: %w", err)
@@ -191,14 +187,9 @@ func (l *Lease) Status(ctx context.Context, request *resource.StatusRequest) (*r
 		return nil, fmt.Errorf("failed to get lease status: %w", err)
 	}
 
-	ext, err := coordinationv1ac.ExtractLease(result, "formae")
+	properties, err := prov.LiveState[coordinationv1ac.LeaseApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract lease: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal lease properties: %w", err)
+		return nil, fmt.Errorf("failed to get lease live state: %w", err)
 	}
 
 	return &resource.StatusResult{

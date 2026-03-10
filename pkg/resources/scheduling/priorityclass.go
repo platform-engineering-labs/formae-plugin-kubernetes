@@ -92,14 +92,9 @@ func (pc *PriorityClass) Read(ctx context.Context, request *resource.ReadRequest
 		return nil, fmt.Errorf("failed to get priorityclass: %w", err)
 	}
 
-	ext, err := schedulingv1ac.ExtractPriorityClass(result, "formae")
+	properties, err := prov.LiveState[schedulingv1ac.PriorityClassApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract priorityclass: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal priorityclass properties: %w", err)
+		return nil, fmt.Errorf("failed to get priorityclass live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -116,6 +111,7 @@ func (pc *PriorityClass) Update(ctx context.Context, request *resource.UpdateReq
 
 	result, err := pc.Client.SchedulingV1().PriorityClasses().Apply(ctx, priorityClass, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply priorityclass: %w", err)
@@ -181,14 +177,9 @@ func (pc *PriorityClass) Status(ctx context.Context, request *resource.StatusReq
 		return nil, fmt.Errorf("failed to get priorityclass status: %w", err)
 	}
 
-	ext, err := schedulingv1ac.ExtractPriorityClass(result, "formae")
+	properties, err := prov.LiveState[schedulingv1ac.PriorityClassApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract priorityclass: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal priorityclass properties: %w", err)
+		return nil, fmt.Errorf("failed to get priorityclass live state: %w", err)
 	}
 
 	return &resource.StatusResult{

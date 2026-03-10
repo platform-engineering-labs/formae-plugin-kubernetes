@@ -99,14 +99,9 @@ func (svc *Service) Read(ctx context.Context, request *resource.ReadRequest) (*r
 		return nil, fmt.Errorf("failed to get service: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractService(result, "formae")
+	properties, err := prov.LiveState[v1coreac.ServiceApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract service: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal service properties: %w", err)
+		return nil, fmt.Errorf("failed to get service live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -128,6 +123,7 @@ func (svc *Service) Update(ctx context.Context, request *resource.UpdateRequest)
 
 	result, err := svc.Client.CoreV1().Services(namespace).Apply(ctx, s, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply service: %w", err)
@@ -194,14 +190,9 @@ func (svc *Service) Status(ctx context.Context, request *resource.StatusRequest)
 		return nil, fmt.Errorf("failed to get service status: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractService(result, "formae")
+	properties, err := prov.LiveState[v1coreac.ServiceApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract service: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal service properties: %w", err)
+		return nil, fmt.Errorf("failed to get service live state: %w", err)
 	}
 
 	return &resource.StatusResult{

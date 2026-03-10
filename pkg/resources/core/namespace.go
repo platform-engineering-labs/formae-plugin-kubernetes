@@ -94,15 +94,9 @@ func (n *Namespace) Read(ctx context.Context, request *resource.ReadRequest) (*r
 		return nil, fmt.Errorf("failed to get namespace: %w", err)
 	}
 
-	// Extract only the fields managed by formae
-	ext, err := v1coreac.ExtractNamespace(result, "formae")
+	properties, err := prov.LiveState[v1coreac.NamespaceApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract namespace: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal namespace properties: %w", err)
+		return nil, fmt.Errorf("failed to get namespace live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -119,6 +113,7 @@ func (n *Namespace) Update(ctx context.Context, request *resource.UpdateRequest)
 
 	result, err := n.Client.CoreV1().Namespaces().Apply(ctx, ns, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply namespace: %w", err)
@@ -185,15 +180,9 @@ func (n *Namespace) Status(ctx context.Context, request *resource.StatusRequest)
 		return nil, fmt.Errorf("failed to get namespace status: %w", err)
 	}
 
-	// Extract only the fields managed by formae
-	ext, err := v1coreac.ExtractNamespace(result, "formae")
+	properties, err := prov.LiveState[v1coreac.NamespaceApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract namespace: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal namespace properties: %w", err)
+		return nil, fmt.Errorf("failed to get namespace live state: %w", err)
 	}
 
 	return &resource.StatusResult{

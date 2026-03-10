@@ -97,14 +97,9 @@ func (c *ConfigMap) Read(ctx context.Context, request *resource.ReadRequest) (*r
 		return nil, fmt.Errorf("failed to get configmap: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractConfigMap(result, "formae")
+	properties, err := prov.LiveState[v1coreac.ConfigMapApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract configmap: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal configmap properties: %w", err)
+		return nil, fmt.Errorf("failed to get configmap live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -126,6 +121,7 @@ func (c *ConfigMap) Update(ctx context.Context, request *resource.UpdateRequest)
 
 	result, err := c.Client.CoreV1().ConfigMaps(namespace).Apply(ctx, cm, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply configmap: %w", err)
@@ -191,14 +187,9 @@ func (c *ConfigMap) Status(ctx context.Context, request *resource.StatusRequest)
 		return nil, fmt.Errorf("failed to get configmap status: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractConfigMap(result, "formae")
+	properties, err := prov.LiveState[v1coreac.ConfigMapApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract configmap: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal configmap properties: %w", err)
+		return nil, fmt.Errorf("failed to get configmap live state: %w", err)
 	}
 
 	return &resource.StatusResult{

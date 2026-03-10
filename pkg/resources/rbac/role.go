@@ -97,14 +97,9 @@ func (r *Role) Read(ctx context.Context, request *resource.ReadRequest) (*resour
 		return nil, fmt.Errorf("failed to get role: %w", err)
 	}
 
-	ext, err := rbacv1ac.ExtractRole(result, "formae")
+	properties, err := prov.LiveState[rbacv1ac.RoleApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract role: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal role properties: %w", err)
+		return nil, fmt.Errorf("failed to get role live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -126,6 +121,7 @@ func (r *Role) Update(ctx context.Context, request *resource.UpdateRequest) (*re
 
 	result, err := r.Client.RbacV1().Roles(namespace).Apply(ctx, role, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply role: %w", err)
@@ -192,14 +188,9 @@ func (r *Role) Status(ctx context.Context, request *resource.StatusRequest) (*re
 		return nil, fmt.Errorf("failed to get role status: %w", err)
 	}
 
-	ext, err := rbacv1ac.ExtractRole(result, "formae")
+	properties, err := prov.LiveState[rbacv1ac.RoleApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract role: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal role properties: %w", err)
+		return nil, fmt.Errorf("failed to get role live state: %w", err)
 	}
 
 	return &resource.StatusResult{

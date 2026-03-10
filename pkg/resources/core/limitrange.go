@@ -97,14 +97,9 @@ func (l *LimitRange) Read(ctx context.Context, request *resource.ReadRequest) (*
 		return nil, fmt.Errorf("failed to get limitrange: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractLimitRange(result, "formae")
+	properties, err := prov.LiveState[v1coreac.LimitRangeApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract limitrange: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal limitrange properties: %w", err)
+		return nil, fmt.Errorf("failed to get limitrange live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -126,6 +121,7 @@ func (l *LimitRange) Update(ctx context.Context, request *resource.UpdateRequest
 
 	result, err := l.Client.CoreV1().LimitRanges(namespace).Apply(ctx, lr, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply limitrange: %w", err)
@@ -191,14 +187,9 @@ func (l *LimitRange) Status(ctx context.Context, request *resource.StatusRequest
 		return nil, fmt.Errorf("failed to get limitrange status: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractLimitRange(result, "formae")
+	properties, err := prov.LiveState[v1coreac.LimitRangeApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract limitrange: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal limitrange properties: %w", err)
+		return nil, fmt.Errorf("failed to get limitrange live state: %w", err)
 	}
 
 	return &resource.StatusResult{

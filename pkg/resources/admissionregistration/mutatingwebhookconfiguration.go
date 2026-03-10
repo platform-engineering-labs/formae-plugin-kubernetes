@@ -92,14 +92,9 @@ func (m *MutatingWebhookConfiguration) Read(ctx context.Context, request *resour
 		return nil, fmt.Errorf("failed to get mutatingwebhookconfiguration: %w", err)
 	}
 
-	ext, err := admissionregistrationv1ac.ExtractMutatingWebhookConfiguration(result, "formae")
+	properties, err := prov.LiveState[admissionregistrationv1ac.MutatingWebhookConfigurationApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract mutatingwebhookconfiguration: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal mutatingwebhookconfiguration properties: %w", err)
+		return nil, fmt.Errorf("failed to get mutatingwebhookconfiguration live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -116,6 +111,7 @@ func (m *MutatingWebhookConfiguration) Update(ctx context.Context, request *reso
 
 	result, err := m.Client.AdmissionregistrationV1().MutatingWebhookConfigurations().Apply(ctx, mwc, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply mutatingwebhookconfiguration: %w", err)
@@ -181,14 +177,9 @@ func (m *MutatingWebhookConfiguration) Status(ctx context.Context, request *reso
 		return nil, fmt.Errorf("failed to get mutatingwebhookconfiguration status: %w", err)
 	}
 
-	ext, err := admissionregistrationv1ac.ExtractMutatingWebhookConfiguration(result, "formae")
+	properties, err := prov.LiveState[admissionregistrationv1ac.MutatingWebhookConfigurationApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract mutatingwebhookconfiguration: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal mutatingwebhookconfiguration properties: %w", err)
+		return nil, fmt.Errorf("failed to get mutatingwebhookconfiguration live state: %w", err)
 	}
 
 	return &resource.StatusResult{

@@ -97,14 +97,9 @@ func (rb *RoleBinding) Read(ctx context.Context, request *resource.ReadRequest) 
 		return nil, fmt.Errorf("failed to get rolebinding: %w", err)
 	}
 
-	ext, err := rbacv1ac.ExtractRoleBinding(result, "formae")
+	properties, err := prov.LiveState[rbacv1ac.RoleBindingApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract rolebinding: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal rolebinding properties: %w", err)
+		return nil, fmt.Errorf("failed to get rolebinding live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -126,6 +121,7 @@ func (rb *RoleBinding) Update(ctx context.Context, request *resource.UpdateReque
 
 	result, err := rb.Client.RbacV1().RoleBindings(namespace).Apply(ctx, binding, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply rolebinding: %w", err)
@@ -192,14 +188,9 @@ func (rb *RoleBinding) Status(ctx context.Context, request *resource.StatusReque
 		return nil, fmt.Errorf("failed to get rolebinding status: %w", err)
 	}
 
-	ext, err := rbacv1ac.ExtractRoleBinding(result, "formae")
+	properties, err := prov.LiveState[rbacv1ac.RoleBindingApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract rolebinding: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal rolebinding properties: %w", err)
+		return nil, fmt.Errorf("failed to get rolebinding live state: %w", err)
 	}
 
 	return &resource.StatusResult{

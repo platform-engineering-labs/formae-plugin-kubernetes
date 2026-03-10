@@ -92,14 +92,9 @@ func (c *ClusterRole) Read(ctx context.Context, request *resource.ReadRequest) (
 		return nil, fmt.Errorf("failed to get clusterrole: %w", err)
 	}
 
-	ext, err := rbacv1ac.ExtractClusterRole(result, "formae")
+	properties, err := prov.LiveState[rbacv1ac.ClusterRoleApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract clusterrole: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal clusterrole properties: %w", err)
+		return nil, fmt.Errorf("failed to get clusterrole live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -116,6 +111,7 @@ func (c *ClusterRole) Update(ctx context.Context, request *resource.UpdateReques
 
 	result, err := c.Client.RbacV1().ClusterRoles().Apply(ctx, cr, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply clusterrole: %w", err)
@@ -181,14 +177,9 @@ func (c *ClusterRole) Status(ctx context.Context, request *resource.StatusReques
 		return nil, fmt.Errorf("failed to get clusterrole status: %w", err)
 	}
 
-	ext, err := rbacv1ac.ExtractClusterRole(result, "formae")
+	properties, err := prov.LiveState[rbacv1ac.ClusterRoleApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract clusterrole: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal clusterrole properties: %w", err)
+		return nil, fmt.Errorf("failed to get clusterrole live state: %w", err)
 	}
 
 	return &resource.StatusResult{

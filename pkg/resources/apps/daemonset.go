@@ -99,14 +99,9 @@ func (ds *DaemonSet) Read(ctx context.Context, request *resource.ReadRequest) (*
 		return nil, fmt.Errorf("failed to get daemonset: %w", err)
 	}
 
-	ext, err := appsv1ac.ExtractDaemonSet(result, "formae")
+	properties, err := prov.LiveState[appsv1ac.DaemonSetApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract daemonset: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal daemonset properties: %w", err)
+		return nil, fmt.Errorf("failed to get daemonset live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -128,6 +123,7 @@ func (ds *DaemonSet) Update(ctx context.Context, request *resource.UpdateRequest
 
 	result, err := ds.Client.AppsV1().DaemonSets(namespace).Apply(ctx, daemonset, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply daemonset: %w", err)
@@ -194,14 +190,9 @@ func (ds *DaemonSet) Status(ctx context.Context, request *resource.StatusRequest
 		return nil, fmt.Errorf("failed to get daemonset status: %w", err)
 	}
 
-	ext, err := appsv1ac.ExtractDaemonSet(result, "formae")
+	properties, err := prov.LiveState[appsv1ac.DaemonSetApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract daemonset: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal daemonset properties: %w", err)
+		return nil, fmt.Errorf("failed to get daemonset live state: %w", err)
 	}
 
 	return &resource.StatusResult{

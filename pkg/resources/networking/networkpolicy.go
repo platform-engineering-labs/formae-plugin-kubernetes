@@ -97,14 +97,9 @@ func (n *NetworkPolicy) Read(ctx context.Context, request *resource.ReadRequest)
 		return nil, fmt.Errorf("failed to get networkpolicy: %w", err)
 	}
 
-	ext, err := networkingv1ac.ExtractNetworkPolicy(result, "formae")
+	properties, err := prov.LiveState[networkingv1ac.NetworkPolicyApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract networkpolicy: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal networkpolicy properties: %w", err)
+		return nil, fmt.Errorf("failed to get networkpolicy live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -126,6 +121,7 @@ func (n *NetworkPolicy) Update(ctx context.Context, request *resource.UpdateRequ
 
 	result, err := n.Client.NetworkingV1().NetworkPolicies(namespace).Apply(ctx, np, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply networkpolicy: %w", err)
@@ -192,14 +188,9 @@ func (n *NetworkPolicy) Status(ctx context.Context, request *resource.StatusRequ
 		return nil, fmt.Errorf("failed to get networkpolicy status: %w", err)
 	}
 
-	ext, err := networkingv1ac.ExtractNetworkPolicy(result, "formae")
+	properties, err := prov.LiveState[networkingv1ac.NetworkPolicyApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract networkpolicy: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal networkpolicy properties: %w", err)
+		return nil, fmt.Errorf("failed to get networkpolicy live state: %w", err)
 	}
 
 	return &resource.StatusResult{

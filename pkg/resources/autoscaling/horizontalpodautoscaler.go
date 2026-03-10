@@ -99,14 +99,9 @@ func (h *HorizontalPodAutoscaler) Read(ctx context.Context, request *resource.Re
 		return nil, fmt.Errorf("failed to get horizontalpodautoscaler: %w", err)
 	}
 
-	ext, err := autoscalingv2ac.ExtractHorizontalPodAutoscaler(result, "formae")
+	properties, err := prov.LiveState[autoscalingv2ac.HorizontalPodAutoscalerApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract horizontalpodautoscaler: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal horizontalpodautoscaler properties: %w", err)
+		return nil, fmt.Errorf("failed to get horizontalpodautoscaler live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -128,6 +123,7 @@ func (h *HorizontalPodAutoscaler) Update(ctx context.Context, request *resource.
 
 	result, err := h.Client.AutoscalingV2().HorizontalPodAutoscalers(namespace).Apply(ctx, hpa, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply horizontalpodautoscaler: %w", err)
@@ -194,14 +190,9 @@ func (h *HorizontalPodAutoscaler) Status(ctx context.Context, request *resource.
 		return nil, fmt.Errorf("failed to get horizontalpodautoscaler status: %w", err)
 	}
 
-	ext, err := autoscalingv2ac.ExtractHorizontalPodAutoscaler(result, "formae")
+	properties, err := prov.LiveState[autoscalingv2ac.HorizontalPodAutoscalerApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract horizontalpodautoscaler: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal horizontalpodautoscaler properties: %w", err)
+		return nil, fmt.Errorf("failed to get horizontalpodautoscaler live state: %w", err)
 	}
 
 	return &resource.StatusResult{

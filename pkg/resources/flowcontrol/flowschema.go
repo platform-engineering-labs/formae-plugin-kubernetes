@@ -92,14 +92,9 @@ func (f *FlowSchema) Read(ctx context.Context, request *resource.ReadRequest) (*
 		return nil, fmt.Errorf("failed to get flowschema: %w", err)
 	}
 
-	ext, err := flowcontrolv1ac.ExtractFlowSchema(result, "formae")
+	properties, err := prov.LiveState[flowcontrolv1ac.FlowSchemaApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract flowschema: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal flowschema properties: %w", err)
+		return nil, fmt.Errorf("failed to get flowschema live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -116,6 +111,7 @@ func (f *FlowSchema) Update(ctx context.Context, request *resource.UpdateRequest
 
 	result, err := f.Client.FlowcontrolV1().FlowSchemas().Apply(ctx, fs, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply flowschema: %w", err)
@@ -181,14 +177,9 @@ func (f *FlowSchema) Status(ctx context.Context, request *resource.StatusRequest
 		return nil, fmt.Errorf("failed to get flowschema status: %w", err)
 	}
 
-	ext, err := flowcontrolv1ac.ExtractFlowSchema(result, "formae")
+	properties, err := prov.LiveState[flowcontrolv1ac.FlowSchemaApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract flowschema: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal flowschema properties: %w", err)
+		return nil, fmt.Errorf("failed to get flowschema live state: %w", err)
 	}
 
 	return &resource.StatusResult{

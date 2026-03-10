@@ -99,14 +99,9 @@ func (ss *StatefulSet) Read(ctx context.Context, request *resource.ReadRequest) 
 		return nil, fmt.Errorf("failed to get statefulset: %w", err)
 	}
 
-	ext, err := appsv1ac.ExtractStatefulSet(result, "formae")
+	properties, err := prov.LiveState[appsv1ac.StatefulSetApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract statefulset: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal statefulset properties: %w", err)
+		return nil, fmt.Errorf("failed to get statefulset live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -128,6 +123,7 @@ func (ss *StatefulSet) Update(ctx context.Context, request *resource.UpdateReque
 
 	result, err := ss.Client.AppsV1().StatefulSets(namespace).Apply(ctx, sts, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply statefulset: %w", err)
@@ -194,14 +190,9 @@ func (ss *StatefulSet) Status(ctx context.Context, request *resource.StatusReque
 		return nil, fmt.Errorf("failed to get statefulset status: %w", err)
 	}
 
-	ext, err := appsv1ac.ExtractStatefulSet(result, "formae")
+	properties, err := prov.LiveState[appsv1ac.StatefulSetApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract statefulset: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal statefulset properties: %w", err)
+		return nil, fmt.Errorf("failed to get statefulset live state: %w", err)
 	}
 
 	return &resource.StatusResult{

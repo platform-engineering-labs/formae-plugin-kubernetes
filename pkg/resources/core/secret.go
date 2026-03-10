@@ -97,14 +97,9 @@ func (s *Secret) Read(ctx context.Context, request *resource.ReadRequest) (*reso
 		return nil, fmt.Errorf("failed to get secret: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractSecret(result, "formae")
+	properties, err := prov.LiveState[v1coreac.SecretApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract secret: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal secret properties: %w", err)
+		return nil, fmt.Errorf("failed to get secret live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -126,6 +121,7 @@ func (s *Secret) Update(ctx context.Context, request *resource.UpdateRequest) (*
 
 	result, err := s.Client.CoreV1().Secrets(namespace).Apply(ctx, secret, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply secret: %w", err)
@@ -191,14 +187,9 @@ func (s *Secret) Status(ctx context.Context, request *resource.StatusRequest) (*
 		return nil, fmt.Errorf("failed to get secret status: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractSecret(result, "formae")
+	properties, err := prov.LiveState[v1coreac.SecretApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract secret: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal secret properties: %w", err)
+		return nil, fmt.Errorf("failed to get secret live state: %w", err)
 	}
 
 	return &resource.StatusResult{

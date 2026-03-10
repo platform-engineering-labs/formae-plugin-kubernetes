@@ -97,14 +97,9 @@ func (e *Endpoints) Read(ctx context.Context, request *resource.ReadRequest) (*r
 		return nil, fmt.Errorf("failed to get endpoints: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractEndpoints(result, "formae")
+	properties, err := prov.LiveState[v1coreac.EndpointsApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract endpoints: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal endpoints properties: %w", err)
+		return nil, fmt.Errorf("failed to get endpoints live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -126,6 +121,7 @@ func (e *Endpoints) Update(ctx context.Context, request *resource.UpdateRequest)
 
 	result, err := e.Client.CoreV1().Endpoints(namespace).Apply(ctx, ep, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply endpoints: %w", err)
@@ -191,14 +187,9 @@ func (e *Endpoints) Status(ctx context.Context, request *resource.StatusRequest)
 		return nil, fmt.Errorf("failed to get endpoints status: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractEndpoints(result, "formae")
+	properties, err := prov.LiveState[v1coreac.EndpointsApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract endpoints: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal endpoints properties: %w", err)
+		return nil, fmt.Errorf("failed to get endpoints live state: %w", err)
 	}
 
 	return &resource.StatusResult{

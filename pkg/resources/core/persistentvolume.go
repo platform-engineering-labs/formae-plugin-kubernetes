@@ -94,14 +94,9 @@ func (p *PersistentVolume) Read(ctx context.Context, request *resource.ReadReque
 		return nil, fmt.Errorf("failed to get persistentvolume: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractPersistentVolume(result, "formae")
+	properties, err := prov.LiveState[v1coreac.PersistentVolumeApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract persistentvolume: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal persistentvolume properties: %w", err)
+		return nil, fmt.Errorf("failed to get persistentvolume live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -118,6 +113,7 @@ func (p *PersistentVolume) Update(ctx context.Context, request *resource.UpdateR
 
 	result, err := p.Client.CoreV1().PersistentVolumes().Apply(ctx, pv, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply persistentvolume: %w", err)
@@ -184,14 +180,9 @@ func (p *PersistentVolume) Status(ctx context.Context, request *resource.StatusR
 		return nil, fmt.Errorf("failed to get persistentvolume status: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractPersistentVolume(result, "formae")
+	properties, err := prov.LiveState[v1coreac.PersistentVolumeApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract persistentvolume: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal persistentvolume properties: %w", err)
+		return nil, fmt.Errorf("failed to get persistentvolume live state: %w", err)
 	}
 
 	return &resource.StatusResult{

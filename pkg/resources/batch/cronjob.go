@@ -97,14 +97,9 @@ func (cj *CronJob) Read(ctx context.Context, request *resource.ReadRequest) (*re
 		return nil, fmt.Errorf("failed to get cronjob: %w", err)
 	}
 
-	ext, err := batchv1ac.ExtractCronJob(result, "formae")
+	properties, err := prov.LiveState[batchv1ac.CronJobApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract cronjob: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal cronjob properties: %w", err)
+		return nil, fmt.Errorf("failed to get cronjob live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -126,6 +121,7 @@ func (cj *CronJob) Update(ctx context.Context, request *resource.UpdateRequest) 
 
 	result, err := cj.Client.BatchV1().CronJobs(namespace).Apply(ctx, cronjob, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply cronjob: %w", err)
@@ -192,14 +188,9 @@ func (cj *CronJob) Status(ctx context.Context, request *resource.StatusRequest) 
 		return nil, fmt.Errorf("failed to get cronjob status: %w", err)
 	}
 
-	ext, err := batchv1ac.ExtractCronJob(result, "formae")
+	properties, err := prov.LiveState[batchv1ac.CronJobApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract cronjob: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal cronjob properties: %w", err)
+		return nil, fmt.Errorf("failed to get cronjob live state: %w", err)
 	}
 
 	return &resource.StatusResult{

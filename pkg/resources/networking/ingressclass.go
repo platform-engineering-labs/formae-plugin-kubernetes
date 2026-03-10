@@ -92,14 +92,9 @@ func (ic *IngressClass) Read(ctx context.Context, request *resource.ReadRequest)
 		return nil, fmt.Errorf("failed to get ingressclass: %w", err)
 	}
 
-	ext, err := networkingv1ac.ExtractIngressClass(result, "formae")
+	properties, err := prov.LiveState[networkingv1ac.IngressClassApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract ingressclass: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal ingressclass properties: %w", err)
+		return nil, fmt.Errorf("failed to get ingressclass live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -116,6 +111,7 @@ func (ic *IngressClass) Update(ctx context.Context, request *resource.UpdateRequ
 
 	result, err := ic.Client.NetworkingV1().IngressClasses().Apply(ctx, ingressClass, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply ingressclass: %w", err)
@@ -181,14 +177,9 @@ func (ic *IngressClass) Status(ctx context.Context, request *resource.StatusRequ
 		return nil, fmt.Errorf("failed to get ingressclass status: %w", err)
 	}
 
-	ext, err := networkingv1ac.ExtractIngressClass(result, "formae")
+	properties, err := prov.LiveState[networkingv1ac.IngressClassApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract ingressclass: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal ingressclass properties: %w", err)
+		return nil, fmt.Errorf("failed to get ingressclass live state: %w", err)
 	}
 
 	return &resource.StatusResult{

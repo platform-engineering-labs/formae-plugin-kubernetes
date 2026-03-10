@@ -101,15 +101,9 @@ func (p *Pod) Read(ctx context.Context, request *resource.ReadRequest) (*resourc
 		return nil, fmt.Errorf("failed to get pod: %w", err)
 	}
 
-	// Extract only the fields managed by formae
-	ext, err := v1coreac.ExtractPod(result, "formae")
+	properties, err := prov.LiveState[v1coreac.PodApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract pod: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal pod properties: %w", err)
+		return nil, fmt.Errorf("failed to get pod live state: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -131,6 +125,7 @@ func (p *Pod) Update(ctx context.Context, request *resource.UpdateRequest) (*res
 
 	result, err := p.Client.CoreV1().Pods(namespace).Apply(ctx, pod, metav1.ApplyOptions{
 		FieldManager: "formae",
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply pod: %w", err)
@@ -199,15 +194,9 @@ func (p *Pod) Status(ctx context.Context, request *resource.StatusRequest) (*res
 		return nil, fmt.Errorf("failed to get pod status: %w", err)
 	}
 
-	// Extract only the fields managed by formae
-	ext, err := v1coreac.ExtractPod(result, "formae")
+	properties, err := prov.LiveState[v1coreac.PodApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract pod: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal pod properties: %w", err)
+		return nil, fmt.Errorf("failed to get pod live state: %w", err)
 	}
 
 	return &resource.StatusResult{
