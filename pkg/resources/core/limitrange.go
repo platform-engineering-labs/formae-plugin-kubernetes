@@ -16,6 +16,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	v1coreac "k8s.io/client-go/applyconfigurations/core/v1"
 )
 
@@ -125,6 +126,14 @@ func (l *LimitRange) Update(ctx context.Context, request *resource.UpdateRequest
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply limitrange: %w", err)
+	}
+
+	// Reconcile metadata: remove labels/annotations not in desired state.
+	if err := prov.ReconcileMetadata(result, lr, func(name string, patch []byte) error {
+		_, err := l.Client.CoreV1().LimitRanges(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+		return err
+	}); err != nil {
+		return nil, fmt.Errorf("failed to reconcile limitrange metadata: %w", err)
 	}
 
 	ext, err := v1coreac.ExtractLimitRange(result, "formae")

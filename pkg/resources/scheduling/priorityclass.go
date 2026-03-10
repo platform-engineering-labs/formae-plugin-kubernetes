@@ -16,6 +16,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	schedulingv1ac "k8s.io/client-go/applyconfigurations/scheduling/v1"
 )
 
@@ -115,6 +116,14 @@ func (pc *PriorityClass) Update(ctx context.Context, request *resource.UpdateReq
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply priorityclass: %w", err)
+	}
+
+	// Reconcile metadata: remove labels/annotations not in desired state.
+	if err := prov.ReconcileMetadata(result, priorityClass, func(name string, patch []byte) error {
+		_, err := pc.Client.SchedulingV1().PriorityClasses().Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+		return err
+	}); err != nil {
+		return nil, fmt.Errorf("failed to reconcile priorityclass metadata: %w", err)
 	}
 
 	ext, err := schedulingv1ac.ExtractPriorityClass(result, "formae")

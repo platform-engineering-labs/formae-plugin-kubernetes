@@ -17,6 +17,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	batchv1ac "k8s.io/client-go/applyconfigurations/batch/v1"
 )
 
@@ -127,6 +128,14 @@ func (j *Job) Update(ctx context.Context, request *resource.UpdateRequest) (*res
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply job: %w", err)
+	}
+
+	// Reconcile metadata: remove labels/annotations not in desired state.
+	if err := prov.ReconcileMetadata(result, job, func(name string, patch []byte) error {
+		_, err := j.Client.BatchV1().Jobs(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+		return err
+	}); err != nil {
+		return nil, fmt.Errorf("failed to reconcile job metadata: %w", err)
 	}
 
 	ext, err := batchv1ac.ExtractJob(result, "formae")

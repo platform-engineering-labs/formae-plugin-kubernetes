@@ -16,6 +16,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	nodev1ac "k8s.io/client-go/applyconfigurations/node/v1"
 )
 
@@ -115,6 +116,14 @@ func (r *RuntimeClass) Update(ctx context.Context, request *resource.UpdateReque
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply runtimeclass: %w", err)
+	}
+
+	// Reconcile metadata: remove labels/annotations not in desired state.
+	if err := prov.ReconcileMetadata(result, rc, func(name string, patch []byte) error {
+		_, err := r.Client.NodeV1().RuntimeClasses().Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+		return err
+	}); err != nil {
+		return nil, fmt.Errorf("failed to reconcile runtimeclass metadata: %w", err)
 	}
 
 	ext, err := nodev1ac.ExtractRuntimeClass(result, "formae")

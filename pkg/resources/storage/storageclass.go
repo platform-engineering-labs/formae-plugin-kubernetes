@@ -16,6 +16,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	storagev1ac "k8s.io/client-go/applyconfigurations/storage/v1"
 )
 
@@ -115,6 +116,14 @@ func (s *StorageClass) Update(ctx context.Context, request *resource.UpdateReque
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply storageclass: %w", err)
+	}
+
+	// Reconcile metadata: remove labels/annotations not in desired state.
+	if err := prov.ReconcileMetadata(result, sc, func(name string, patch []byte) error {
+		_, err := s.Client.StorageV1().StorageClasses().Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+		return err
+	}); err != nil {
+		return nil, fmt.Errorf("failed to reconcile storageclass metadata: %w", err)
 	}
 
 	ext, err := storagev1ac.ExtractStorageClass(result, "formae")

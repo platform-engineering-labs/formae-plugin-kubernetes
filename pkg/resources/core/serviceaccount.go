@@ -16,6 +16,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	v1coreac "k8s.io/client-go/applyconfigurations/core/v1"
 )
 
@@ -125,6 +126,14 @@ func (sa *ServiceAccount) Update(ctx context.Context, request *resource.UpdateRe
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply serviceaccount: %w", err)
+	}
+
+	// Reconcile metadata: remove labels/annotations not in desired state.
+	if err := prov.ReconcileMetadata(result, svcAcct, func(name string, patch []byte) error {
+		_, err := sa.Client.CoreV1().ServiceAccounts(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+		return err
+	}); err != nil {
+		return nil, fmt.Errorf("failed to reconcile serviceaccount metadata: %w", err)
 	}
 
 	ext, err := v1coreac.ExtractServiceAccount(result, "formae")

@@ -16,6 +16,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	policyv1ac "k8s.io/client-go/applyconfigurations/policy/v1"
 )
 
@@ -125,6 +126,14 @@ func (p *PodDisruptionBudget) Update(ctx context.Context, request *resource.Upda
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply poddisruptionbudget: %w", err)
+	}
+
+	// Reconcile metadata: remove labels/annotations not in desired state.
+	if err := prov.ReconcileMetadata(result, pdb, func(name string, patch []byte) error {
+		_, err := p.Client.PolicyV1().PodDisruptionBudgets(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+		return err
+	}); err != nil {
+		return nil, fmt.Errorf("failed to reconcile poddisruptionbudget metadata: %w", err)
 	}
 
 	ext, err := policyv1ac.ExtractPodDisruptionBudget(result, "formae")

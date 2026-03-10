@@ -16,6 +16,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	rbacv1ac "k8s.io/client-go/applyconfigurations/rbac/v1"
 )
 
@@ -115,6 +116,14 @@ func (c *ClusterRole) Update(ctx context.Context, request *resource.UpdateReques
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply clusterrole: %w", err)
+	}
+
+	// Reconcile metadata: remove labels/annotations not in desired state.
+	if err := prov.ReconcileMetadata(result, cr, func(name string, patch []byte) error {
+		_, err := c.Client.RbacV1().ClusterRoles().Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+		return err
+	}); err != nil {
+		return nil, fmt.Errorf("failed to reconcile clusterrole metadata: %w", err)
 	}
 
 	ext, err := rbacv1ac.ExtractClusterRole(result, "formae")

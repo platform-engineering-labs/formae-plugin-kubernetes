@@ -16,6 +16,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	rbacv1ac "k8s.io/client-go/applyconfigurations/rbac/v1"
 )
 
@@ -115,6 +116,14 @@ func (c *ClusterRoleBinding) Update(ctx context.Context, request *resource.Updat
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply clusterrolebinding: %w", err)
+	}
+
+	// Reconcile metadata: remove labels/annotations not in desired state.
+	if err := prov.ReconcileMetadata(result, crb, func(name string, patch []byte) error {
+		_, err := c.Client.RbacV1().ClusterRoleBindings().Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+		return err
+	}); err != nil {
+		return nil, fmt.Errorf("failed to reconcile clusterrolebinding metadata: %w", err)
 	}
 
 	ext, err := rbacv1ac.ExtractClusterRoleBinding(result, "formae")

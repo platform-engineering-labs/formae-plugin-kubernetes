@@ -17,6 +17,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	networkingv1ac "k8s.io/client-go/applyconfigurations/networking/v1"
 )
 
@@ -127,6 +128,14 @@ func (ing *Ingress) Update(ctx context.Context, request *resource.UpdateRequest)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply ingress: %w", err)
+	}
+
+	// Reconcile metadata: remove labels/annotations not in desired state.
+	if err := prov.ReconcileMetadata(result, ingress, func(name string, patch []byte) error {
+		_, err := ing.Client.NetworkingV1().Ingresses(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+		return err
+	}); err != nil {
+		return nil, fmt.Errorf("failed to reconcile ingress metadata: %w", err)
 	}
 
 	ext, err := networkingv1ac.ExtractIngress(result, "formae")

@@ -17,6 +17,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	appsv1ac "k8s.io/client-go/applyconfigurations/apps/v1"
 )
 
@@ -127,6 +128,14 @@ func (d *Deployment) Update(ctx context.Context, request *resource.UpdateRequest
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply deployment: %w", err)
+	}
+
+	// Reconcile metadata: remove labels/annotations not in desired state.
+	if err := prov.ReconcileMetadata(result, deploy, func(name string, patch []byte) error {
+		_, err := d.Client.AppsV1().Deployments(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+		return err
+	}); err != nil {
+		return nil, fmt.Errorf("failed to reconcile deployment metadata: %w", err)
 	}
 
 	ext, err := appsv1ac.ExtractDeployment(result, "formae")

@@ -17,6 +17,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	appsv1ac "k8s.io/client-go/applyconfigurations/apps/v1"
 )
 
@@ -128,6 +129,14 @@ func (r *ReplicaSet) Update(ctx context.Context, request *resource.UpdateRequest
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply replicaset: %w", err)
+	}
+
+	// Reconcile metadata: remove labels/annotations not in desired state.
+	if err := prov.ReconcileMetadata(result, rs, func(name string, patch []byte) error {
+		_, err := r.Client.AppsV1().ReplicaSets(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+		return err
+	}); err != nil {
+		return nil, fmt.Errorf("failed to reconcile replicaset metadata: %w", err)
 	}
 
 	// Extract only the fields managed by formae

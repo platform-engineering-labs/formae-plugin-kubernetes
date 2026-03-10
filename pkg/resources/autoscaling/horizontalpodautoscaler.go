@@ -17,6 +17,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	autoscalingv2ac "k8s.io/client-go/applyconfigurations/autoscaling/v2"
 )
 
@@ -127,6 +128,14 @@ func (h *HorizontalPodAutoscaler) Update(ctx context.Context, request *resource.
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply horizontalpodautoscaler: %w", err)
+	}
+
+	// Reconcile metadata: remove labels/annotations not in desired state.
+	if err := prov.ReconcileMetadata(result, hpa, func(name string, patch []byte) error {
+		_, err := h.Client.AutoscalingV2().HorizontalPodAutoscalers(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+		return err
+	}); err != nil {
+		return nil, fmt.Errorf("failed to reconcile horizontalpodautoscaler metadata: %w", err)
 	}
 
 	ext, err := autoscalingv2ac.ExtractHorizontalPodAutoscaler(result, "formae")

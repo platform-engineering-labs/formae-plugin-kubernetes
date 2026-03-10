@@ -16,6 +16,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	networkingv1ac "k8s.io/client-go/applyconfigurations/networking/v1"
 )
 
@@ -115,6 +116,14 @@ func (ic *IngressClass) Update(ctx context.Context, request *resource.UpdateRequ
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply ingressclass: %w", err)
+	}
+
+	// Reconcile metadata: remove labels/annotations not in desired state.
+	if err := prov.ReconcileMetadata(result, ingressClass, func(name string, patch []byte) error {
+		_, err := ic.Client.NetworkingV1().IngressClasses().Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+		return err
+	}); err != nil {
+		return nil, fmt.Errorf("failed to reconcile ingressclass metadata: %w", err)
 	}
 
 	ext, err := networkingv1ac.ExtractIngressClass(result, "formae")

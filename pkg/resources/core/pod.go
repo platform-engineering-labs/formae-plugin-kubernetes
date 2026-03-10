@@ -17,6 +17,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	v1coreac "k8s.io/client-go/applyconfigurations/core/v1"
 )
 
@@ -129,6 +130,14 @@ func (p *Pod) Update(ctx context.Context, request *resource.UpdateRequest) (*res
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply pod: %w", err)
+	}
+
+	// Reconcile metadata: remove labels/annotations not in desired state.
+	if err := prov.ReconcileMetadata(result, pod, func(name string, patch []byte) error {
+		_, err := p.Client.CoreV1().Pods(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+		return err
+	}); err != nil {
+		return nil, fmt.Errorf("failed to reconcile pod metadata: %w", err)
 	}
 
 	// Extract only the fields managed by formae

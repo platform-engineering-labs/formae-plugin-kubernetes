@@ -16,6 +16,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	batchv1ac "k8s.io/client-go/applyconfigurations/batch/v1"
 )
 
@@ -125,6 +126,14 @@ func (cj *CronJob) Update(ctx context.Context, request *resource.UpdateRequest) 
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply cronjob: %w", err)
+	}
+
+	// Reconcile metadata: remove labels/annotations not in desired state.
+	if err := prov.ReconcileMetadata(result, cronjob, func(name string, patch []byte) error {
+		_, err := cj.Client.BatchV1().CronJobs(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+		return err
+	}); err != nil {
+		return nil, fmt.Errorf("failed to reconcile cronjob metadata: %w", err)
 	}
 
 	ext, err := batchv1ac.ExtractCronJob(result, "formae")
