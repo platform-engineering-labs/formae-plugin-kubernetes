@@ -98,7 +98,7 @@ func (e *Endpoints) Read(ctx context.Context, request *resource.ReadRequest) (*r
 		return nil, fmt.Errorf("failed to get endpoints: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.EndpointsApplyConfiguration](result)
+	properties, err := prov.LiveState[v1coreac.EndpointsApplyConfiguration](result) //nolint:staticcheck // migrating to EndpointSlice tracked separately
 	if err != nil {
 		return nil, fmt.Errorf("failed to get endpoints live state: %w", err)
 	}
@@ -196,7 +196,7 @@ func (e *Endpoints) Status(ctx context.Context, request *resource.StatusRequest)
 		return nil, fmt.Errorf("failed to get endpoints status: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.EndpointsApplyConfiguration](result)
+	properties, err := prov.LiveState[v1coreac.EndpointsApplyConfiguration](result) //nolint:staticcheck // migrating to EndpointSlice tracked separately
 	if err != nil {
 		return nil, fmt.Errorf("failed to get endpoints live state: %w", err)
 	}
