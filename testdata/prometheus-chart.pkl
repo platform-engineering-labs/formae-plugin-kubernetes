@@ -1,5 +1,5 @@
 /*
- * Chart Smoke Test: PrometheusChart
+ * Conformance Test: PrometheusChart (Create)
  */
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
@@ -8,7 +8,7 @@ import "./config/vars.pkl" as v
 
 local chart = new PrometheusChart.Prometheus {
   name = "test-prom-\(v.testRunID)"
-  namespace = "chart-prom-\(v.testRunID)"
+  namespace = "formae-test-\(v.testRunID)"
   createNamespace = true
   createServiceAccount = true
   createClusterRole = true
@@ -17,7 +17,7 @@ local chart = new PrometheusChart.Prometheus {
 }
 
 forma {
-  v.stack
+  new formae.Stack { label = "prometheus-chart-test"; description = "Prometheus chart conformance test" }
   v.target
   for (r in chart.resources) { r }
 }

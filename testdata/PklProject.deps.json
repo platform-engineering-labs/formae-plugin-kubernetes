@@ -8,6 +8,11 @@
         "sha256": "af24dfda79158bf286b548832ce540096c59a65acad39763b847eaa6e98dcfb9"
       }
     },
+    "package://hub.platform.engineering/plugins/k8s/charts@0": {
+      "type": "local",
+      "uri": "projectpackage://hub.platform.engineering/plugins/k8s/charts@0.1.0",
+      "path": "../charts"
+    },
     "package://hub.platform.engineering/plugins/k8s/schema/pkl/k8s/k8s@0": {
       "type": "local",
       "uri": "projectpackage://hub.platform.engineering/plugins/k8s/schema/pkl/k8s/k8s@0.1.0",

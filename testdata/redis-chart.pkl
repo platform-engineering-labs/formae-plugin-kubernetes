@@ -1,5 +1,5 @@
 /*
- * Chart Smoke Test: RedisChart
+ * Conformance Test: RedisChart (Create)
  */
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
@@ -8,7 +8,7 @@ import "./config/vars.pkl" as v
 
 local chart = new RedisChart.Redis {
   name = "test-redis-\(v.testRunID)"
-  namespace = "chart-redis-\(v.testRunID)"
+  namespace = "formae-test-\(v.testRunID)"
   createNamespace = true
   replicas = 1
   password = "test-redis-pass"
@@ -16,7 +16,7 @@ local chart = new RedisChart.Redis {
 }
 
 forma {
-  v.stack
+  new formae.Stack { label = "redis-chart-test"; description = "Redis chart conformance test" }
   v.target
   for (r in chart.resources) { r }
 }

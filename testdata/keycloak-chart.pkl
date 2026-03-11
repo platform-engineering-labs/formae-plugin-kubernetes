@@ -1,5 +1,5 @@
 /*
- * Chart Smoke Test: KeycloakChart
+ * Conformance Test: KeycloakChart (Create)
  */
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
@@ -8,14 +8,14 @@ import "./config/vars.pkl" as v
 
 local chart = new KeycloakChart.Keycloak {
   name = "test-kc-\(v.testRunID)"
-  namespace = "chart-kc-\(v.testRunID)"
+  namespace = "formae-test-\(v.testRunID)"
   createNamespace = true
   replicas = 1
   adminPassword = "test-admin-pass"
 }
 
 forma {
-  v.stack
+  new formae.Stack { label = "keycloak-chart-test"; description = "Keycloak chart conformance test" }
   v.target
   for (r in chart.resources) { r }
 }

@@ -1,5 +1,5 @@
 /*
- * Chart Smoke Test: PostgreSQLChart
+ * Conformance Test: PostgreSQLChart (Create)
  */
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
@@ -8,7 +8,7 @@ import "./config/vars.pkl" as v
 
 local chart = new PostgreSQLChart.PostgreSQL {
   name = "test-pg-\(v.testRunID)"
-  namespace = "chart-pg-\(v.testRunID)"
+  namespace = "formae-test-\(v.testRunID)"
   createNamespace = true
   replicas = 1
   password = "test-pg-pass"
@@ -17,7 +17,7 @@ local chart = new PostgreSQLChart.PostgreSQL {
 }
 
 forma {
-  v.stack
+  new formae.Stack { label = "postgresql-chart-test"; description = "PostgreSQL chart conformance test" }
   v.target
   for (r in chart.resources) { r }
 }

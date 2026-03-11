@@ -261,6 +261,7 @@ open class Redis {
                   ["storage"] = _self.storageSize
                 }
               }
+              volumeMode = "Filesystem"
               when (_self.storageClassName != null) {
                 storageClassName = _self.storageClassName
               }

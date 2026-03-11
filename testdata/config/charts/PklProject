@@ -1,9 +1,0 @@
-amends "pkl:Project"
-
-dependencies {
-  ["formae"] {
-    uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.82.1"
-  }
-  ["k8s"] = import("../../../schema/pkl/PklProject")
-  ["formae-charts"] = import("../../../charts/PklProject")
-}

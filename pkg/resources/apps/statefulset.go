@@ -65,7 +65,7 @@ func (ss *StatefulSet) Create(ctx context.Context, request *resource.CreateReque
 		return nil, fmt.Errorf("failed to apply statefulset: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, appsv1ac.ExtractStatefulSet)
+	properties, err := extractStatefulSetState(result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get statefulset live state: %w", err)
 	}
@@ -95,7 +95,7 @@ func (ss *StatefulSet) Read(ctx context.Context, request *resource.ReadRequest) 
 		return nil, fmt.Errorf("failed to get statefulset: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, appsv1ac.ExtractStatefulSet)
+	properties, err := extractStatefulSetState(result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get statefulset live state: %w", err)
 	}
@@ -133,7 +133,7 @@ func (ss *StatefulSet) Update(ctx context.Context, request *resource.UpdateReque
 		return nil, fmt.Errorf("failed to reconcile statefulset metadata: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, appsv1ac.ExtractStatefulSet)
+	properties, err := extractStatefulSetState(result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get statefulset live state: %w", err)
 	}
@@ -189,7 +189,7 @@ func (ss *StatefulSet) Status(ctx context.Context, request *resource.StatusReque
 		return nil, fmt.Errorf("failed to get statefulset status: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, appsv1ac.ExtractStatefulSet)
+	properties, err := extractStatefulSetState(result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get statefulset live state: %w", err)
 	}
@@ -225,6 +225,56 @@ func (ss *StatefulSet) List(ctx context.Context, request *resource.ListRequest) 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,
 	}, nil
+}
+
+// extractStatefulSetState extracts SSA state and strips server-managed fields
+// from volumeClaimTemplates (status, which the API server injects into VCTs).
+func extractStatefulSetState(result *appsv1.StatefulSet) (json.RawMessage, error) {
+	properties, err := prov.ExtractState(result, appsv1ac.ExtractStatefulSet)
+	if err != nil {
+		return nil, err
+	}
+	return stripVCTStatus(properties)
+}
+
+// stripVCTStatus removes "status" from each volumeClaimTemplates entry.
+// The K8S API server injects status into VCTs but it's a server-managed field
+// that shouldn't appear in the desired-state properties.
+func stripVCTStatus(data json.RawMessage) (json.RawMessage, error) {
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return data, nil //nolint:nilerr // not a JSON object, return as-is
+	}
+	specRaw, ok := obj["spec"]
+	if !ok {
+		return data, nil
+	}
+	var spec map[string]json.RawMessage
+	if err := json.Unmarshal(specRaw, &spec); err != nil {
+		return data, nil //nolint:nilerr
+	}
+	vctRaw, ok := spec["volumeClaimTemplates"]
+	if !ok {
+		return data, nil
+	}
+	var vcts []map[string]json.RawMessage
+	if err := json.Unmarshal(vctRaw, &vcts); err != nil {
+		return data, nil //nolint:nilerr
+	}
+	for i := range vcts {
+		delete(vcts[i], "status")
+	}
+	vctBytes, err := json.Marshal(vcts)
+	if err != nil {
+		return data, nil //nolint:nilerr
+	}
+	spec["volumeClaimTemplates"] = vctBytes
+	specBytes, err := json.Marshal(spec)
+	if err != nil {
+		return data, nil //nolint:nilerr
+	}
+	obj["spec"] = specBytes
+	return json.Marshal(obj)
 }
 
 // operationStatus maps StatefulSet status to Formae OperationStatus.

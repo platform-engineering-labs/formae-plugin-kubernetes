@@ -317,7 +317,9 @@ open class Prometheus {
               }
               new {
                 name = "data"
-                emptyDir = new k8s.EmptyDirVolumeSource {}
+                emptyDir = new k8s.EmptyDirVolumeSource {
+                  sizeLimit = "1Gi"
+                }
               }
             }
           }

@@ -1,5 +1,5 @@
 /*
- * Chart Smoke Test: GrafanaChart
+ * Conformance Test: GrafanaChart (Create)
  */
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
@@ -8,7 +8,7 @@ import "./config/vars.pkl" as v
 
 local chart = new GrafanaChart.Grafana {
   name = "test-grafana-\(v.testRunID)"
-  namespace = "chart-grafana-\(v.testRunID)"
+  namespace = "formae-test-\(v.testRunID)"
   createNamespace = true
   replicas = 1
   adminPassword = "test-pass"
@@ -16,7 +16,7 @@ local chart = new GrafanaChart.Grafana {
 }
 
 forma {
-  v.stack
+  new formae.Stack { label = "grafana-chart-test"; description = "Grafana chart conformance test" }
   v.target
   for (r in chart.resources) { r }
 }
