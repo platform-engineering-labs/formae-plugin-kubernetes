@@ -26,3 +26,19 @@ func ExtractState[API any, AC any](apiObject *API, extractFn ExtractFunc[API, AC
 	}
 	return json.Marshal(extracted)
 }
+
+// LiveState round-trips the full API object through the apply configuration type.
+// This normalizes the structure (drops status, managedFields, etc. via omitempty)
+// but retains ALL spec/metadata fields including server defaults.
+// Use this to understand the full cluster state for drift detection.
+func LiveState[T any](apiObject any) ([]byte, error) {
+	data, err := json.Marshal(apiObject)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal API object: %w", err)
+	}
+	var ac T
+	if err := json.Unmarshal(data, &ac); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal into apply configuration: %w", err)
+	}
+	return json.Marshal(ac)
+}
