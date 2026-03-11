@@ -59,7 +59,7 @@ func (pc *PriorityClass) Create(ctx context.Context, request *resource.CreateReq
 		return nil, fmt.Errorf("failed to apply priorityclass: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, schedulingv1ac.ExtractPriorityClass)
+	properties, err := prov.LiveState[schedulingv1ac.PriorityClassApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get priorityclass live state: %w", err)
 	}
@@ -88,7 +88,7 @@ func (pc *PriorityClass) Read(ctx context.Context, request *resource.ReadRequest
 		return nil, fmt.Errorf("failed to get priorityclass: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, schedulingv1ac.ExtractPriorityClass)
+	properties, err := prov.LiveState[schedulingv1ac.PriorityClassApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get priorityclass live state: %w", err)
 	}
@@ -121,7 +121,7 @@ func (pc *PriorityClass) Update(ctx context.Context, request *resource.UpdateReq
 		return nil, fmt.Errorf("failed to reconcile priorityclass metadata: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, schedulingv1ac.ExtractPriorityClass)
+	properties, err := prov.LiveState[schedulingv1ac.PriorityClassApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get priorityclass live state: %w", err)
 	}
@@ -176,7 +176,7 @@ func (pc *PriorityClass) Status(ctx context.Context, request *resource.StatusReq
 		return nil, fmt.Errorf("failed to get priorityclass status: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, schedulingv1ac.ExtractPriorityClass)
+	properties, err := prov.LiveState[schedulingv1ac.PriorityClassApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get priorityclass live state: %w", err)
 	}

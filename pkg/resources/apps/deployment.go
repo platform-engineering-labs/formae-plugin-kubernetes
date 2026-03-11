@@ -65,7 +65,7 @@ func (d *Deployment) Create(ctx context.Context, request *resource.CreateRequest
 		return nil, fmt.Errorf("failed to apply deployment: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, appsv1ac.ExtractDeployment)
+	properties, err := prov.LiveState[appsv1ac.DeploymentApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deployment live state: %w", err)
 	}
@@ -95,7 +95,7 @@ func (d *Deployment) Read(ctx context.Context, request *resource.ReadRequest) (*
 		return nil, fmt.Errorf("failed to get deployment: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, appsv1ac.ExtractDeployment)
+	properties, err := prov.LiveState[appsv1ac.DeploymentApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deployment live state: %w", err)
 	}
@@ -133,7 +133,7 @@ func (d *Deployment) Update(ctx context.Context, request *resource.UpdateRequest
 		return nil, fmt.Errorf("failed to reconcile deployment metadata: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, appsv1ac.ExtractDeployment)
+	properties, err := prov.LiveState[appsv1ac.DeploymentApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deployment live state: %w", err)
 	}
@@ -189,7 +189,7 @@ func (d *Deployment) Status(ctx context.Context, request *resource.StatusRequest
 		return nil, fmt.Errorf("failed to get deployment status: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, appsv1ac.ExtractDeployment)
+	properties, err := prov.LiveState[appsv1ac.DeploymentApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deployment live state: %w", err)
 	}

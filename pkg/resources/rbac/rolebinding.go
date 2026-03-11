@@ -64,7 +64,7 @@ func (rb *RoleBinding) Create(ctx context.Context, request *resource.CreateReque
 		return nil, fmt.Errorf("failed to apply rolebinding: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, rbacv1ac.ExtractRoleBinding)
+	properties, err := prov.LiveState[rbacv1ac.RoleBindingApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rolebinding live state: %w", err)
 	}
@@ -93,7 +93,7 @@ func (rb *RoleBinding) Read(ctx context.Context, request *resource.ReadRequest) 
 		return nil, fmt.Errorf("failed to get rolebinding: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, rbacv1ac.ExtractRoleBinding)
+	properties, err := prov.LiveState[rbacv1ac.RoleBindingApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rolebinding live state: %w", err)
 	}
@@ -131,7 +131,7 @@ func (rb *RoleBinding) Update(ctx context.Context, request *resource.UpdateReque
 		return nil, fmt.Errorf("failed to reconcile rolebinding metadata: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, rbacv1ac.ExtractRoleBinding)
+	properties, err := prov.LiveState[rbacv1ac.RoleBindingApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rolebinding live state: %w", err)
 	}
@@ -187,7 +187,7 @@ func (rb *RoleBinding) Status(ctx context.Context, request *resource.StatusReque
 		return nil, fmt.Errorf("failed to get rolebinding status: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, rbacv1ac.ExtractRoleBinding)
+	properties, err := prov.LiveState[rbacv1ac.RoleBindingApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rolebinding live state: %w", err)
 	}

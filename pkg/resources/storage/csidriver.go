@@ -59,7 +59,7 @@ func (c *CSIDriver) Create(ctx context.Context, request *resource.CreateRequest)
 		return nil, fmt.Errorf("failed to apply csidriver: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, storagev1ac.ExtractCSIDriver)
+	properties, err := prov.LiveState[storagev1ac.CSIDriverApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get csidriver live state: %w", err)
 	}
@@ -88,7 +88,7 @@ func (c *CSIDriver) Read(ctx context.Context, request *resource.ReadRequest) (*r
 		return nil, fmt.Errorf("failed to get csidriver: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, storagev1ac.ExtractCSIDriver)
+	properties, err := prov.LiveState[storagev1ac.CSIDriverApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get csidriver live state: %w", err)
 	}
@@ -121,7 +121,7 @@ func (c *CSIDriver) Update(ctx context.Context, request *resource.UpdateRequest)
 		return nil, fmt.Errorf("failed to reconcile csidriver metadata: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, storagev1ac.ExtractCSIDriver)
+	properties, err := prov.LiveState[storagev1ac.CSIDriverApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get csidriver live state: %w", err)
 	}
@@ -176,7 +176,7 @@ func (c *CSIDriver) Status(ctx context.Context, request *resource.StatusRequest)
 		return nil, fmt.Errorf("failed to get csidriver status: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, storagev1ac.ExtractCSIDriver)
+	properties, err := prov.LiveState[storagev1ac.CSIDriverApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get csidriver live state: %w", err)
 	}

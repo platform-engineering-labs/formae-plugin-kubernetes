@@ -65,7 +65,7 @@ func (svc *Service) Create(ctx context.Context, request *resource.CreateRequest)
 		return nil, fmt.Errorf("failed to apply service: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, v1coreac.ExtractService)
+	properties, err := prov.LiveState[v1coreac.ServiceApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get service live state: %w", err)
 	}
@@ -95,7 +95,7 @@ func (svc *Service) Read(ctx context.Context, request *resource.ReadRequest) (*r
 		return nil, fmt.Errorf("failed to get service: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, v1coreac.ExtractService)
+	properties, err := prov.LiveState[v1coreac.ServiceApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get service live state: %w", err)
 	}
@@ -133,7 +133,7 @@ func (svc *Service) Update(ctx context.Context, request *resource.UpdateRequest)
 		return nil, fmt.Errorf("failed to reconcile service metadata: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, v1coreac.ExtractService)
+	properties, err := prov.LiveState[v1coreac.ServiceApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get service live state: %w", err)
 	}
@@ -189,7 +189,7 @@ func (svc *Service) Status(ctx context.Context, request *resource.StatusRequest)
 		return nil, fmt.Errorf("failed to get service status: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, v1coreac.ExtractService)
+	properties, err := prov.LiveState[v1coreac.ServiceApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get service live state: %w", err)
 	}

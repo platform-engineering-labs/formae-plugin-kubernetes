@@ -59,7 +59,7 @@ func (p *PriorityLevelConfiguration) Create(ctx context.Context, request *resour
 		return nil, fmt.Errorf("failed to apply prioritylevelconfiguration: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, flowcontrolv1ac.ExtractPriorityLevelConfiguration)
+	properties, err := prov.LiveState[flowcontrolv1ac.PriorityLevelConfigurationApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get prioritylevelconfiguration live state: %w", err)
 	}
@@ -88,7 +88,7 @@ func (p *PriorityLevelConfiguration) Read(ctx context.Context, request *resource
 		return nil, fmt.Errorf("failed to get prioritylevelconfiguration: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, flowcontrolv1ac.ExtractPriorityLevelConfiguration)
+	properties, err := prov.LiveState[flowcontrolv1ac.PriorityLevelConfigurationApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get prioritylevelconfiguration live state: %w", err)
 	}
@@ -121,7 +121,7 @@ func (p *PriorityLevelConfiguration) Update(ctx context.Context, request *resour
 		return nil, fmt.Errorf("failed to reconcile prioritylevelconfiguration metadata: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, flowcontrolv1ac.ExtractPriorityLevelConfiguration)
+	properties, err := prov.LiveState[flowcontrolv1ac.PriorityLevelConfigurationApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get prioritylevelconfiguration live state: %w", err)
 	}
@@ -176,7 +176,7 @@ func (p *PriorityLevelConfiguration) Status(ctx context.Context, request *resour
 		return nil, fmt.Errorf("failed to get prioritylevelconfiguration status: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, flowcontrolv1ac.ExtractPriorityLevelConfiguration)
+	properties, err := prov.LiveState[flowcontrolv1ac.PriorityLevelConfigurationApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get prioritylevelconfiguration live state: %w", err)
 	}

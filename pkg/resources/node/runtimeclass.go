@@ -59,7 +59,7 @@ func (r *RuntimeClass) Create(ctx context.Context, request *resource.CreateReque
 		return nil, fmt.Errorf("failed to apply runtimeclass: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, nodev1ac.ExtractRuntimeClass)
+	properties, err := prov.LiveState[nodev1ac.RuntimeClassApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get runtimeclass live state: %w", err)
 	}
@@ -88,7 +88,7 @@ func (r *RuntimeClass) Read(ctx context.Context, request *resource.ReadRequest) 
 		return nil, fmt.Errorf("failed to get runtimeclass: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, nodev1ac.ExtractRuntimeClass)
+	properties, err := prov.LiveState[nodev1ac.RuntimeClassApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get runtimeclass live state: %w", err)
 	}
@@ -121,7 +121,7 @@ func (r *RuntimeClass) Update(ctx context.Context, request *resource.UpdateReque
 		return nil, fmt.Errorf("failed to reconcile runtimeclass metadata: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, nodev1ac.ExtractRuntimeClass)
+	properties, err := prov.LiveState[nodev1ac.RuntimeClassApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get runtimeclass live state: %w", err)
 	}
@@ -176,7 +176,7 @@ func (r *RuntimeClass) Status(ctx context.Context, request *resource.StatusReque
 		return nil, fmt.Errorf("failed to get runtimeclass status: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, nodev1ac.ExtractRuntimeClass)
+	properties, err := prov.LiveState[nodev1ac.RuntimeClassApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get runtimeclass live state: %w", err)
 	}

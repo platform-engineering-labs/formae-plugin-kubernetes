@@ -59,7 +59,7 @@ func (f *FlowSchema) Create(ctx context.Context, request *resource.CreateRequest
 		return nil, fmt.Errorf("failed to apply flowschema: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, flowcontrolv1ac.ExtractFlowSchema)
+	properties, err := prov.LiveState[flowcontrolv1ac.FlowSchemaApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get flowschema live state: %w", err)
 	}
@@ -88,7 +88,7 @@ func (f *FlowSchema) Read(ctx context.Context, request *resource.ReadRequest) (*
 		return nil, fmt.Errorf("failed to get flowschema: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, flowcontrolv1ac.ExtractFlowSchema)
+	properties, err := prov.LiveState[flowcontrolv1ac.FlowSchemaApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get flowschema live state: %w", err)
 	}
@@ -121,7 +121,7 @@ func (f *FlowSchema) Update(ctx context.Context, request *resource.UpdateRequest
 		return nil, fmt.Errorf("failed to reconcile flowschema metadata: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, flowcontrolv1ac.ExtractFlowSchema)
+	properties, err := prov.LiveState[flowcontrolv1ac.FlowSchemaApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get flowschema live state: %w", err)
 	}
@@ -176,7 +176,7 @@ func (f *FlowSchema) Status(ctx context.Context, request *resource.StatusRequest
 		return nil, fmt.Errorf("failed to get flowschema status: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, flowcontrolv1ac.ExtractFlowSchema)
+	properties, err := prov.LiveState[flowcontrolv1ac.FlowSchemaApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get flowschema live state: %w", err)
 	}

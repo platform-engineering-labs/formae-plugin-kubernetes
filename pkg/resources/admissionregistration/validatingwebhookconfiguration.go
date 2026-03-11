@@ -59,7 +59,7 @@ func (v *ValidatingWebhookConfiguration) Create(ctx context.Context, request *re
 		return nil, fmt.Errorf("failed to apply validatingwebhookconfiguration: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, admissionregistrationv1ac.ExtractValidatingWebhookConfiguration)
+	properties, err := prov.LiveState[admissionregistrationv1ac.ValidatingWebhookConfigurationApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get validatingwebhookconfiguration live state: %w", err)
 	}
@@ -88,7 +88,7 @@ func (v *ValidatingWebhookConfiguration) Read(ctx context.Context, request *reso
 		return nil, fmt.Errorf("failed to get validatingwebhookconfiguration: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, admissionregistrationv1ac.ExtractValidatingWebhookConfiguration)
+	properties, err := prov.LiveState[admissionregistrationv1ac.ValidatingWebhookConfigurationApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get validatingwebhookconfiguration live state: %w", err)
 	}
@@ -121,7 +121,7 @@ func (v *ValidatingWebhookConfiguration) Update(ctx context.Context, request *re
 		return nil, fmt.Errorf("failed to reconcile validatingwebhookconfiguration metadata: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, admissionregistrationv1ac.ExtractValidatingWebhookConfiguration)
+	properties, err := prov.LiveState[admissionregistrationv1ac.ValidatingWebhookConfigurationApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get validatingwebhookconfiguration live state: %w", err)
 	}
@@ -176,7 +176,7 @@ func (v *ValidatingWebhookConfiguration) Status(ctx context.Context, request *re
 		return nil, fmt.Errorf("failed to get validatingwebhookconfiguration status: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, admissionregistrationv1ac.ExtractValidatingWebhookConfiguration)
+	properties, err := prov.LiveState[admissionregistrationv1ac.ValidatingWebhookConfigurationApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get validatingwebhookconfiguration live state: %w", err)
 	}

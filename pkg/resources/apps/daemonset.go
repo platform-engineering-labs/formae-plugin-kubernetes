@@ -65,7 +65,7 @@ func (ds *DaemonSet) Create(ctx context.Context, request *resource.CreateRequest
 		return nil, fmt.Errorf("failed to apply daemonset: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, appsv1ac.ExtractDaemonSet)
+	properties, err := prov.LiveState[appsv1ac.DaemonSetApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get daemonset live state: %w", err)
 	}
@@ -95,7 +95,7 @@ func (ds *DaemonSet) Read(ctx context.Context, request *resource.ReadRequest) (*
 		return nil, fmt.Errorf("failed to get daemonset: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, appsv1ac.ExtractDaemonSet)
+	properties, err := prov.LiveState[appsv1ac.DaemonSetApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get daemonset live state: %w", err)
 	}
@@ -133,7 +133,7 @@ func (ds *DaemonSet) Update(ctx context.Context, request *resource.UpdateRequest
 		return nil, fmt.Errorf("failed to reconcile daemonset metadata: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, appsv1ac.ExtractDaemonSet)
+	properties, err := prov.LiveState[appsv1ac.DaemonSetApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get daemonset live state: %w", err)
 	}
@@ -189,7 +189,7 @@ func (ds *DaemonSet) Status(ctx context.Context, request *resource.StatusRequest
 		return nil, fmt.Errorf("failed to get daemonset status: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, appsv1ac.ExtractDaemonSet)
+	properties, err := prov.LiveState[appsv1ac.DaemonSetApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get daemonset live state: %w", err)
 	}

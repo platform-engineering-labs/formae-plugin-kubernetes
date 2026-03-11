@@ -65,7 +65,7 @@ func (r *ReplicaSet) Create(ctx context.Context, request *resource.CreateRequest
 		return nil, fmt.Errorf("failed to apply replicaset: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, appsv1ac.ExtractReplicaSet)
+	properties, err := prov.LiveState[appsv1ac.ReplicaSetApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get replicaset live state: %w", err)
 	}
@@ -95,7 +95,7 @@ func (r *ReplicaSet) Read(ctx context.Context, request *resource.ReadRequest) (*
 		return nil, fmt.Errorf("failed to get replicaset: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, appsv1ac.ExtractReplicaSet)
+	properties, err := prov.LiveState[appsv1ac.ReplicaSetApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get replicaset live state: %w", err)
 	}
@@ -133,7 +133,7 @@ func (r *ReplicaSet) Update(ctx context.Context, request *resource.UpdateRequest
 		return nil, fmt.Errorf("failed to reconcile replicaset metadata: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, appsv1ac.ExtractReplicaSet)
+	properties, err := prov.LiveState[appsv1ac.ReplicaSetApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get replicaset live state: %w", err)
 	}
@@ -189,7 +189,7 @@ func (r *ReplicaSet) Status(ctx context.Context, request *resource.StatusRequest
 		return nil, fmt.Errorf("failed to get replicaset status: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, appsv1ac.ExtractReplicaSet)
+	properties, err := prov.LiveState[appsv1ac.ReplicaSetApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get replicaset live state: %w", err)
 	}

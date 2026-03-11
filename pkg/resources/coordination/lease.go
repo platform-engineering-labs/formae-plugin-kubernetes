@@ -64,7 +64,7 @@ func (l *Lease) Create(ctx context.Context, request *resource.CreateRequest) (*r
 		return nil, fmt.Errorf("failed to apply lease: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, coordinationv1ac.ExtractLease)
+	properties, err := prov.LiveState[coordinationv1ac.LeaseApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get lease live state: %w", err)
 	}
@@ -93,7 +93,7 @@ func (l *Lease) Read(ctx context.Context, request *resource.ReadRequest) (*resou
 		return nil, fmt.Errorf("failed to get lease: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, coordinationv1ac.ExtractLease)
+	properties, err := prov.LiveState[coordinationv1ac.LeaseApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get lease live state: %w", err)
 	}
@@ -131,7 +131,7 @@ func (l *Lease) Update(ctx context.Context, request *resource.UpdateRequest) (*r
 		return nil, fmt.Errorf("failed to reconcile lease metadata: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, coordinationv1ac.ExtractLease)
+	properties, err := prov.LiveState[coordinationv1ac.LeaseApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get lease live state: %w", err)
 	}
@@ -186,7 +186,7 @@ func (l *Lease) Status(ctx context.Context, request *resource.StatusRequest) (*r
 		return nil, fmt.Errorf("failed to get lease status: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, coordinationv1ac.ExtractLease)
+	properties, err := prov.LiveState[coordinationv1ac.LeaseApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get lease live state: %w", err)
 	}

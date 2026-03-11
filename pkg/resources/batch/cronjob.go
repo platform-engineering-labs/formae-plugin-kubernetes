@@ -64,7 +64,7 @@ func (cj *CronJob) Create(ctx context.Context, request *resource.CreateRequest) 
 		return nil, fmt.Errorf("failed to apply cronjob: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, batchv1ac.ExtractCronJob)
+	properties, err := prov.LiveState[batchv1ac.CronJobApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cronjob live state: %w", err)
 	}
@@ -93,7 +93,7 @@ func (cj *CronJob) Read(ctx context.Context, request *resource.ReadRequest) (*re
 		return nil, fmt.Errorf("failed to get cronjob: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, batchv1ac.ExtractCronJob)
+	properties, err := prov.LiveState[batchv1ac.CronJobApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cronjob live state: %w", err)
 	}
@@ -131,7 +131,7 @@ func (cj *CronJob) Update(ctx context.Context, request *resource.UpdateRequest) 
 		return nil, fmt.Errorf("failed to reconcile cronjob metadata: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, batchv1ac.ExtractCronJob)
+	properties, err := prov.LiveState[batchv1ac.CronJobApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cronjob live state: %w", err)
 	}
@@ -187,7 +187,7 @@ func (cj *CronJob) Status(ctx context.Context, request *resource.StatusRequest) 
 		return nil, fmt.Errorf("failed to get cronjob status: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, batchv1ac.ExtractCronJob)
+	properties, err := prov.LiveState[batchv1ac.CronJobApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cronjob live state: %w", err)
 	}

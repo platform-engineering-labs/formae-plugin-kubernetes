@@ -59,7 +59,7 @@ func (ic *IngressClass) Create(ctx context.Context, request *resource.CreateRequ
 		return nil, fmt.Errorf("failed to apply ingressclass: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, networkingv1ac.ExtractIngressClass)
+	properties, err := prov.LiveState[networkingv1ac.IngressClassApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ingressclass live state: %w", err)
 	}
@@ -88,7 +88,7 @@ func (ic *IngressClass) Read(ctx context.Context, request *resource.ReadRequest)
 		return nil, fmt.Errorf("failed to get ingressclass: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, networkingv1ac.ExtractIngressClass)
+	properties, err := prov.LiveState[networkingv1ac.IngressClassApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ingressclass live state: %w", err)
 	}
@@ -121,7 +121,7 @@ func (ic *IngressClass) Update(ctx context.Context, request *resource.UpdateRequ
 		return nil, fmt.Errorf("failed to reconcile ingressclass metadata: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, networkingv1ac.ExtractIngressClass)
+	properties, err := prov.LiveState[networkingv1ac.IngressClassApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ingressclass live state: %w", err)
 	}
@@ -176,7 +176,7 @@ func (ic *IngressClass) Status(ctx context.Context, request *resource.StatusRequ
 		return nil, fmt.Errorf("failed to get ingressclass status: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, networkingv1ac.ExtractIngressClass)
+	properties, err := prov.LiveState[networkingv1ac.IngressClassApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ingressclass live state: %w", err)
 	}

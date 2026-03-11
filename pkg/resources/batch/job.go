@@ -65,7 +65,7 @@ func (j *Job) Create(ctx context.Context, request *resource.CreateRequest) (*res
 		return nil, fmt.Errorf("failed to apply job: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, batchv1ac.ExtractJob)
+	properties, err := prov.LiveState[batchv1ac.JobApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get job live state: %w", err)
 	}
@@ -95,7 +95,7 @@ func (j *Job) Read(ctx context.Context, request *resource.ReadRequest) (*resourc
 		return nil, fmt.Errorf("failed to get job: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, batchv1ac.ExtractJob)
+	properties, err := prov.LiveState[batchv1ac.JobApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get job live state: %w", err)
 	}
@@ -133,7 +133,7 @@ func (j *Job) Update(ctx context.Context, request *resource.UpdateRequest) (*res
 		return nil, fmt.Errorf("failed to reconcile job metadata: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, batchv1ac.ExtractJob)
+	properties, err := prov.LiveState[batchv1ac.JobApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get job live state: %w", err)
 	}
@@ -194,7 +194,7 @@ func (j *Job) Status(ctx context.Context, request *resource.StatusRequest) (*res
 		return nil, fmt.Errorf("failed to get job status: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, batchv1ac.ExtractJob)
+	properties, err := prov.LiveState[batchv1ac.JobApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get job live state: %w", err)
 	}

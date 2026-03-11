@@ -65,7 +65,7 @@ func (p *Pod) Create(ctx context.Context, request *resource.CreateRequest) (*res
 		return nil, fmt.Errorf("failed to apply pod: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, v1coreac.ExtractPod)
+	properties, err := prov.LiveState[v1coreac.PodApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pod live state: %w", err)
 	}
@@ -96,7 +96,7 @@ func (p *Pod) Read(ctx context.Context, request *resource.ReadRequest) (*resourc
 		return nil, fmt.Errorf("failed to get pod: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, v1coreac.ExtractPod)
+	properties, err := prov.LiveState[v1coreac.PodApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pod live state: %w", err)
 	}
@@ -134,7 +134,7 @@ func (p *Pod) Update(ctx context.Context, request *resource.UpdateRequest) (*res
 		return nil, fmt.Errorf("failed to reconcile pod metadata: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, v1coreac.ExtractPod)
+	properties, err := prov.LiveState[v1coreac.PodApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pod live state: %w", err)
 	}
@@ -191,7 +191,7 @@ func (p *Pod) Status(ctx context.Context, request *resource.StatusRequest) (*res
 		return nil, fmt.Errorf("failed to get pod status: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, v1coreac.ExtractPod)
+	properties, err := prov.LiveState[v1coreac.PodApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pod live state: %w", err)
 	}
