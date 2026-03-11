@@ -80,7 +80,7 @@ forma {
     label = "\(appName)-config"
     metadata = new k8s.ObjectMeta {
       name = "\(appName)-config"
-      namespace = appName
+      namespace = demoNs.res.name
       labels = new Mapping {
         ["app"] = appName
       }
@@ -97,7 +97,7 @@ forma {
     label = "\(appName)-app"
     metadata = new k8s.ObjectMeta {
       name = "\(appName)-app"
-      namespace = appName
+      namespace = demoNs.res.name
       labels = new Mapping {
         ["app"] = appName
         ["version"] = "v1"
