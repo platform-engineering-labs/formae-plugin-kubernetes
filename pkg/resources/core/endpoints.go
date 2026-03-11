@@ -64,7 +64,7 @@ func (e *Endpoints) Create(ctx context.Context, request *resource.CreateRequest)
 		return nil, fmt.Errorf("failed to apply endpoints: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.EndpointsApplyConfiguration](result)
+	properties, err := prov.LiveState[v1coreac.EndpointsApplyConfiguration](result) //nolint:staticcheck // migrating to EndpointSlice tracked separately
 	if err != nil {
 		return nil, fmt.Errorf("failed to get endpoints live state: %w", err)
 	}
@@ -131,7 +131,7 @@ func (e *Endpoints) Update(ctx context.Context, request *resource.UpdateRequest)
 		return nil, fmt.Errorf("failed to reconcile endpoints metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.EndpointsApplyConfiguration](result)
+	properties, err := prov.LiveState[v1coreac.EndpointsApplyConfiguration](result) //nolint:staticcheck // migrating to EndpointSlice tracked separately
 	if err != nil {
 		return nil, fmt.Errorf("failed to get endpoints live state: %w", err)
 	}
