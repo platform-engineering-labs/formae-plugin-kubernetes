@@ -7,6 +7,7 @@ package prov
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // serverManagedMetaFields are metadata fields set by the K8S API server
@@ -21,6 +22,18 @@ var serverManagedMetaFields = []string{
 	"deletionGracePeriodSeconds",
 }
 
+// serverManagedAnnotationPrefixes are annotation key prefixes set by K8S
+// controllers asynchronously after resource creation. These must be stripped
+// because they may not be present in the Apply result but appear on later
+// Get calls, causing false property drift.
+var serverManagedAnnotationPrefixes = []string{
+	"deployment.kubernetes.io/",
+}
+
+// serviceAccountMountPrefix is the mountPath prefix for auto-injected
+// service account token volume mounts.
+const serviceAccountMountPrefix = "/var/run/secrets/kubernetes.io/serviceaccount"
+
 // LiveState returns the full live state of a K8S API object as JSON bytes,
 // filtered through the typed apply configuration type T with server-managed
 // fields stripped.
@@ -30,8 +43,11 @@ var serverManagedMetaFields = []string{
 // creationTimestamp, generation, etc. We strip these explicitly to prevent
 // false "Resource properties changed" detections in Formae.
 //
-// Use this in Read() and Status() to detect drift from external changes.
-// Create/Update should continue using Extract to return only Formae-owned fields.
+// Additionally strips K8S server defaults that leak through apply config types:
+//   - status (entirely server-managed)
+//   - empty objects {} (e.g. resources:{}, objectSelector:{})
+//   - imagePullPolicy on containers (K8S-defaulted based on image tag)
+//   - auto-injected service account volumeMounts
 func LiveState[T any](apiObject any) ([]byte, error) {
 	raw, err := json.Marshal(apiObject)
 	if err != nil {
@@ -60,7 +76,98 @@ func LiveState[T any](apiObject any) ([]byte, error) {
 		for _, key := range serverManagedMetaFields {
 			delete(meta, key)
 		}
+		stripServerManagedAnnotations(meta)
 	}
 
+	// Recursively strip server defaults (empty objects, container defaults, SA mounts)
+	stripServerDefaults(result)
+
 	return json.Marshal(result)
+}
+
+// stripServerDefaults recursively walks a JSON object and removes
+// K8S server-defaulted fields that the user didn't specify.
+func stripServerDefaults(v interface{}) {
+	switch val := v.(type) {
+	case map[string]interface{}:
+		// Strip imagePullPolicy from containers (objects with both "name" and "image")
+		if _, hasName := val["name"]; hasName {
+			if _, hasImage := val["image"]; hasImage {
+				delete(val, "imagePullPolicy")
+			}
+		}
+
+		// Strip auto-injected service account volumeMounts
+		stripServiceAccountVolumeMounts(val)
+
+		// Recurse into children, then remove keys with empty object values
+		for k, child := range val {
+			stripServerDefaults(child)
+			if isEmptyObject(child) {
+				delete(val, k)
+			}
+		}
+
+	case []interface{}:
+		for _, child := range val {
+			stripServerDefaults(child)
+		}
+	}
+}
+
+// stripServiceAccountVolumeMounts removes auto-injected service account
+// token volumeMounts from a container-like object.
+func stripServiceAccountVolumeMounts(obj map[string]interface{}) {
+	mounts, ok := obj["volumeMounts"].([]interface{})
+	if !ok {
+		return
+	}
+
+	filtered := make([]interface{}, 0, len(mounts))
+	for _, m := range mounts {
+		mount, ok := m.(map[string]interface{})
+		if !ok {
+			filtered = append(filtered, m)
+			continue
+		}
+		mountPath, _ := mount["mountPath"].(string)
+		if strings.HasPrefix(mountPath, serviceAccountMountPrefix) {
+			continue
+		}
+		filtered = append(filtered, m)
+	}
+
+	if len(filtered) == 0 {
+		delete(obj, "volumeMounts")
+	} else {
+		obj["volumeMounts"] = filtered
+	}
+}
+
+// stripServerManagedAnnotations removes annotations with server-managed
+// prefixes from a metadata object.
+func stripServerManagedAnnotations(meta map[string]interface{}) {
+	annotations, ok := meta["annotations"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	for key := range annotations {
+		for _, prefix := range serverManagedAnnotationPrefixes {
+			if strings.HasPrefix(key, prefix) {
+				delete(annotations, key)
+				break
+			}
+		}
+	}
+
+	if len(annotations) == 0 {
+		delete(meta, "annotations")
+	}
+}
+
+// isEmptyObject returns true if v is a map with no entries.
+func isEmptyObject(v interface{}) bool {
+	m, ok := v.(map[string]interface{})
+	return ok && len(m) == 0
 }
