@@ -64,7 +64,7 @@ func (c *ConfigMap) Create(ctx context.Context, request *resource.CreateRequest)
 		return nil, fmt.Errorf("failed to apply configmap: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, v1coreac.ExtractConfigMap)
+	properties, err := prov.LiveState[v1coreac.ConfigMapApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get configmap live state: %w", err)
 	}
@@ -93,7 +93,7 @@ func (c *ConfigMap) Read(ctx context.Context, request *resource.ReadRequest) (*r
 		return nil, fmt.Errorf("failed to get configmap: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, v1coreac.ExtractConfigMap)
+	properties, err := prov.LiveState[v1coreac.ConfigMapApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get configmap live state: %w", err)
 	}
@@ -131,7 +131,7 @@ func (c *ConfigMap) Update(ctx context.Context, request *resource.UpdateRequest)
 		return nil, fmt.Errorf("failed to reconcile configmap metadata: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, v1coreac.ExtractConfigMap)
+	properties, err := prov.LiveState[v1coreac.ConfigMapApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get configmap live state: %w", err)
 	}
@@ -186,7 +186,7 @@ func (c *ConfigMap) Status(ctx context.Context, request *resource.StatusRequest)
 		return nil, fmt.Errorf("failed to get configmap status: %w", err)
 	}
 
-	properties, err := prov.ExtractState(result, v1coreac.ExtractConfigMap)
+	properties, err := prov.LiveState[v1coreac.ConfigMapApplyConfiguration](result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get configmap live state: %w", err)
 	}
