@@ -58,13 +58,13 @@ func (e *Endpoints) Create(ctx context.Context, request *resource.CreateRequest)
 	}
 
 	result, err := e.Client.CoreV1().Endpoints(namespace).Apply(ctx, ep, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply endpoints: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.EndpointsApplyConfiguration](result) //nolint:staticcheck // migrating to EndpointSlice tracked separately
+	properties, err := prov.ExtractState(result, v1coreac.ExtractEndpoints) //nolint:staticcheck // migrating to EndpointSlice tracked separately
 	if err != nil {
 		return nil, fmt.Errorf("failed to get endpoints live state: %w", err)
 	}
@@ -93,7 +93,7 @@ func (e *Endpoints) Read(ctx context.Context, request *resource.ReadRequest) (*r
 		return nil, fmt.Errorf("failed to get endpoints: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.EndpointsApplyConfiguration](result) //nolint:staticcheck // migrating to EndpointSlice tracked separately
+	properties, err := prov.ExtractState(result, v1coreac.ExtractEndpoints) //nolint:staticcheck // migrating to EndpointSlice tracked separately
 	if err != nil {
 		return nil, fmt.Errorf("failed to get endpoints live state: %w", err)
 	}
@@ -116,7 +116,7 @@ func (e *Endpoints) Update(ctx context.Context, request *resource.UpdateRequest)
 	}
 
 	result, err := e.Client.CoreV1().Endpoints(namespace).Apply(ctx, ep, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 		Force:        true,
 	})
 	if err != nil {
@@ -131,7 +131,7 @@ func (e *Endpoints) Update(ctx context.Context, request *resource.UpdateRequest)
 		return nil, fmt.Errorf("failed to reconcile endpoints metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.EndpointsApplyConfiguration](result) //nolint:staticcheck // migrating to EndpointSlice tracked separately
+	properties, err := prov.ExtractState(result, v1coreac.ExtractEndpoints) //nolint:staticcheck // migrating to EndpointSlice tracked separately
 	if err != nil {
 		return nil, fmt.Errorf("failed to get endpoints live state: %w", err)
 	}
@@ -186,7 +186,7 @@ func (e *Endpoints) Status(ctx context.Context, request *resource.StatusRequest)
 		return nil, fmt.Errorf("failed to get endpoints status: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.EndpointsApplyConfiguration](result) //nolint:staticcheck // migrating to EndpointSlice tracked separately
+	properties, err := prov.ExtractState(result, v1coreac.ExtractEndpoints) //nolint:staticcheck // migrating to EndpointSlice tracked separately
 	if err != nil {
 		return nil, fmt.Errorf("failed to get endpoints live state: %w", err)
 	}

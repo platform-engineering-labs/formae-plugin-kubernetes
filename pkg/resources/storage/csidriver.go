@@ -53,13 +53,13 @@ func (c *CSIDriver) Create(ctx context.Context, request *resource.CreateRequest)
 	}
 
 	result, err := c.Client.StorageV1().CSIDrivers().Apply(ctx, cd, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply csidriver: %w", err)
 	}
 
-	properties, err := prov.LiveState[storagev1ac.CSIDriverApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, storagev1ac.ExtractCSIDriver)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get csidriver live state: %w", err)
 	}
@@ -88,7 +88,7 @@ func (c *CSIDriver) Read(ctx context.Context, request *resource.ReadRequest) (*r
 		return nil, fmt.Errorf("failed to get csidriver: %w", err)
 	}
 
-	properties, err := prov.LiveState[storagev1ac.CSIDriverApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, storagev1ac.ExtractCSIDriver)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get csidriver live state: %w", err)
 	}
@@ -106,7 +106,7 @@ func (c *CSIDriver) Update(ctx context.Context, request *resource.UpdateRequest)
 	}
 
 	result, err := c.Client.StorageV1().CSIDrivers().Apply(ctx, cd, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 		Force:        true,
 	})
 	if err != nil {
@@ -121,7 +121,7 @@ func (c *CSIDriver) Update(ctx context.Context, request *resource.UpdateRequest)
 		return nil, fmt.Errorf("failed to reconcile csidriver metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[storagev1ac.CSIDriverApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, storagev1ac.ExtractCSIDriver)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get csidriver live state: %w", err)
 	}
@@ -176,7 +176,7 @@ func (c *CSIDriver) Status(ctx context.Context, request *resource.StatusRequest)
 		return nil, fmt.Errorf("failed to get csidriver status: %w", err)
 	}
 
-	properties, err := prov.LiveState[storagev1ac.CSIDriverApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, storagev1ac.ExtractCSIDriver)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get csidriver live state: %w", err)
 	}

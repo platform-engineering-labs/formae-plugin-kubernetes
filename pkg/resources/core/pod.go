@@ -59,13 +59,13 @@ func (p *Pod) Create(ctx context.Context, request *resource.CreateRequest) (*res
 	}
 
 	result, err := p.Client.CoreV1().Pods(namespace).Apply(ctx, pod, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply pod: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.PodApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, v1coreac.ExtractPod)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pod live state: %w", err)
 	}
@@ -96,7 +96,7 @@ func (p *Pod) Read(ctx context.Context, request *resource.ReadRequest) (*resourc
 		return nil, fmt.Errorf("failed to get pod: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.PodApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, v1coreac.ExtractPod)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pod live state: %w", err)
 	}
@@ -119,7 +119,7 @@ func (p *Pod) Update(ctx context.Context, request *resource.UpdateRequest) (*res
 	}
 
 	result, err := p.Client.CoreV1().Pods(namespace).Apply(ctx, pod, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 		Force:        true,
 	})
 	if err != nil {
@@ -134,7 +134,7 @@ func (p *Pod) Update(ctx context.Context, request *resource.UpdateRequest) (*res
 		return nil, fmt.Errorf("failed to reconcile pod metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.PodApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, v1coreac.ExtractPod)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pod live state: %w", err)
 	}
@@ -191,7 +191,7 @@ func (p *Pod) Status(ctx context.Context, request *resource.StatusRequest) (*res
 		return nil, fmt.Errorf("failed to get pod status: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.PodApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, v1coreac.ExtractPod)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pod live state: %w", err)
 	}

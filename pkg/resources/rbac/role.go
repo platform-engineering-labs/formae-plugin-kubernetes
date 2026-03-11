@@ -58,13 +58,13 @@ func (r *Role) Create(ctx context.Context, request *resource.CreateRequest) (*re
 	}
 
 	result, err := r.Client.RbacV1().Roles(namespace).Apply(ctx, role, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply role: %w", err)
 	}
 
-	properties, err := prov.LiveState[rbacv1ac.RoleApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, rbacv1ac.ExtractRole)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get role live state: %w", err)
 	}
@@ -93,7 +93,7 @@ func (r *Role) Read(ctx context.Context, request *resource.ReadRequest) (*resour
 		return nil, fmt.Errorf("failed to get role: %w", err)
 	}
 
-	properties, err := prov.LiveState[rbacv1ac.RoleApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, rbacv1ac.ExtractRole)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get role live state: %w", err)
 	}
@@ -116,7 +116,7 @@ func (r *Role) Update(ctx context.Context, request *resource.UpdateRequest) (*re
 	}
 
 	result, err := r.Client.RbacV1().Roles(namespace).Apply(ctx, role, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 		Force:        true,
 	})
 	if err != nil {
@@ -131,7 +131,7 @@ func (r *Role) Update(ctx context.Context, request *resource.UpdateRequest) (*re
 		return nil, fmt.Errorf("failed to reconcile role metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[rbacv1ac.RoleApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, rbacv1ac.ExtractRole)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get role live state: %w", err)
 	}
@@ -187,7 +187,7 @@ func (r *Role) Status(ctx context.Context, request *resource.StatusRequest) (*re
 		return nil, fmt.Errorf("failed to get role status: %w", err)
 	}
 
-	properties, err := prov.LiveState[rbacv1ac.RoleApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, rbacv1ac.ExtractRole)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get role live state: %w", err)
 	}

@@ -59,13 +59,13 @@ func (svc *Service) Create(ctx context.Context, request *resource.CreateRequest)
 	}
 
 	result, err := svc.Client.CoreV1().Services(namespace).Apply(ctx, s, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply service: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.ServiceApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, v1coreac.ExtractService)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get service live state: %w", err)
 	}
@@ -95,7 +95,7 @@ func (svc *Service) Read(ctx context.Context, request *resource.ReadRequest) (*r
 		return nil, fmt.Errorf("failed to get service: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.ServiceApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, v1coreac.ExtractService)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get service live state: %w", err)
 	}
@@ -118,7 +118,7 @@ func (svc *Service) Update(ctx context.Context, request *resource.UpdateRequest)
 	}
 
 	result, err := svc.Client.CoreV1().Services(namespace).Apply(ctx, s, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 		Force:        true,
 	})
 	if err != nil {
@@ -133,7 +133,7 @@ func (svc *Service) Update(ctx context.Context, request *resource.UpdateRequest)
 		return nil, fmt.Errorf("failed to reconcile service metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.ServiceApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, v1coreac.ExtractService)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get service live state: %w", err)
 	}
@@ -189,7 +189,7 @@ func (svc *Service) Status(ctx context.Context, request *resource.StatusRequest)
 		return nil, fmt.Errorf("failed to get service status: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.ServiceApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, v1coreac.ExtractService)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get service live state: %w", err)
 	}

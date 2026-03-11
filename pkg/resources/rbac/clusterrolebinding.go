@@ -53,13 +53,13 @@ func (c *ClusterRoleBinding) Create(ctx context.Context, request *resource.Creat
 	}
 
 	result, err := c.Client.RbacV1().ClusterRoleBindings().Apply(ctx, crb, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply clusterrolebinding: %w", err)
 	}
 
-	properties, err := prov.LiveState[rbacv1ac.ClusterRoleBindingApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, rbacv1ac.ExtractClusterRoleBinding)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get clusterrolebinding live state: %w", err)
 	}
@@ -88,7 +88,7 @@ func (c *ClusterRoleBinding) Read(ctx context.Context, request *resource.ReadReq
 		return nil, fmt.Errorf("failed to get clusterrolebinding: %w", err)
 	}
 
-	properties, err := prov.LiveState[rbacv1ac.ClusterRoleBindingApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, rbacv1ac.ExtractClusterRoleBinding)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get clusterrolebinding live state: %w", err)
 	}
@@ -106,7 +106,7 @@ func (c *ClusterRoleBinding) Update(ctx context.Context, request *resource.Updat
 	}
 
 	result, err := c.Client.RbacV1().ClusterRoleBindings().Apply(ctx, crb, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 		Force:        true,
 	})
 	if err != nil {
@@ -121,7 +121,7 @@ func (c *ClusterRoleBinding) Update(ctx context.Context, request *resource.Updat
 		return nil, fmt.Errorf("failed to reconcile clusterrolebinding metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[rbacv1ac.ClusterRoleBindingApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, rbacv1ac.ExtractClusterRoleBinding)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get clusterrolebinding live state: %w", err)
 	}
@@ -176,7 +176,7 @@ func (c *ClusterRoleBinding) Status(ctx context.Context, request *resource.Statu
 		return nil, fmt.Errorf("failed to get clusterrolebinding status: %w", err)
 	}
 
-	properties, err := prov.LiveState[rbacv1ac.ClusterRoleBindingApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, rbacv1ac.ExtractClusterRoleBinding)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get clusterrolebinding live state: %w", err)
 	}

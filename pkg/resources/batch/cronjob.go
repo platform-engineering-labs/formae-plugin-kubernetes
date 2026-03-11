@@ -58,13 +58,13 @@ func (cj *CronJob) Create(ctx context.Context, request *resource.CreateRequest) 
 	}
 
 	result, err := cj.Client.BatchV1().CronJobs(namespace).Apply(ctx, cronjob, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply cronjob: %w", err)
 	}
 
-	properties, err := prov.LiveState[batchv1ac.CronJobApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, batchv1ac.ExtractCronJob)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cronjob live state: %w", err)
 	}
@@ -93,7 +93,7 @@ func (cj *CronJob) Read(ctx context.Context, request *resource.ReadRequest) (*re
 		return nil, fmt.Errorf("failed to get cronjob: %w", err)
 	}
 
-	properties, err := prov.LiveState[batchv1ac.CronJobApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, batchv1ac.ExtractCronJob)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cronjob live state: %w", err)
 	}
@@ -116,7 +116,7 @@ func (cj *CronJob) Update(ctx context.Context, request *resource.UpdateRequest) 
 	}
 
 	result, err := cj.Client.BatchV1().CronJobs(namespace).Apply(ctx, cronjob, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 		Force:        true,
 	})
 	if err != nil {
@@ -131,7 +131,7 @@ func (cj *CronJob) Update(ctx context.Context, request *resource.UpdateRequest) 
 		return nil, fmt.Errorf("failed to reconcile cronjob metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[batchv1ac.CronJobApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, batchv1ac.ExtractCronJob)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cronjob live state: %w", err)
 	}
@@ -187,7 +187,7 @@ func (cj *CronJob) Status(ctx context.Context, request *resource.StatusRequest) 
 		return nil, fmt.Errorf("failed to get cronjob status: %w", err)
 	}
 
-	properties, err := prov.LiveState[batchv1ac.CronJobApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, batchv1ac.ExtractCronJob)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cronjob live state: %w", err)
 	}

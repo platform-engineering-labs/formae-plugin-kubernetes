@@ -53,13 +53,13 @@ func (s *StorageClass) Create(ctx context.Context, request *resource.CreateReque
 	}
 
 	result, err := s.Client.StorageV1().StorageClasses().Apply(ctx, sc, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply storageclass: %w", err)
 	}
 
-	properties, err := prov.LiveState[storagev1ac.StorageClassApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, storagev1ac.ExtractStorageClass)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get storageclass live state: %w", err)
 	}
@@ -88,7 +88,7 @@ func (s *StorageClass) Read(ctx context.Context, request *resource.ReadRequest) 
 		return nil, fmt.Errorf("failed to get storageclass: %w", err)
 	}
 
-	properties, err := prov.LiveState[storagev1ac.StorageClassApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, storagev1ac.ExtractStorageClass)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get storageclass live state: %w", err)
 	}
@@ -106,7 +106,7 @@ func (s *StorageClass) Update(ctx context.Context, request *resource.UpdateReque
 	}
 
 	result, err := s.Client.StorageV1().StorageClasses().Apply(ctx, sc, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 		Force:        true,
 	})
 	if err != nil {
@@ -121,7 +121,7 @@ func (s *StorageClass) Update(ctx context.Context, request *resource.UpdateReque
 		return nil, fmt.Errorf("failed to reconcile storageclass metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[storagev1ac.StorageClassApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, storagev1ac.ExtractStorageClass)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get storageclass live state: %w", err)
 	}
@@ -176,7 +176,7 @@ func (s *StorageClass) Status(ctx context.Context, request *resource.StatusReque
 		return nil, fmt.Errorf("failed to get storageclass status: %w", err)
 	}
 
-	properties, err := prov.LiveState[storagev1ac.StorageClassApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, storagev1ac.ExtractStorageClass)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get storageclass live state: %w", err)
 	}

@@ -269,7 +269,7 @@ func (cr *CustomResource) applySSA(ctx context.Context, namespace string, obj *u
 		return nil, fmt.Errorf("failed to marshal object for SSA: %w", err)
 	}
 
-	opts := metav1.PatchOptions{FieldManager: "formae"}
+	opts := metav1.PatchOptions{FieldManager: prov.FieldManager}
 
 	if cr.Info.Namespaced {
 		return cr.Client.Dynamic.Resource(cr.Info.GVR).Namespace(namespace).Patch(ctx, obj.GetName(), types.ApplyPatchType, data, opts)

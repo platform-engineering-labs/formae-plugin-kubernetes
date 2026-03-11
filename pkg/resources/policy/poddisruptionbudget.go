@@ -58,13 +58,13 @@ func (p *PodDisruptionBudget) Create(ctx context.Context, request *resource.Crea
 	}
 
 	result, err := p.Client.PolicyV1().PodDisruptionBudgets(namespace).Apply(ctx, pdb, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply poddisruptionbudget: %w", err)
 	}
 
-	properties, err := prov.LiveState[policyv1ac.PodDisruptionBudgetApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, policyv1ac.ExtractPodDisruptionBudget)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get poddisruptionbudget live state: %w", err)
 	}
@@ -93,7 +93,7 @@ func (p *PodDisruptionBudget) Read(ctx context.Context, request *resource.ReadRe
 		return nil, fmt.Errorf("failed to get poddisruptionbudget: %w", err)
 	}
 
-	properties, err := prov.LiveState[policyv1ac.PodDisruptionBudgetApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, policyv1ac.ExtractPodDisruptionBudget)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get poddisruptionbudget live state: %w", err)
 	}
@@ -116,7 +116,7 @@ func (p *PodDisruptionBudget) Update(ctx context.Context, request *resource.Upda
 	}
 
 	result, err := p.Client.PolicyV1().PodDisruptionBudgets(namespace).Apply(ctx, pdb, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 		Force:        true,
 	})
 	if err != nil {
@@ -131,7 +131,7 @@ func (p *PodDisruptionBudget) Update(ctx context.Context, request *resource.Upda
 		return nil, fmt.Errorf("failed to reconcile poddisruptionbudget metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[policyv1ac.PodDisruptionBudgetApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, policyv1ac.ExtractPodDisruptionBudget)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get poddisruptionbudget live state: %w", err)
 	}
@@ -186,7 +186,7 @@ func (p *PodDisruptionBudget) Status(ctx context.Context, request *resource.Stat
 		return nil, fmt.Errorf("failed to get poddisruptionbudget status: %w", err)
 	}
 
-	properties, err := prov.LiveState[policyv1ac.PodDisruptionBudgetApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, policyv1ac.ExtractPodDisruptionBudget)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get poddisruptionbudget live state: %w", err)
 	}

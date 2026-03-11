@@ -53,13 +53,13 @@ func (m *MutatingWebhookConfiguration) Create(ctx context.Context, request *reso
 	}
 
 	result, err := m.Client.AdmissionregistrationV1().MutatingWebhookConfigurations().Apply(ctx, mwc, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply mutatingwebhookconfiguration: %w", err)
 	}
 
-	properties, err := prov.LiveState[admissionregistrationv1ac.MutatingWebhookConfigurationApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, admissionregistrationv1ac.ExtractMutatingWebhookConfiguration)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get mutatingwebhookconfiguration live state: %w", err)
 	}
@@ -88,7 +88,7 @@ func (m *MutatingWebhookConfiguration) Read(ctx context.Context, request *resour
 		return nil, fmt.Errorf("failed to get mutatingwebhookconfiguration: %w", err)
 	}
 
-	properties, err := prov.LiveState[admissionregistrationv1ac.MutatingWebhookConfigurationApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, admissionregistrationv1ac.ExtractMutatingWebhookConfiguration)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get mutatingwebhookconfiguration live state: %w", err)
 	}
@@ -106,7 +106,7 @@ func (m *MutatingWebhookConfiguration) Update(ctx context.Context, request *reso
 	}
 
 	result, err := m.Client.AdmissionregistrationV1().MutatingWebhookConfigurations().Apply(ctx, mwc, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 		Force:        true,
 	})
 	if err != nil {
@@ -121,7 +121,7 @@ func (m *MutatingWebhookConfiguration) Update(ctx context.Context, request *reso
 		return nil, fmt.Errorf("failed to reconcile mutatingwebhookconfiguration metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[admissionregistrationv1ac.MutatingWebhookConfigurationApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, admissionregistrationv1ac.ExtractMutatingWebhookConfiguration)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get mutatingwebhookconfiguration live state: %w", err)
 	}
@@ -176,7 +176,7 @@ func (m *MutatingWebhookConfiguration) Status(ctx context.Context, request *reso
 		return nil, fmt.Errorf("failed to get mutatingwebhookconfiguration status: %w", err)
 	}
 
-	properties, err := prov.LiveState[admissionregistrationv1ac.MutatingWebhookConfigurationApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, admissionregistrationv1ac.ExtractMutatingWebhookConfiguration)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get mutatingwebhookconfiguration live state: %w", err)
 	}

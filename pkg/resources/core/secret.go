@@ -58,13 +58,13 @@ func (s *Secret) Create(ctx context.Context, request *resource.CreateRequest) (*
 	}
 
 	result, err := s.Client.CoreV1().Secrets(namespace).Apply(ctx, secret, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply secret: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.SecretApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, v1coreac.ExtractSecret)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get secret live state: %w", err)
 	}
@@ -93,7 +93,7 @@ func (s *Secret) Read(ctx context.Context, request *resource.ReadRequest) (*reso
 		return nil, fmt.Errorf("failed to get secret: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.SecretApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, v1coreac.ExtractSecret)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get secret live state: %w", err)
 	}
@@ -116,7 +116,7 @@ func (s *Secret) Update(ctx context.Context, request *resource.UpdateRequest) (*
 	}
 
 	result, err := s.Client.CoreV1().Secrets(namespace).Apply(ctx, secret, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 		Force:        true,
 	})
 	if err != nil {
@@ -131,7 +131,7 @@ func (s *Secret) Update(ctx context.Context, request *resource.UpdateRequest) (*
 		return nil, fmt.Errorf("failed to reconcile secret metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.SecretApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, v1coreac.ExtractSecret)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get secret live state: %w", err)
 	}
@@ -186,7 +186,7 @@ func (s *Secret) Status(ctx context.Context, request *resource.StatusRequest) (*
 		return nil, fmt.Errorf("failed to get secret status: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.SecretApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, v1coreac.ExtractSecret)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get secret live state: %w", err)
 	}

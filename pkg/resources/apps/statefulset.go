@@ -59,13 +59,13 @@ func (ss *StatefulSet) Create(ctx context.Context, request *resource.CreateReque
 	}
 
 	result, err := ss.Client.AppsV1().StatefulSets(namespace).Apply(ctx, sts, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply statefulset: %w", err)
 	}
 
-	properties, err := prov.LiveState[appsv1ac.StatefulSetApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, appsv1ac.ExtractStatefulSet)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get statefulset live state: %w", err)
 	}
@@ -95,7 +95,7 @@ func (ss *StatefulSet) Read(ctx context.Context, request *resource.ReadRequest) 
 		return nil, fmt.Errorf("failed to get statefulset: %w", err)
 	}
 
-	properties, err := prov.LiveState[appsv1ac.StatefulSetApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, appsv1ac.ExtractStatefulSet)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get statefulset live state: %w", err)
 	}
@@ -118,7 +118,7 @@ func (ss *StatefulSet) Update(ctx context.Context, request *resource.UpdateReque
 	}
 
 	result, err := ss.Client.AppsV1().StatefulSets(namespace).Apply(ctx, sts, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 		Force:        true,
 	})
 	if err != nil {
@@ -133,7 +133,7 @@ func (ss *StatefulSet) Update(ctx context.Context, request *resource.UpdateReque
 		return nil, fmt.Errorf("failed to reconcile statefulset metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[appsv1ac.StatefulSetApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, appsv1ac.ExtractStatefulSet)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get statefulset live state: %w", err)
 	}
@@ -189,7 +189,7 @@ func (ss *StatefulSet) Status(ctx context.Context, request *resource.StatusReque
 		return nil, fmt.Errorf("failed to get statefulset status: %w", err)
 	}
 
-	properties, err := prov.LiveState[appsv1ac.StatefulSetApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, appsv1ac.ExtractStatefulSet)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get statefulset live state: %w", err)
 	}

@@ -54,13 +54,13 @@ func (p *PersistentVolume) Create(ctx context.Context, request *resource.CreateR
 	}
 
 	result, err := p.Client.CoreV1().PersistentVolumes().Apply(ctx, pv, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply persistentvolume: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.PersistentVolumeApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, v1coreac.ExtractPersistentVolume)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get persistentvolume live state: %w", err)
 	}
@@ -90,7 +90,7 @@ func (p *PersistentVolume) Read(ctx context.Context, request *resource.ReadReque
 		return nil, fmt.Errorf("failed to get persistentvolume: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.PersistentVolumeApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, v1coreac.ExtractPersistentVolume)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get persistentvolume live state: %w", err)
 	}
@@ -108,7 +108,7 @@ func (p *PersistentVolume) Update(ctx context.Context, request *resource.UpdateR
 	}
 
 	result, err := p.Client.CoreV1().PersistentVolumes().Apply(ctx, pv, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 		Force:        true,
 	})
 	if err != nil {
@@ -123,7 +123,7 @@ func (p *PersistentVolume) Update(ctx context.Context, request *resource.UpdateR
 		return nil, fmt.Errorf("failed to reconcile persistentvolume metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.PersistentVolumeApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, v1coreac.ExtractPersistentVolume)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get persistentvolume live state: %w", err)
 	}
@@ -179,7 +179,7 @@ func (p *PersistentVolume) Status(ctx context.Context, request *resource.StatusR
 		return nil, fmt.Errorf("failed to get persistentvolume status: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.PersistentVolumeApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, v1coreac.ExtractPersistentVolume)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get persistentvolume live state: %w", err)
 	}

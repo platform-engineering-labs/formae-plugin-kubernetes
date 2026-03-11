@@ -59,13 +59,13 @@ func (ds *DaemonSet) Create(ctx context.Context, request *resource.CreateRequest
 	}
 
 	result, err := ds.Client.AppsV1().DaemonSets(namespace).Apply(ctx, daemonset, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply daemonset: %w", err)
 	}
 
-	properties, err := prov.LiveState[appsv1ac.DaemonSetApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, appsv1ac.ExtractDaemonSet)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get daemonset live state: %w", err)
 	}
@@ -95,7 +95,7 @@ func (ds *DaemonSet) Read(ctx context.Context, request *resource.ReadRequest) (*
 		return nil, fmt.Errorf("failed to get daemonset: %w", err)
 	}
 
-	properties, err := prov.LiveState[appsv1ac.DaemonSetApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, appsv1ac.ExtractDaemonSet)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get daemonset live state: %w", err)
 	}
@@ -118,7 +118,7 @@ func (ds *DaemonSet) Update(ctx context.Context, request *resource.UpdateRequest
 	}
 
 	result, err := ds.Client.AppsV1().DaemonSets(namespace).Apply(ctx, daemonset, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 		Force:        true,
 	})
 	if err != nil {
@@ -133,7 +133,7 @@ func (ds *DaemonSet) Update(ctx context.Context, request *resource.UpdateRequest
 		return nil, fmt.Errorf("failed to reconcile daemonset metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[appsv1ac.DaemonSetApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, appsv1ac.ExtractDaemonSet)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get daemonset live state: %w", err)
 	}
@@ -189,7 +189,7 @@ func (ds *DaemonSet) Status(ctx context.Context, request *resource.StatusRequest
 		return nil, fmt.Errorf("failed to get daemonset status: %w", err)
 	}
 
-	properties, err := prov.LiveState[appsv1ac.DaemonSetApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, appsv1ac.ExtractDaemonSet)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get daemonset live state: %w", err)
 	}

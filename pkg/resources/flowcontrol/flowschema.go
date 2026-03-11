@@ -53,13 +53,13 @@ func (f *FlowSchema) Create(ctx context.Context, request *resource.CreateRequest
 	}
 
 	result, err := f.Client.FlowcontrolV1().FlowSchemas().Apply(ctx, fs, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply flowschema: %w", err)
 	}
 
-	properties, err := prov.LiveState[flowcontrolv1ac.FlowSchemaApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, flowcontrolv1ac.ExtractFlowSchema)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get flowschema live state: %w", err)
 	}
@@ -88,7 +88,7 @@ func (f *FlowSchema) Read(ctx context.Context, request *resource.ReadRequest) (*
 		return nil, fmt.Errorf("failed to get flowschema: %w", err)
 	}
 
-	properties, err := prov.LiveState[flowcontrolv1ac.FlowSchemaApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, flowcontrolv1ac.ExtractFlowSchema)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get flowschema live state: %w", err)
 	}
@@ -106,7 +106,7 @@ func (f *FlowSchema) Update(ctx context.Context, request *resource.UpdateRequest
 	}
 
 	result, err := f.Client.FlowcontrolV1().FlowSchemas().Apply(ctx, fs, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 		Force:        true,
 	})
 	if err != nil {
@@ -121,7 +121,7 @@ func (f *FlowSchema) Update(ctx context.Context, request *resource.UpdateRequest
 		return nil, fmt.Errorf("failed to reconcile flowschema metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[flowcontrolv1ac.FlowSchemaApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, flowcontrolv1ac.ExtractFlowSchema)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get flowschema live state: %w", err)
 	}
@@ -176,7 +176,7 @@ func (f *FlowSchema) Status(ctx context.Context, request *resource.StatusRequest
 		return nil, fmt.Errorf("failed to get flowschema status: %w", err)
 	}
 
-	properties, err := prov.LiveState[flowcontrolv1ac.FlowSchemaApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, flowcontrolv1ac.ExtractFlowSchema)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get flowschema live state: %w", err)
 	}

@@ -58,13 +58,13 @@ func (r *ResourceQuota) Create(ctx context.Context, request *resource.CreateRequ
 	}
 
 	result, err := r.Client.CoreV1().ResourceQuotas(namespace).Apply(ctx, rq, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply resourcequota: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.ResourceQuotaApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, v1coreac.ExtractResourceQuota)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get resourcequota live state: %w", err)
 	}
@@ -93,7 +93,7 @@ func (r *ResourceQuota) Read(ctx context.Context, request *resource.ReadRequest)
 		return nil, fmt.Errorf("failed to get resourcequota: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.ResourceQuotaApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, v1coreac.ExtractResourceQuota)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get resourcequota live state: %w", err)
 	}
@@ -116,7 +116,7 @@ func (r *ResourceQuota) Update(ctx context.Context, request *resource.UpdateRequ
 	}
 
 	result, err := r.Client.CoreV1().ResourceQuotas(namespace).Apply(ctx, rq, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 		Force:        true,
 	})
 	if err != nil {
@@ -131,7 +131,7 @@ func (r *ResourceQuota) Update(ctx context.Context, request *resource.UpdateRequ
 		return nil, fmt.Errorf("failed to reconcile resourcequota metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.ResourceQuotaApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, v1coreac.ExtractResourceQuota)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get resourcequota live state: %w", err)
 	}
@@ -186,7 +186,7 @@ func (r *ResourceQuota) Status(ctx context.Context, request *resource.StatusRequ
 		return nil, fmt.Errorf("failed to get resourcequota status: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.ResourceQuotaApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, v1coreac.ExtractResourceQuota)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get resourcequota live state: %w", err)
 	}

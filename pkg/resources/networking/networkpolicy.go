@@ -58,13 +58,13 @@ func (n *NetworkPolicy) Create(ctx context.Context, request *resource.CreateRequ
 	}
 
 	result, err := n.Client.NetworkingV1().NetworkPolicies(namespace).Apply(ctx, np, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply networkpolicy: %w", err)
 	}
 
-	properties, err := prov.LiveState[networkingv1ac.NetworkPolicyApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, networkingv1ac.ExtractNetworkPolicy)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get networkpolicy live state: %w", err)
 	}
@@ -93,7 +93,7 @@ func (n *NetworkPolicy) Read(ctx context.Context, request *resource.ReadRequest)
 		return nil, fmt.Errorf("failed to get networkpolicy: %w", err)
 	}
 
-	properties, err := prov.LiveState[networkingv1ac.NetworkPolicyApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, networkingv1ac.ExtractNetworkPolicy)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get networkpolicy live state: %w", err)
 	}
@@ -116,7 +116,7 @@ func (n *NetworkPolicy) Update(ctx context.Context, request *resource.UpdateRequ
 	}
 
 	result, err := n.Client.NetworkingV1().NetworkPolicies(namespace).Apply(ctx, np, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 		Force:        true,
 	})
 	if err != nil {
@@ -131,7 +131,7 @@ func (n *NetworkPolicy) Update(ctx context.Context, request *resource.UpdateRequ
 		return nil, fmt.Errorf("failed to reconcile networkpolicy metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[networkingv1ac.NetworkPolicyApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, networkingv1ac.ExtractNetworkPolicy)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get networkpolicy live state: %w", err)
 	}
@@ -187,7 +187,7 @@ func (n *NetworkPolicy) Status(ctx context.Context, request *resource.StatusRequ
 		return nil, fmt.Errorf("failed to get networkpolicy status: %w", err)
 	}
 
-	properties, err := prov.LiveState[networkingv1ac.NetworkPolicyApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, networkingv1ac.ExtractNetworkPolicy)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get networkpolicy live state: %w", err)
 	}

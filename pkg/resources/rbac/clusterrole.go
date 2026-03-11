@@ -53,13 +53,13 @@ func (c *ClusterRole) Create(ctx context.Context, request *resource.CreateReques
 	}
 
 	result, err := c.Client.RbacV1().ClusterRoles().Apply(ctx, cr, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply clusterrole: %w", err)
 	}
 
-	properties, err := prov.LiveState[rbacv1ac.ClusterRoleApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, rbacv1ac.ExtractClusterRole)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get clusterrole live state: %w", err)
 	}
@@ -88,7 +88,7 @@ func (c *ClusterRole) Read(ctx context.Context, request *resource.ReadRequest) (
 		return nil, fmt.Errorf("failed to get clusterrole: %w", err)
 	}
 
-	properties, err := prov.LiveState[rbacv1ac.ClusterRoleApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, rbacv1ac.ExtractClusterRole)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get clusterrole live state: %w", err)
 	}
@@ -106,7 +106,7 @@ func (c *ClusterRole) Update(ctx context.Context, request *resource.UpdateReques
 	}
 
 	result, err := c.Client.RbacV1().ClusterRoles().Apply(ctx, cr, metav1.ApplyOptions{
-		FieldManager: "formae",
+		FieldManager: prov.FieldManager,
 		Force:        true,
 	})
 	if err != nil {
@@ -121,7 +121,7 @@ func (c *ClusterRole) Update(ctx context.Context, request *resource.UpdateReques
 		return nil, fmt.Errorf("failed to reconcile clusterrole metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[rbacv1ac.ClusterRoleApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, rbacv1ac.ExtractClusterRole)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get clusterrole live state: %w", err)
 	}
@@ -176,7 +176,7 @@ func (c *ClusterRole) Status(ctx context.Context, request *resource.StatusReques
 		return nil, fmt.Errorf("failed to get clusterrole status: %w", err)
 	}
 
-	properties, err := prov.LiveState[rbacv1ac.ClusterRoleApplyConfiguration](result)
+	properties, err := prov.ExtractState(result, rbacv1ac.ExtractClusterRole)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get clusterrole live state: %w", err)
 	}
