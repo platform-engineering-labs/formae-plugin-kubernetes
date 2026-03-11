@@ -64,14 +64,9 @@ func (l *LimitRange) Create(ctx context.Context, request *resource.CreateRequest
 		return nil, fmt.Errorf("failed to apply limitrange: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractLimitRange(result, "formae")
+	properties, err := prov.LiveState[v1coreac.LimitRangeApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract limitrange: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal limitrange properties: %w", err)
+		return nil, fmt.Errorf("failed to get limitrange live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -136,14 +131,9 @@ func (l *LimitRange) Update(ctx context.Context, request *resource.UpdateRequest
 		return nil, fmt.Errorf("failed to reconcile limitrange metadata: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractLimitRange(result, "formae")
+	properties, err := prov.LiveState[v1coreac.LimitRangeApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract limitrange: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal limitrange properties: %w", err)
+		return nil, fmt.Errorf("failed to get limitrange live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

@@ -116,14 +116,14 @@ open class LabelSelectorRequirement extends formae.SubResource {
 
 @SubResourceHint {}
 open class PodSpec extends formae.SubResource {
-  @FieldHint {}
-  dnsPolicy: String?
+  @FieldHint { hasProviderDefault = true }
+  dnsPolicy: String? = "ClusterFirst"
 
   @FieldHint {}
   nodeName: String?
 
-  @FieldHint {}
-  terminationGracePeriodSeconds: Int?
+  @FieldHint { hasProviderDefault = true }
+  terminationGracePeriodSeconds: Int? = 30
 
   @FieldHint {}
   dnsConfig: PodDNSConfig?
@@ -146,7 +146,7 @@ open class PodSpec extends formae.SubResource {
   @FieldHint {}
   hostAliases: Listing<HostAlias>?
 
-  @FieldHint {}
+  @FieldHint { hasProviderDefault = true }
   securityContext: PodSecurityContext?
 
   @FieldHint {}
@@ -170,8 +170,8 @@ open class PodSpec extends formae.SubResource {
   @FieldHint {}
   schedulingGates: Listing<PodSchedulingGate>?
 
-  @FieldHint {}
-  schedulerName: String?
+  @FieldHint { hasProviderDefault = true }
+  schedulerName: String? = "default-scheduler"
 
   @FieldHint {}
   activeDeadlineSeconds: Int?
@@ -209,8 +209,8 @@ open class PodSpec extends formae.SubResource {
   @FieldHint {}
   priority: Int?
 
-  @FieldHint {}
-  restartPolicy: String?
+  @FieldHint { hasProviderDefault = true }
+  restartPolicy: String? = "Always"
 
   @FieldHint {}
   shareProcessNamespace: Boolean?
@@ -368,8 +368,8 @@ open class VolumeMount extends formae.SubResource {
 
 @SubResourceHint {}
 open class ContainerPort extends formae.SubResource {
-  @FieldHint {}
-  protocol: String?
+  @FieldHint { hasProviderDefault = true }
+  protocol: String? = "TCP"
 
   @FieldHint {}
   hostIP: String?
@@ -722,7 +722,7 @@ open class Container extends formae.SubResource {
   @FieldHint {}
   image: String?
 
-  @FieldHint {}
+  @FieldHint { hasProviderDefault = true }
   imagePullPolicy: String?
 
   @FieldHint {}
@@ -731,16 +731,16 @@ open class Container extends formae.SubResource {
   @FieldHint {}
   stdin: Boolean?
 
-  @FieldHint {}
-  terminationMessagePolicy: String?
+  @FieldHint { hasProviderDefault = true }
+  terminationMessagePolicy: String? = "File"
 
-  @FieldHint {}
-  terminationMessagePath: String?
+  @FieldHint { hasProviderDefault = true }
+  terminationMessagePath: String? = "/dev/termination-log"
 
   @FieldHint {}
   workingDir: String?
 
-  @FieldHint {}
+  @FieldHint { hasProviderDefault = true }
   resources: ResourceRequirements?
 
   @FieldHint {}
@@ -920,8 +920,8 @@ open class SecretVolumeSource extends formae.SubResource {
   @FieldHint {}
   secretName: (String|formae.Resolvable)?
 
-  @FieldHint {}
-  defaultMode: Int?
+  @FieldHint { hasProviderDefault = true }
+  defaultMode: Int? = 420
 
   @FieldHint {}
   optional: Boolean?
@@ -947,8 +947,8 @@ open class ProjectedVolumeSource extends formae.SubResource {
   @FieldHint {}
   sources: Listing<VolumeProjection>?
 
-  @FieldHint {}
-  defaultMode: Int?
+  @FieldHint { hasProviderDefault = true }
+  defaultMode: Int? = 420
 }
 
 @SubResourceHint {}
@@ -1145,8 +1145,8 @@ open class CinderVolumeSource extends formae.SubResource {
 
 @SubResourceHint {}
 open class DownwardAPIVolumeSource extends formae.SubResource {
-  @FieldHint {}
-  defaultMode: Int?
+  @FieldHint { hasProviderDefault = true }
+  defaultMode: Int? = 420
 
   @FieldHint {}
   items: Listing<DownwardAPIVolumeFile>?
@@ -1217,8 +1217,8 @@ open class RBDVolumeSource extends formae.SubResource {
 
 @SubResourceHint {}
 open class ConfigMapVolumeSource extends formae.SubResource {
-  @FieldHint {}
-  defaultMode: Int?
+  @FieldHint { hasProviderDefault = true }
+  defaultMode: Int? = 420
 
   @FieldHint {}
   name: (String|formae.Resolvable)?

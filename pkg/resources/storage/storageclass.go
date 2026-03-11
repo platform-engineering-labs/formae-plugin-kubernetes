@@ -59,14 +59,9 @@ func (s *StorageClass) Create(ctx context.Context, request *resource.CreateReque
 		return nil, fmt.Errorf("failed to apply storageclass: %w", err)
 	}
 
-	ext, err := storagev1ac.ExtractStorageClass(result, "formae")
+	properties, err := prov.LiveState[storagev1ac.StorageClassApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract storageclass: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal storageclass properties: %w", err)
+		return nil, fmt.Errorf("failed to get storageclass live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -126,14 +121,9 @@ func (s *StorageClass) Update(ctx context.Context, request *resource.UpdateReque
 		return nil, fmt.Errorf("failed to reconcile storageclass metadata: %w", err)
 	}
 
-	ext, err := storagev1ac.ExtractStorageClass(result, "formae")
+	properties, err := prov.LiveState[storagev1ac.StorageClassApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract storageclass: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal storageclass properties: %w", err)
+		return nil, fmt.Errorf("failed to get storageclass live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

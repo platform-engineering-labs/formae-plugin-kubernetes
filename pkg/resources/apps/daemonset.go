@@ -65,14 +65,9 @@ func (ds *DaemonSet) Create(ctx context.Context, request *resource.CreateRequest
 		return nil, fmt.Errorf("failed to apply daemonset: %w", err)
 	}
 
-	ext, err := appsv1ac.ExtractDaemonSet(result, "formae")
+	properties, err := prov.LiveState[appsv1ac.DaemonSetApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract daemonset: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal daemonset properties: %w", err)
+		return nil, fmt.Errorf("failed to get daemonset live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -138,14 +133,9 @@ func (ds *DaemonSet) Update(ctx context.Context, request *resource.UpdateRequest
 		return nil, fmt.Errorf("failed to reconcile daemonset metadata: %w", err)
 	}
 
-	ext, err := appsv1ac.ExtractDaemonSet(result, "formae")
+	properties, err := prov.LiveState[appsv1ac.DaemonSetApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract daemonset: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal daemonset properties: %w", err)
+		return nil, fmt.Errorf("failed to get daemonset live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

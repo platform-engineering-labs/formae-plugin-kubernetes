@@ -65,14 +65,9 @@ func (ss *StatefulSet) Create(ctx context.Context, request *resource.CreateReque
 		return nil, fmt.Errorf("failed to apply statefulset: %w", err)
 	}
 
-	ext, err := appsv1ac.ExtractStatefulSet(result, "formae")
+	properties, err := prov.LiveState[appsv1ac.StatefulSetApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract statefulset: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal statefulset properties: %w", err)
+		return nil, fmt.Errorf("failed to get statefulset live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -138,14 +133,9 @@ func (ss *StatefulSet) Update(ctx context.Context, request *resource.UpdateReque
 		return nil, fmt.Errorf("failed to reconcile statefulset metadata: %w", err)
 	}
 
-	ext, err := appsv1ac.ExtractStatefulSet(result, "formae")
+	properties, err := prov.LiveState[appsv1ac.StatefulSetApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract statefulset: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal statefulset properties: %w", err)
+		return nil, fmt.Errorf("failed to get statefulset live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

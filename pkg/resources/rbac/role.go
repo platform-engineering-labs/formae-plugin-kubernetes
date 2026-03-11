@@ -64,14 +64,9 @@ func (r *Role) Create(ctx context.Context, request *resource.CreateRequest) (*re
 		return nil, fmt.Errorf("failed to apply role: %w", err)
 	}
 
-	ext, err := rbacv1ac.ExtractRole(result, "formae")
+	properties, err := prov.LiveState[rbacv1ac.RoleApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract role: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal role properties: %w", err)
+		return nil, fmt.Errorf("failed to get role live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -136,14 +131,9 @@ func (r *Role) Update(ctx context.Context, request *resource.UpdateRequest) (*re
 		return nil, fmt.Errorf("failed to reconcile role metadata: %w", err)
 	}
 
-	ext, err := rbacv1ac.ExtractRole(result, "formae")
+	properties, err := prov.LiveState[rbacv1ac.RoleApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract role: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal role properties: %w", err)
+		return nil, fmt.Errorf("failed to get role live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

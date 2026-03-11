@@ -65,8 +65,8 @@ open class ServiceSpec extends formae.SubResource {
   @k8s.FieldHint {}
   externalIPs: Listing<String>?
 
-  @k8s.FieldHint {}
-  sessionAffinity: String?
+  @k8s.FieldHint { hasProviderDefault = true }
+  sessionAffinity: String? = "None"
 
   @k8s.FieldHint {}
   trafficDistribution: String?
@@ -77,8 +77,8 @@ open class ServiceSpec extends formae.SubResource {
   @k8s.FieldHint { updateMethod = "EntitySet"; indexField = "port" }
   ports: Listing<ServicePort>?
 
-  @k8s.FieldHint {}
-  `type`: String?
+  @k8s.FieldHint { hasProviderDefault = true }
+  `type`: String? = "ClusterIP"
 
   @k8s.FieldHint {}
   loadBalancerClass: String?
@@ -122,8 +122,8 @@ open class ServiceSpec extends formae.SubResource {
 
 @k8s.SubResourceHint {}
 open class ServicePort extends formae.SubResource {
-  @k8s.FieldHint {}
-  protocol: String?
+  @k8s.FieldHint { hasProviderDefault = true }
+  protocol: String? = "TCP"
 
   @k8s.FieldHint { required = true }
   port: Int

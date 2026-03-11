@@ -64,14 +64,9 @@ func (rb *RoleBinding) Create(ctx context.Context, request *resource.CreateReque
 		return nil, fmt.Errorf("failed to apply rolebinding: %w", err)
 	}
 
-	ext, err := rbacv1ac.ExtractRoleBinding(result, "formae")
+	properties, err := prov.LiveState[rbacv1ac.RoleBindingApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract rolebinding: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal rolebinding properties: %w", err)
+		return nil, fmt.Errorf("failed to get rolebinding live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -136,14 +131,9 @@ func (rb *RoleBinding) Update(ctx context.Context, request *resource.UpdateReque
 		return nil, fmt.Errorf("failed to reconcile rolebinding metadata: %w", err)
 	}
 
-	ext, err := rbacv1ac.ExtractRoleBinding(result, "formae")
+	properties, err := prov.LiveState[rbacv1ac.RoleBindingApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract rolebinding: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal rolebinding properties: %w", err)
+		return nil, fmt.Errorf("failed to get rolebinding live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

@@ -60,14 +60,9 @@ func (p *PersistentVolume) Create(ctx context.Context, request *resource.CreateR
 		return nil, fmt.Errorf("failed to apply persistentvolume: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractPersistentVolume(result, "formae")
+	properties, err := prov.LiveState[v1coreac.PersistentVolumeApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract persistentvolume: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal persistentvolume properties: %w", err)
+		return nil, fmt.Errorf("failed to get persistentvolume live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -128,14 +123,9 @@ func (p *PersistentVolume) Update(ctx context.Context, request *resource.UpdateR
 		return nil, fmt.Errorf("failed to reconcile persistentvolume metadata: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractPersistentVolume(result, "formae")
+	properties, err := prov.LiveState[v1coreac.PersistentVolumeApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract persistentvolume: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal persistentvolume properties: %w", err)
+		return nil, fmt.Errorf("failed to get persistentvolume live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

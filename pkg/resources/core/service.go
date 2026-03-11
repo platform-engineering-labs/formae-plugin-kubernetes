@@ -65,14 +65,9 @@ func (svc *Service) Create(ctx context.Context, request *resource.CreateRequest)
 		return nil, fmt.Errorf("failed to apply service: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractService(result, "formae")
+	properties, err := prov.LiveState[v1coreac.ServiceApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract service: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal service properties: %w", err)
+		return nil, fmt.Errorf("failed to get service live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -138,14 +133,9 @@ func (svc *Service) Update(ctx context.Context, request *resource.UpdateRequest)
 		return nil, fmt.Errorf("failed to reconcile service metadata: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractService(result, "formae")
+	properties, err := prov.LiveState[v1coreac.ServiceApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract service: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal service properties: %w", err)
+		return nil, fmt.Errorf("failed to get service live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

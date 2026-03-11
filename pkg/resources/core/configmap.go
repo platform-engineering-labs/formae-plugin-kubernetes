@@ -64,14 +64,9 @@ func (c *ConfigMap) Create(ctx context.Context, request *resource.CreateRequest)
 		return nil, fmt.Errorf("failed to apply configmap: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractConfigMap(result, "formae")
+	properties, err := prov.LiveState[v1coreac.ConfigMapApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract configmap: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal configmap properties: %w", err)
+		return nil, fmt.Errorf("failed to get configmap live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -136,14 +131,9 @@ func (c *ConfigMap) Update(ctx context.Context, request *resource.UpdateRequest)
 		return nil, fmt.Errorf("failed to reconcile configmap metadata: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractConfigMap(result, "formae")
+	properties, err := prov.LiveState[v1coreac.ConfigMapApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract configmap: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal configmap properties: %w", err)
+		return nil, fmt.Errorf("failed to get configmap live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

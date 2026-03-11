@@ -64,14 +64,9 @@ func (s *Secret) Create(ctx context.Context, request *resource.CreateRequest) (*
 		return nil, fmt.Errorf("failed to apply secret: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractSecret(result, "formae")
+	properties, err := prov.LiveState[v1coreac.SecretApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract secret: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal secret properties: %w", err)
+		return nil, fmt.Errorf("failed to get secret live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -136,14 +131,9 @@ func (s *Secret) Update(ctx context.Context, request *resource.UpdateRequest) (*
 		return nil, fmt.Errorf("failed to reconcile secret metadata: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractSecret(result, "formae")
+	properties, err := prov.LiveState[v1coreac.SecretApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract secret: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal secret properties: %w", err)
+		return nil, fmt.Errorf("failed to get secret live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

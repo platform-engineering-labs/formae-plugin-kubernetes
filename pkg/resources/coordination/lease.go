@@ -64,14 +64,9 @@ func (l *Lease) Create(ctx context.Context, request *resource.CreateRequest) (*r
 		return nil, fmt.Errorf("failed to apply lease: %w", err)
 	}
 
-	ext, err := coordinationv1ac.ExtractLease(result, "formae")
+	properties, err := prov.LiveState[coordinationv1ac.LeaseApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract lease: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal lease properties: %w", err)
+		return nil, fmt.Errorf("failed to get lease live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -136,14 +131,9 @@ func (l *Lease) Update(ctx context.Context, request *resource.UpdateRequest) (*r
 		return nil, fmt.Errorf("failed to reconcile lease metadata: %w", err)
 	}
 
-	ext, err := coordinationv1ac.ExtractLease(result, "formae")
+	properties, err := prov.LiveState[coordinationv1ac.LeaseApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract lease: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal lease properties: %w", err)
+		return nil, fmt.Errorf("failed to get lease live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

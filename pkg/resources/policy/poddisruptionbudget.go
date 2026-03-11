@@ -64,14 +64,9 @@ func (p *PodDisruptionBudget) Create(ctx context.Context, request *resource.Crea
 		return nil, fmt.Errorf("failed to apply poddisruptionbudget: %w", err)
 	}
 
-	ext, err := policyv1ac.ExtractPodDisruptionBudget(result, "formae")
+	properties, err := prov.LiveState[policyv1ac.PodDisruptionBudgetApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract poddisruptionbudget: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal poddisruptionbudget properties: %w", err)
+		return nil, fmt.Errorf("failed to get poddisruptionbudget live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -136,14 +131,9 @@ func (p *PodDisruptionBudget) Update(ctx context.Context, request *resource.Upda
 		return nil, fmt.Errorf("failed to reconcile poddisruptionbudget metadata: %w", err)
 	}
 
-	ext, err := policyv1ac.ExtractPodDisruptionBudget(result, "formae")
+	properties, err := prov.LiveState[policyv1ac.PodDisruptionBudgetApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract poddisruptionbudget: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal poddisruptionbudget properties: %w", err)
+		return nil, fmt.Errorf("failed to get poddisruptionbudget live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

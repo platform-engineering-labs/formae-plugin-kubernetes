@@ -60,15 +60,15 @@ func (n *Namespace) Create(ctx context.Context, request *resource.CreateRequest)
 		return nil, fmt.Errorf("failed to apply namespace: %w", err)
 	}
 
-	// Extract only the fields managed by formae
-	ext, err := v1coreac.ExtractNamespace(result, "formae")
+	// Re-read to get the full object so LiveState matches what Read returns.
+	current, err := n.Client.CoreV1().Namespaces().Get(ctx, result.Name, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract namespace: %w", err)
+		return nil, fmt.Errorf("failed to get namespace after create: %w", err)
 	}
 
-	properties, err := json.Marshal(ext)
+	properties, err := namespaceLiveState(current)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal namespace properties: %w", err)
+		return nil, fmt.Errorf("failed to get namespace live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -95,7 +95,7 @@ func (n *Namespace) Read(ctx context.Context, request *resource.ReadRequest) (*r
 		return nil, fmt.Errorf("failed to get namespace: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.NamespaceApplyConfiguration](result)
+	properties, err := namespaceLiveState(result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get namespace live state: %w", err)
 	}
@@ -128,23 +128,23 @@ func (n *Namespace) Update(ctx context.Context, request *resource.UpdateRequest)
 		return nil, fmt.Errorf("failed to reconcile namespace metadata: %w", err)
 	}
 
-	// Extract only the fields managed by formae
-	ext, err := v1coreac.ExtractNamespace(result, "formae")
+	// Re-read to get the full object so LiveState matches what Read returns.
+	current, err := n.Client.CoreV1().Namespaces().Get(ctx, result.Name, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract namespace: %w", err)
+		return nil, fmt.Errorf("failed to get namespace after update: %w", err)
 	}
 
-	properties, err := json.Marshal(ext)
+	properties, err := namespaceLiveState(current)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal namespace properties: %w", err)
+		return nil, fmt.Errorf("failed to get namespace live state: %w", err)
 	}
 
 	return &resource.UpdateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationUpdate,
-			OperationStatus:    n.fromPhase(result.Status.Phase),
-			RequestID:          result.ResourceVersion,
-			NativeID:           result.Name,
+			OperationStatus:    n.fromPhase(current.Status.Phase),
+			RequestID:          current.ResourceVersion,
+			NativeID:           current.Name,
 			ResourceProperties: properties,
 		},
 	}, nil
@@ -189,7 +189,7 @@ func (n *Namespace) Status(ctx context.Context, request *resource.StatusRequest)
 		return nil, fmt.Errorf("failed to get namespace status: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.NamespaceApplyConfiguration](result)
+	properties, err := namespaceLiveState(result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get namespace live state: %w", err)
 	}
@@ -231,4 +231,39 @@ func (n *Namespace) fromPhase(phase v1.NamespacePhase) resource.OperationStatus 
 	default:
 		return resource.OperationStatusSuccess
 	}
+}
+
+// namespaceLiveState returns the live state of a Namespace with only
+// user-controllable metadata (name, namespace, labels, annotations).
+// All server-managed fields (uid, resourceVersion, creationTimestamp,
+// spec, status) are stripped to prevent property oscillation between
+// operations. The K8S-managed label "kubernetes.io/metadata.name" is
+// also removed since it's added automatically by the API server.
+func namespaceLiveState(apiObject any) ([]byte, error) {
+	raw, err := json.Marshal(apiObject)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal api object: %w", err)
+	}
+
+	var full map[string]interface{}
+	if err := json.Unmarshal(raw, &full); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal namespace: %w", err)
+	}
+
+	result := map[string]interface{}{}
+	if meta, ok := full["metadata"].(map[string]interface{}); ok {
+		clean := map[string]interface{}{}
+		for _, key := range []string{"name", "namespace", "labels", "annotations"} {
+			if v, exists := meta[key]; exists {
+				clean[key] = v
+			}
+		}
+		// Remove K8S-managed label added by NamespaceDefaultLabelName admission plugin.
+		if labels, ok := clean["labels"].(map[string]interface{}); ok {
+			delete(labels, "kubernetes.io/metadata.name")
+		}
+		result["metadata"] = clean
+	}
+
+	return json.Marshal(result)
 }

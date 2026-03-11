@@ -65,14 +65,9 @@ func (d *Deployment) Create(ctx context.Context, request *resource.CreateRequest
 		return nil, fmt.Errorf("failed to apply deployment: %w", err)
 	}
 
-	ext, err := appsv1ac.ExtractDeployment(result, "formae")
+	properties, err := prov.LiveState[appsv1ac.DeploymentApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract deployment: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal deployment properties: %w", err)
+		return nil, fmt.Errorf("failed to get deployment live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -138,14 +133,9 @@ func (d *Deployment) Update(ctx context.Context, request *resource.UpdateRequest
 		return nil, fmt.Errorf("failed to reconcile deployment metadata: %w", err)
 	}
 
-	ext, err := appsv1ac.ExtractDeployment(result, "formae")
+	properties, err := prov.LiveState[appsv1ac.DeploymentApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract deployment: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal deployment properties: %w", err)
+		return nil, fmt.Errorf("failed to get deployment live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

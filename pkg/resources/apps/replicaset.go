@@ -65,15 +65,9 @@ func (r *ReplicaSet) Create(ctx context.Context, request *resource.CreateRequest
 		return nil, fmt.Errorf("failed to apply replicaset: %w", err)
 	}
 
-	// Extract only the fields managed by formae
-	ext, err := appsv1ac.ExtractReplicaSet(result, "formae")
+	properties, err := prov.LiveState[appsv1ac.ReplicaSetApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract replicaset: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal replicaset properties: %w", err)
+		return nil, fmt.Errorf("failed to get replicaset live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -139,15 +133,9 @@ func (r *ReplicaSet) Update(ctx context.Context, request *resource.UpdateRequest
 		return nil, fmt.Errorf("failed to reconcile replicaset metadata: %w", err)
 	}
 
-	// Extract only the fields managed by formae
-	ext, err := appsv1ac.ExtractReplicaSet(result, "formae")
+	properties, err := prov.LiveState[appsv1ac.ReplicaSetApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract replicaset: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal replicaset properties: %w", err)
+		return nil, fmt.Errorf("failed to get replicaset live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

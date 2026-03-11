@@ -64,14 +64,9 @@ func (sa *ServiceAccount) Create(ctx context.Context, request *resource.CreateRe
 		return nil, fmt.Errorf("failed to apply serviceaccount: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractServiceAccount(result, "formae")
+	properties, err := prov.LiveState[v1coreac.ServiceAccountApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract serviceaccount: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal serviceaccount properties: %w", err)
+		return nil, fmt.Errorf("failed to get serviceaccount live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -136,14 +131,9 @@ func (sa *ServiceAccount) Update(ctx context.Context, request *resource.UpdateRe
 		return nil, fmt.Errorf("failed to reconcile serviceaccount metadata: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractServiceAccount(result, "formae")
+	properties, err := prov.LiveState[v1coreac.ServiceAccountApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract serviceaccount: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal serviceaccount properties: %w", err)
+		return nil, fmt.Errorf("failed to get serviceaccount live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

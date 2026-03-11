@@ -64,14 +64,9 @@ func (n *NetworkPolicy) Create(ctx context.Context, request *resource.CreateRequ
 		return nil, fmt.Errorf("failed to apply networkpolicy: %w", err)
 	}
 
-	ext, err := networkingv1ac.ExtractNetworkPolicy(result, "formae")
+	properties, err := prov.LiveState[networkingv1ac.NetworkPolicyApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract networkpolicy: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal networkpolicy properties: %w", err)
+		return nil, fmt.Errorf("failed to get networkpolicy live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -136,14 +131,9 @@ func (n *NetworkPolicy) Update(ctx context.Context, request *resource.UpdateRequ
 		return nil, fmt.Errorf("failed to reconcile networkpolicy metadata: %w", err)
 	}
 
-	ext, err := networkingv1ac.ExtractNetworkPolicy(result, "formae")
+	properties, err := prov.LiveState[networkingv1ac.NetworkPolicyApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract networkpolicy: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal networkpolicy properties: %w", err)
+		return nil, fmt.Errorf("failed to get networkpolicy live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

@@ -59,14 +59,9 @@ func (r *RuntimeClass) Create(ctx context.Context, request *resource.CreateReque
 		return nil, fmt.Errorf("failed to apply runtimeclass: %w", err)
 	}
 
-	ext, err := nodev1ac.ExtractRuntimeClass(result, "formae")
+	properties, err := prov.LiveState[nodev1ac.RuntimeClassApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract runtimeclass: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal runtimeclass properties: %w", err)
+		return nil, fmt.Errorf("failed to get runtimeclass live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -126,14 +121,9 @@ func (r *RuntimeClass) Update(ctx context.Context, request *resource.UpdateReque
 		return nil, fmt.Errorf("failed to reconcile runtimeclass metadata: %w", err)
 	}
 
-	ext, err := nodev1ac.ExtractRuntimeClass(result, "formae")
+	properties, err := prov.LiveState[nodev1ac.RuntimeClassApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract runtimeclass: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal runtimeclass properties: %w", err)
+		return nil, fmt.Errorf("failed to get runtimeclass live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

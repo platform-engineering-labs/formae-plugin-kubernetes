@@ -65,14 +65,9 @@ func (j *Job) Create(ctx context.Context, request *resource.CreateRequest) (*res
 		return nil, fmt.Errorf("failed to apply job: %w", err)
 	}
 
-	ext, err := batchv1ac.ExtractJob(result, "formae")
+	properties, err := prov.LiveState[batchv1ac.JobApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract job: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal job properties: %w", err)
+		return nil, fmt.Errorf("failed to get job live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -138,14 +133,9 @@ func (j *Job) Update(ctx context.Context, request *resource.UpdateRequest) (*res
 		return nil, fmt.Errorf("failed to reconcile job metadata: %w", err)
 	}
 
-	ext, err := batchv1ac.ExtractJob(result, "formae")
+	properties, err := prov.LiveState[batchv1ac.JobApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract job: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal job properties: %w", err)
+		return nil, fmt.Errorf("failed to get job live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

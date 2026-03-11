@@ -51,11 +51,11 @@ open class MutatingWebhook extends formae.SubResource {
   @k8s.FieldHint { required = true }
   admissionReviewVersions: Listing<String>
 
-  @k8s.FieldHint {}
-  matchPolicy: String?
+  @k8s.FieldHint { hasProviderDefault = true }
+  matchPolicy: String? = "Equivalent"
 
-  @k8s.FieldHint {}
-  reinvocationPolicy: String?
+  @k8s.FieldHint { hasProviderDefault = true }
+  reinvocationPolicy: String? = "Never"
 
   @k8s.FieldHint { required = true }
   name: String
@@ -63,8 +63,8 @@ open class MutatingWebhook extends formae.SubResource {
   @k8s.FieldHint {}
   namespaceSelector: k8s.LabelSelector?
 
-  @k8s.FieldHint {}
-  timeoutSeconds: Int?
+  @k8s.FieldHint { hasProviderDefault = true }
+  timeoutSeconds: Int? = 10
 
   @k8s.FieldHint {}
   rules: Listing<k8s.RuleWithOperations>?

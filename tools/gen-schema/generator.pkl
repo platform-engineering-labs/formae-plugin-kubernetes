@@ -10,64 +10,64 @@ import "registry.pkl"
 // pkl-k8s Module Imports — Resource Modules (28)
 // =============================================================================
 
-import "@k8s/api/core/v1/Namespace.pkl" as k8sNamespace
-import "@k8s/api/core/v1/Pod.pkl" as k8sPod
-import "@k8s/api/core/v1/ConfigMap.pkl" as k8sConfigMap
-import "@k8s/api/core/v1/Secret.pkl" as k8sSecret
-import "@k8s/api/core/v1/ServiceAccount.pkl" as k8sServiceAccount
-import "@k8s/api/core/v1/Service.pkl" as k8sService
-import "@k8s/api/core/v1/PersistentVolume.pkl" as k8sPersistentVolume
-import "@k8s/api/core/v1/PersistentVolumeClaim.pkl" as k8sPersistentVolumeClaim
-import "@k8s/api/core/v1/Endpoints.pkl" as k8sEndpoints
-import "@k8s/api/core/v1/LimitRange.pkl" as k8sLimitRange
-import "@k8s/api/core/v1/ResourceQuota.pkl" as k8sResourceQuota
-import "@k8s/api/apps/v1/Deployment.pkl" as k8sDeployment
-import "@k8s/api/apps/v1/ReplicaSet.pkl" as k8sReplicaSet
-import "@k8s/api/apps/v1/StatefulSet.pkl" as k8sStatefulSet
-import "@k8s/api/apps/v1/DaemonSet.pkl" as k8sDaemonSet
-import "@k8s/api/batch/v1/Job.pkl" as k8sJob
-import "@k8s/api/batch/v1/CronJob.pkl" as k8sCronJob
-import "@k8s/api/networking/v1/Ingress.pkl" as k8sIngress
-import "@k8s/api/networking/v1/IngressClass.pkl" as k8sIngressClass
-import "@k8s/api/networking/v1/NetworkPolicy.pkl" as k8sNetworkPolicy
-import "@k8s/api/autoscaling/v2/HorizontalPodAutoscaler.pkl" as k8sHPA
-import "@k8s/api/policy/v1/PodDisruptionBudget.pkl" as k8sPDB
-import "@k8s/api/rbac/v1/Role.pkl" as k8sRole
-import "@k8s/api/rbac/v1/ClusterRole.pkl" as k8sClusterRole
-import "@k8s/api/rbac/v1/RoleBinding.pkl" as k8sRoleBinding
-import "@k8s/api/rbac/v1/ClusterRoleBinding.pkl" as k8sClusterRoleBinding
-import "@k8s/api/storage/v1/StorageClass.pkl" as k8sStorageClass
-import "@k8s/api/scheduling/v1/PriorityClass.pkl" as k8sPriorityClass
-import "@k8s/api/admissionregistration/v1/ValidatingWebhookConfiguration.pkl" as k8sValidatingWebhookConfiguration
-import "@k8s/api/admissionregistration/v1/MutatingWebhookConfiguration.pkl" as k8sMutatingWebhookConfiguration
-import "@k8s/api/storage/v1/CSIDriver.pkl" as k8sCSIDriver
-import "@k8s/api/node/v1/RuntimeClass.pkl" as k8sRuntimeClass
-import "@k8s/api/coordination/v1/Lease.pkl" as k8sLease
-import "@k8s/api/flowcontrol/v1/FlowSchema.pkl" as k8sFlowSchema
-import "@k8s/api/flowcontrol/v1/PriorityLevelConfiguration.pkl" as k8sPriorityLevelConfiguration
+import "@pklk8s/api/core/v1/Namespace.pkl" as k8sNamespace
+import "@pklk8s/api/core/v1/Pod.pkl" as k8sPod
+import "@pklk8s/api/core/v1/ConfigMap.pkl" as k8sConfigMap
+import "@pklk8s/api/core/v1/Secret.pkl" as k8sSecret
+import "@pklk8s/api/core/v1/ServiceAccount.pkl" as k8sServiceAccount
+import "@pklk8s/api/core/v1/Service.pkl" as k8sService
+import "@pklk8s/api/core/v1/PersistentVolume.pkl" as k8sPersistentVolume
+import "@pklk8s/api/core/v1/PersistentVolumeClaim.pkl" as k8sPersistentVolumeClaim
+import "@pklk8s/api/core/v1/Endpoints.pkl" as k8sEndpoints
+import "@pklk8s/api/core/v1/LimitRange.pkl" as k8sLimitRange
+import "@pklk8s/api/core/v1/ResourceQuota.pkl" as k8sResourceQuota
+import "@pklk8s/api/apps/v1/Deployment.pkl" as k8sDeployment
+import "@pklk8s/api/apps/v1/ReplicaSet.pkl" as k8sReplicaSet
+import "@pklk8s/api/apps/v1/StatefulSet.pkl" as k8sStatefulSet
+import "@pklk8s/api/apps/v1/DaemonSet.pkl" as k8sDaemonSet
+import "@pklk8s/api/batch/v1/Job.pkl" as k8sJob
+import "@pklk8s/api/batch/v1/CronJob.pkl" as k8sCronJob
+import "@pklk8s/api/networking/v1/Ingress.pkl" as k8sIngress
+import "@pklk8s/api/networking/v1/IngressClass.pkl" as k8sIngressClass
+import "@pklk8s/api/networking/v1/NetworkPolicy.pkl" as k8sNetworkPolicy
+import "@pklk8s/api/autoscaling/v2/HorizontalPodAutoscaler.pkl" as k8sHPA
+import "@pklk8s/api/policy/v1/PodDisruptionBudget.pkl" as k8sPDB
+import "@pklk8s/api/rbac/v1/Role.pkl" as k8sRole
+import "@pklk8s/api/rbac/v1/ClusterRole.pkl" as k8sClusterRole
+import "@pklk8s/api/rbac/v1/RoleBinding.pkl" as k8sRoleBinding
+import "@pklk8s/api/rbac/v1/ClusterRoleBinding.pkl" as k8sClusterRoleBinding
+import "@pklk8s/api/storage/v1/StorageClass.pkl" as k8sStorageClass
+import "@pklk8s/api/scheduling/v1/PriorityClass.pkl" as k8sPriorityClass
+import "@pklk8s/api/admissionregistration/v1/ValidatingWebhookConfiguration.pkl" as k8sValidatingWebhookConfiguration
+import "@pklk8s/api/admissionregistration/v1/MutatingWebhookConfiguration.pkl" as k8sMutatingWebhookConfiguration
+import "@pklk8s/api/storage/v1/CSIDriver.pkl" as k8sCSIDriver
+import "@pklk8s/api/node/v1/RuntimeClass.pkl" as k8sRuntimeClass
+import "@pklk8s/api/coordination/v1/Lease.pkl" as k8sLease
+import "@pklk8s/api/flowcontrol/v1/FlowSchema.pkl" as k8sFlowSchema
+import "@pklk8s/api/flowcontrol/v1/PriorityLevelConfiguration.pkl" as k8sPriorityLevelConfiguration
 
 // =============================================================================
 // pkl-k8s Module Imports — Shared Type Modules
 // =============================================================================
 
-import "@k8s/apimachinery/pkg/apis/meta/v1/LabelSelector.pkl" as k8sLabelSelector
-import "@k8s/apimachinery/pkg/apis/meta/v1/LabelSelectorRequirement.pkl" as k8sLabelSelectorRequirement
-import "@k8s/api/core/v1/PodSpec.pkl" as k8sPodSpec
-import "@k8s/api/core/v1/PodTemplateSpec.pkl" as k8sPodTemplateSpec
-import "@k8s/api/core/v1/Volume.pkl" as k8sVolume
-import "@k8s/api/core/v1/VolumeMount.pkl" as k8sVolumeMount
-import "@k8s/api/core/v1/ContainerPort.pkl" as k8sContainerPort
-import "@k8s/api/core/v1/EnvVar.pkl" as k8sEnvVar
-import "@k8s/api/core/v1/ObjectFieldSelector.pkl" as k8sObjectFieldSelector
-import "@k8s/api/core/v1/ResourceFieldSelector.pkl" as k8sResourceFieldSelector
-import "@k8s/api/core/v1/ResourceRequirements.pkl" as k8sResourceRequirements
-import "@k8s/api/batch/v1/JobSpec.pkl" as k8sJobSpec
-import "@k8s/api/rbac/v1/PolicyRule.pkl" as k8sPolicyRule
-import "@k8s/api/rbac/v1/RoleRef.pkl" as k8sRoleRef
-import "@k8s/api/rbac/v1/Subject.pkl" as k8sSubject
-import "@k8s/api/admissionregistration/v1/RuleWithOperations.pkl" as k8sRuleWithOperations
-import "@k8s/api/admissionregistration/v1/WebhookClientConfig.pkl" as k8sWebhookClientConfig
-import "@k8s/api/admissionregistration/v1/MatchCondition.pkl" as k8sMatchCondition
+import "@pklk8s/apimachinery/pkg/apis/meta/v1/LabelSelector.pkl" as k8sLabelSelector
+import "@pklk8s/apimachinery/pkg/apis/meta/v1/LabelSelectorRequirement.pkl" as k8sLabelSelectorRequirement
+import "@pklk8s/api/core/v1/PodSpec.pkl" as k8sPodSpec
+import "@pklk8s/api/core/v1/PodTemplateSpec.pkl" as k8sPodTemplateSpec
+import "@pklk8s/api/core/v1/Volume.pkl" as k8sVolume
+import "@pklk8s/api/core/v1/VolumeMount.pkl" as k8sVolumeMount
+import "@pklk8s/api/core/v1/ContainerPort.pkl" as k8sContainerPort
+import "@pklk8s/api/core/v1/EnvVar.pkl" as k8sEnvVar
+import "@pklk8s/api/core/v1/ObjectFieldSelector.pkl" as k8sObjectFieldSelector
+import "@pklk8s/api/core/v1/ResourceFieldSelector.pkl" as k8sResourceFieldSelector
+import "@pklk8s/api/core/v1/ResourceRequirements.pkl" as k8sResourceRequirements
+import "@pklk8s/api/batch/v1/JobSpec.pkl" as k8sJobSpec
+import "@pklk8s/api/rbac/v1/PolicyRule.pkl" as k8sPolicyRule
+import "@pklk8s/api/rbac/v1/RoleRef.pkl" as k8sRoleRef
+import "@pklk8s/api/rbac/v1/Subject.pkl" as k8sSubject
+import "@pklk8s/api/admissionregistration/v1/RuleWithOperations.pkl" as k8sRuleWithOperations
+import "@pklk8s/api/admissionregistration/v1/WebhookClientConfig.pkl" as k8sWebhookClientConfig
+import "@pklk8s/api/admissionregistration/v1/MatchCondition.pkl" as k8sMatchCondition
 
 // =============================================================================
 // Shared Type Registry
@@ -187,6 +187,23 @@ local resourceModuleMap: Mapping<String, reflect.Module> = new {
 // Configuration
 // =============================================================================
 
+local allProviderDefaultFields: Set<String> =
+  registry.resources.toList()
+    .flatMap((res) -> res.providerDefaultFields.keys.toList())
+    .toSet()
+
+local function providerDefaultValue(field: String): String? =
+  registry.resources.toList()
+    .filter((res) -> res.providerDefaultFields.containsKey(field) && res.providerDefaultFields[field] != null)
+    .map((res) -> res.providerDefaultFields[field])
+    .firstOrNull
+
+local allProviderDefaultValues: Mapping<String, String?> = new {
+  for (field in allProviderDefaultFields) {
+    [field] = providerDefaultValue(field)
+  }
+}
+
 local excludePropsSet: Set<String> = registry.excludeProperties.toList().toSet()
 local excludeClassesSet: Set<String> = registry.excludeClasses.toList().toSet()
 local excludeSuffixes: List<String> = registry.excludeClassSuffixes.toList()
@@ -286,11 +303,13 @@ local function generateField(
     else baseType)
   let (required = !(prop.type is reflect.NullableType))
   let (createOnly = if (hasOvr) ovr.createOnly else false)
+  let (hasProviderDefault = allProviderDefaultFields.contains(overrideKey))
   let (updateMethod = if (hasOvr) ovr.updateMethod else null)
   let (indexField = if (hasOvr) ovr.indexField else null)
   let (hintParts = new Listing<String> {
     when (required) { "required = true" }
     when (createOnly) { "createOnly = true" }
+    when (hasProviderDefault) { "hasProviderDefault = true" }
     when (updateMethod != null) { #"updateMethod = "\#(updateMethod)""# }
     when (indexField != null) { #"indexField = "\#(indexField)""# }
   })
@@ -306,7 +325,12 @@ local function generateField(
     "typealias", "unknown", "when", "type"
   ))
   let (escapedName = if (pklKeywords.contains(propName)) "`\(propName)`" else propName)
-  hintStr + "\n  " + escapedName + ": " + effectiveType
+  let (defaultValueExpr =
+    if (allProviderDefaultValues.containsKey(overrideKey) && allProviderDefaultValues[overrideKey] != null)
+      allProviderDefaultValues[overrideKey]
+    else null)
+  hintStr + "\n  " + escapedName + ": " + effectiveType +
+    (if (defaultValueExpr != null) " = " + defaultValueExpr else "")
 
 // =============================================================================
 // Class Generation

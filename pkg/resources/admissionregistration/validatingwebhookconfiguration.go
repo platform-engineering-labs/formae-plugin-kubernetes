@@ -59,14 +59,9 @@ func (v *ValidatingWebhookConfiguration) Create(ctx context.Context, request *re
 		return nil, fmt.Errorf("failed to apply validatingwebhookconfiguration: %w", err)
 	}
 
-	ext, err := admissionregistrationv1ac.ExtractValidatingWebhookConfiguration(result, "formae")
+	properties, err := prov.LiveState[admissionregistrationv1ac.ValidatingWebhookConfigurationApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract validatingwebhookconfiguration: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal validatingwebhookconfiguration properties: %w", err)
+		return nil, fmt.Errorf("failed to get validatingwebhookconfiguration live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -126,14 +121,9 @@ func (v *ValidatingWebhookConfiguration) Update(ctx context.Context, request *re
 		return nil, fmt.Errorf("failed to reconcile validatingwebhookconfiguration metadata: %w", err)
 	}
 
-	ext, err := admissionregistrationv1ac.ExtractValidatingWebhookConfiguration(result, "formae")
+	properties, err := prov.LiveState[admissionregistrationv1ac.ValidatingWebhookConfigurationApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract validatingwebhookconfiguration: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal validatingwebhookconfiguration properties: %w", err)
+		return nil, fmt.Errorf("failed to get validatingwebhookconfiguration live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

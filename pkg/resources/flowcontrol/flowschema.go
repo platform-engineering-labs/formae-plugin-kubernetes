@@ -59,14 +59,9 @@ func (f *FlowSchema) Create(ctx context.Context, request *resource.CreateRequest
 		return nil, fmt.Errorf("failed to apply flowschema: %w", err)
 	}
 
-	ext, err := flowcontrolv1ac.ExtractFlowSchema(result, "formae")
+	properties, err := prov.LiveState[flowcontrolv1ac.FlowSchemaApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract flowschema: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal flowschema properties: %w", err)
+		return nil, fmt.Errorf("failed to get flowschema live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -126,14 +121,9 @@ func (f *FlowSchema) Update(ctx context.Context, request *resource.UpdateRequest
 		return nil, fmt.Errorf("failed to reconcile flowschema metadata: %w", err)
 	}
 
-	ext, err := flowcontrolv1ac.ExtractFlowSchema(result, "formae")
+	properties, err := prov.LiveState[flowcontrolv1ac.FlowSchemaApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract flowschema: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal flowschema properties: %w", err)
+		return nil, fmt.Errorf("failed to get flowschema live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

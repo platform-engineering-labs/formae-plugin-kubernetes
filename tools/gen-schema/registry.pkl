@@ -38,6 +38,10 @@ class ResourceEntry {
 
   /// Resource doc comment
   doc: String?
+
+  /// Fields that receive default values from the K8S API server.
+  /// Key: "ClassName.fieldName". Value: PKL default expression, or null if ambiguous/complex.
+  providerDefaultFields: Mapping<String, String?> = new {}
 }
 
 /// Field-level override keyed by "ClassName.fieldName"
@@ -47,6 +51,28 @@ class FieldOverride {
   updateMethod: String?
   indexField: String?
   typeOverride: String?
+}
+
+// =============================================================================
+// Provider Default Field Groups
+// =============================================================================
+
+/// Provider-default fields for resources containing PodSpec (Pod, Deployment, etc.)
+local podSpecProviderDefaults: Mapping<String, String?> = new {
+  ["Container.imagePullPolicy"] = null              // depends on image tag
+  ["Container.terminationMessagePath"] = #""/dev/termination-log""#
+  ["Container.terminationMessagePolicy"] = #""File""#
+  ["Container.resources"] = null                    // complex object
+  ["ContainerPort.protocol"] = #""TCP""#
+  ["PodSpec.restartPolicy"] = #""Always""#
+  ["PodSpec.dnsPolicy"] = #""ClusterFirst""#
+  ["PodSpec.terminationGracePeriodSeconds"] = "30"
+  ["PodSpec.schedulerName"] = #""default-scheduler""#
+  ["PodSpec.securityContext"] = null                // complex object
+  ["SecretVolumeSource.defaultMode"] = "420"
+  ["ConfigMapVolumeSource.defaultMode"] = "420"
+  ["ProjectedVolumeSource.defaultMode"] = "420"
+  ["DownwardAPIVolumeSource.defaultMode"] = "420"
 }
 
 // =============================================================================
@@ -83,6 +109,7 @@ resources: Listing<ResourceEntry> = new {
       K8S Pod resource.
       A Pod is the smallest deployable unit in Kubernetes.
       """
+    providerDefaultFields = podSpecProviderDefaults
   }
 
   new {
@@ -131,6 +158,11 @@ resources: Listing<ResourceEntry> = new {
       K8S Service resource.
       A Service exposes a set of Pods as a network service.
       """
+    providerDefaultFields {
+      ["ServicePort.protocol"] = #""TCP""#
+      ["ServiceSpec.sessionAffinity"] = #""None""#
+      ["ServiceSpec.type"] = #""ClusterIP""#
+    }
   }
 
   new {
@@ -188,6 +220,7 @@ resources: Listing<ResourceEntry> = new {
       K8S Deployment resource.
       A Deployment manages a set of replica Pods with declarative updates.
       """
+    providerDefaultFields = podSpecProviderDefaults
   }
 
   new {
@@ -200,6 +233,7 @@ resources: Listing<ResourceEntry> = new {
       K8S ReplicaSet resource.
       A ReplicaSet ensures that a specified number of pod replicas are running at any given time.
       """
+    providerDefaultFields = podSpecProviderDefaults
   }
 
   new {
@@ -212,6 +246,7 @@ resources: Listing<ResourceEntry> = new {
       K8S StatefulSet resource.
       A StatefulSet manages stateful applications with stable network identities and persistent storage.
       """
+    providerDefaultFields = podSpecProviderDefaults
   }
 
   new {
@@ -224,6 +259,7 @@ resources: Listing<ResourceEntry> = new {
       K8S DaemonSet resource.
       A DaemonSet ensures that all (or some) nodes run a copy of a Pod.
       """
+    providerDefaultFields = podSpecProviderDefaults
   }
 
   // -------------------------------------------------------------------------
@@ -240,6 +276,7 @@ resources: Listing<ResourceEntry> = new {
       K8S Job resource.
       A Job creates one or more Pods and ensures a specified number of them successfully terminate.
       """
+    providerDefaultFields = podSpecProviderDefaults
   }
 
   new {
@@ -252,6 +289,7 @@ resources: Listing<ResourceEntry> = new {
       K8S CronJob resource.
       A CronJob creates Jobs on a repeating schedule.
       """
+    providerDefaultFields = podSpecProviderDefaults
   }
 
   // -------------------------------------------------------------------------
@@ -390,6 +428,10 @@ resources: Listing<ResourceEntry> = new {
       K8S ValidatingWebhookConfiguration resource.
       Configures admission webhooks that validate requests to the API server.
       """
+    providerDefaultFields {
+      ["ValidatingWebhook.matchPolicy"] = #""Equivalent""#
+      ["ValidatingWebhook.timeoutSeconds"] = "10"
+    }
   }
 
   new {
@@ -403,6 +445,11 @@ resources: Listing<ResourceEntry> = new {
       K8S MutatingWebhookConfiguration resource.
       Configures admission webhooks that mutate requests to the API server.
       """
+    providerDefaultFields {
+      ["MutatingWebhook.matchPolicy"] = #""Equivalent""#
+      ["MutatingWebhook.timeoutSeconds"] = "10"
+      ["MutatingWebhook.reinvocationPolicy"] = #""Never""#
+    }
   }
 
   // -------------------------------------------------------------------------

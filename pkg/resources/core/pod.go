@@ -65,15 +65,9 @@ func (p *Pod) Create(ctx context.Context, request *resource.CreateRequest) (*res
 		return nil, fmt.Errorf("failed to apply pod: %w", err)
 	}
 
-	// Extract only the fields managed by formae
-	ext, err := v1coreac.ExtractPod(result, "formae")
+	properties, err := prov.LiveState[v1coreac.PodApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract pod: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal pod properties: %w", err)
+		return nil, fmt.Errorf("failed to get pod live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -140,15 +134,9 @@ func (p *Pod) Update(ctx context.Context, request *resource.UpdateRequest) (*res
 		return nil, fmt.Errorf("failed to reconcile pod metadata: %w", err)
 	}
 
-	// Extract only the fields managed by formae
-	ext, err := v1coreac.ExtractPod(result, "formae")
+	properties, err := prov.LiveState[v1coreac.PodApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract pod: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal pod properties: %w", err)
+		return nil, fmt.Errorf("failed to get pod live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

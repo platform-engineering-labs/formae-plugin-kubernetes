@@ -64,14 +64,9 @@ func (r *ResourceQuota) Create(ctx context.Context, request *resource.CreateRequ
 		return nil, fmt.Errorf("failed to apply resourcequota: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractResourceQuota(result, "formae")
+	properties, err := prov.LiveState[v1coreac.ResourceQuotaApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract resourcequota: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal resourcequota properties: %w", err)
+		return nil, fmt.Errorf("failed to get resourcequota live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -136,14 +131,9 @@ func (r *ResourceQuota) Update(ctx context.Context, request *resource.UpdateRequ
 		return nil, fmt.Errorf("failed to reconcile resourcequota metadata: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractResourceQuota(result, "formae")
+	properties, err := prov.LiveState[v1coreac.ResourceQuotaApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract resourcequota: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal resourcequota properties: %w", err)
+		return nil, fmt.Errorf("failed to get resourcequota live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

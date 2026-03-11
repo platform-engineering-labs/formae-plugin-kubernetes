@@ -59,14 +59,9 @@ func (pc *PriorityClass) Create(ctx context.Context, request *resource.CreateReq
 		return nil, fmt.Errorf("failed to apply priorityclass: %w", err)
 	}
 
-	ext, err := schedulingv1ac.ExtractPriorityClass(result, "formae")
+	properties, err := prov.LiveState[schedulingv1ac.PriorityClassApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract priorityclass: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal priorityclass properties: %w", err)
+		return nil, fmt.Errorf("failed to get priorityclass live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -126,14 +121,9 @@ func (pc *PriorityClass) Update(ctx context.Context, request *resource.UpdateReq
 		return nil, fmt.Errorf("failed to reconcile priorityclass metadata: %w", err)
 	}
 
-	ext, err := schedulingv1ac.ExtractPriorityClass(result, "formae")
+	properties, err := prov.LiveState[schedulingv1ac.PriorityClassApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract priorityclass: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal priorityclass properties: %w", err)
+		return nil, fmt.Errorf("failed to get priorityclass live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

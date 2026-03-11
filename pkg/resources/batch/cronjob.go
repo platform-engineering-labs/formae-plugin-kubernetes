@@ -64,14 +64,9 @@ func (cj *CronJob) Create(ctx context.Context, request *resource.CreateRequest) 
 		return nil, fmt.Errorf("failed to apply cronjob: %w", err)
 	}
 
-	ext, err := batchv1ac.ExtractCronJob(result, "formae")
+	properties, err := prov.LiveState[batchv1ac.CronJobApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract cronjob: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal cronjob properties: %w", err)
+		return nil, fmt.Errorf("failed to get cronjob live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -136,14 +131,9 @@ func (cj *CronJob) Update(ctx context.Context, request *resource.UpdateRequest) 
 		return nil, fmt.Errorf("failed to reconcile cronjob metadata: %w", err)
 	}
 
-	ext, err := batchv1ac.ExtractCronJob(result, "formae")
+	properties, err := prov.LiveState[batchv1ac.CronJobApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract cronjob: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal cronjob properties: %w", err)
+		return nil, fmt.Errorf("failed to get cronjob live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

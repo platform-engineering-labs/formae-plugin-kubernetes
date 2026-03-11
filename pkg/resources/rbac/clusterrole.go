@@ -59,14 +59,9 @@ func (c *ClusterRole) Create(ctx context.Context, request *resource.CreateReques
 		return nil, fmt.Errorf("failed to apply clusterrole: %w", err)
 	}
 
-	ext, err := rbacv1ac.ExtractClusterRole(result, "formae")
+	properties, err := prov.LiveState[rbacv1ac.ClusterRoleApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract clusterrole: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal clusterrole properties: %w", err)
+		return nil, fmt.Errorf("failed to get clusterrole live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -126,14 +121,9 @@ func (c *ClusterRole) Update(ctx context.Context, request *resource.UpdateReques
 		return nil, fmt.Errorf("failed to reconcile clusterrole metadata: %w", err)
 	}
 
-	ext, err := rbacv1ac.ExtractClusterRole(result, "formae")
+	properties, err := prov.LiveState[rbacv1ac.ClusterRoleApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract clusterrole: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal clusterrole properties: %w", err)
+		return nil, fmt.Errorf("failed to get clusterrole live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

@@ -59,14 +59,9 @@ func (ic *IngressClass) Create(ctx context.Context, request *resource.CreateRequ
 		return nil, fmt.Errorf("failed to apply ingressclass: %w", err)
 	}
 
-	ext, err := networkingv1ac.ExtractIngressClass(result, "formae")
+	properties, err := prov.LiveState[networkingv1ac.IngressClassApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract ingressclass: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal ingressclass properties: %w", err)
+		return nil, fmt.Errorf("failed to get ingressclass live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -126,14 +121,9 @@ func (ic *IngressClass) Update(ctx context.Context, request *resource.UpdateRequ
 		return nil, fmt.Errorf("failed to reconcile ingressclass metadata: %w", err)
 	}
 
-	ext, err := networkingv1ac.ExtractIngressClass(result, "formae")
+	properties, err := prov.LiveState[networkingv1ac.IngressClassApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract ingressclass: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal ingressclass properties: %w", err)
+		return nil, fmt.Errorf("failed to get ingressclass live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

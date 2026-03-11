@@ -59,14 +59,9 @@ func (m *MutatingWebhookConfiguration) Create(ctx context.Context, request *reso
 		return nil, fmt.Errorf("failed to apply mutatingwebhookconfiguration: %w", err)
 	}
 
-	ext, err := admissionregistrationv1ac.ExtractMutatingWebhookConfiguration(result, "formae")
+	properties, err := prov.LiveState[admissionregistrationv1ac.MutatingWebhookConfigurationApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract mutatingwebhookconfiguration: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal mutatingwebhookconfiguration properties: %w", err)
+		return nil, fmt.Errorf("failed to get mutatingwebhookconfiguration live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -126,14 +121,9 @@ func (m *MutatingWebhookConfiguration) Update(ctx context.Context, request *reso
 		return nil, fmt.Errorf("failed to reconcile mutatingwebhookconfiguration metadata: %w", err)
 	}
 
-	ext, err := admissionregistrationv1ac.ExtractMutatingWebhookConfiguration(result, "formae")
+	properties, err := prov.LiveState[admissionregistrationv1ac.MutatingWebhookConfigurationApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract mutatingwebhookconfiguration: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal mutatingwebhookconfiguration properties: %w", err)
+		return nil, fmt.Errorf("failed to get mutatingwebhookconfiguration live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

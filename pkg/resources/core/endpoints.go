@@ -64,14 +64,9 @@ func (e *Endpoints) Create(ctx context.Context, request *resource.CreateRequest)
 		return nil, fmt.Errorf("failed to apply endpoints: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractEndpoints(result, "formae")
+	properties, err := prov.LiveState[v1coreac.EndpointsApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract endpoints: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal endpoints properties: %w", err)
+		return nil, fmt.Errorf("failed to get endpoints live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -136,14 +131,9 @@ func (e *Endpoints) Update(ctx context.Context, request *resource.UpdateRequest)
 		return nil, fmt.Errorf("failed to reconcile endpoints metadata: %w", err)
 	}
 
-	ext, err := v1coreac.ExtractEndpoints(result, "formae")
+	properties, err := prov.LiveState[v1coreac.EndpointsApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract endpoints: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal endpoints properties: %w", err)
+		return nil, fmt.Errorf("failed to get endpoints live state: %w", err)
 	}
 
 	return &resource.UpdateResult{

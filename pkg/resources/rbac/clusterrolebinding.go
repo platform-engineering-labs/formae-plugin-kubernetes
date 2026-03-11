@@ -59,14 +59,9 @@ func (c *ClusterRoleBinding) Create(ctx context.Context, request *resource.Creat
 		return nil, fmt.Errorf("failed to apply clusterrolebinding: %w", err)
 	}
 
-	ext, err := rbacv1ac.ExtractClusterRoleBinding(result, "formae")
+	properties, err := prov.LiveState[rbacv1ac.ClusterRoleBindingApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract clusterrolebinding: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal clusterrolebinding properties: %w", err)
+		return nil, fmt.Errorf("failed to get clusterrolebinding live state: %w", err)
 	}
 
 	return &resource.CreateResult{
@@ -126,14 +121,9 @@ func (c *ClusterRoleBinding) Update(ctx context.Context, request *resource.Updat
 		return nil, fmt.Errorf("failed to reconcile clusterrolebinding metadata: %w", err)
 	}
 
-	ext, err := rbacv1ac.ExtractClusterRoleBinding(result, "formae")
+	properties, err := prov.LiveState[rbacv1ac.ClusterRoleBindingApplyConfiguration](result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract clusterrolebinding: %w", err)
-	}
-
-	properties, err := json.Marshal(ext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal clusterrolebinding properties: %w", err)
+		return nil, fmt.Errorf("failed to get clusterrolebinding live state: %w", err)
 	}
 
 	return &resource.UpdateResult{
