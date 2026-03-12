@@ -55,6 +55,16 @@ assert_eq() {
     fi
 }
 
+# Resolve PKL dependencies (schema first since examples imports it)
+if [[ -f "${PROJECT_ROOT}/schema/pkl/PklProject" ]]; then
+    echo "Resolving schema/pkl dependencies..."
+    pkl project resolve "${PROJECT_ROOT}/schema/pkl"
+fi
+if [[ -f "${PROJECT_ROOT}/examples/PklProject" ]]; then
+    echo "Resolving examples/ PKL dependencies..."
+    pkl project resolve "${PROJECT_ROOT}/examples"
+fi
+
 echo "========================================"
 echo "Drift Detection Test"
 echo "========================================"
