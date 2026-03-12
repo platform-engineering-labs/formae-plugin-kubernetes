@@ -27,7 +27,7 @@ FORMAE_BINARY ?= $(shell realpath $(firstword $(wildcard $(CURDIR)/../../formae/
 PLUGIN_BASE_DIR := $(HOME)/.pel/formae/plugins
 INSTALL_DIR := $(PLUGIN_BASE_DIR)/$(PLUGIN_NAME)/v$(PLUGIN_VERSION)
 
-.PHONY: all build test test-unit test-integration lint verify-schema clean install help setup-credentials clean-environment conformance-test conformance-test-crud conformance-test-discovery conformance-test-crud-run conformance-test-discovery-run generate-schema chart-test
+.PHONY: all build test test-unit test-integration lint verify-schema clean install help setup-credentials clean-environment conformance-test conformance-test-crud conformance-test-discovery conformance-test-crud-run conformance-test-discovery-run generate-schema chart-test drift-test
 
 all: build
 
@@ -167,3 +167,10 @@ conformance-test-discovery-run:
 chart-test: install
 	@echo "Running chart smoke tests..."
 	@FORMAE_BINARY="$(FORMAE_BINARY)" CHART_TEST_TIMEOUT="$(or $(TIMEOUT),120)" ./scripts/run-chart-tests.sh $(CHART)
+
+## drift-test: Run drift detection + reconciliation test
+## Deploys drift-demo.pkl, introduces drift via kubectl, force reconciles,
+## and verifies state was restored.
+drift-test: install
+	@echo "Running drift detection test..."
+	@FORMAE_BINARY="$(FORMAE_BINARY)" ./scripts/run-drift-test.sh
