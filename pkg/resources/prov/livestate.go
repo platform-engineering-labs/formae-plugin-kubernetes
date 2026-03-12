@@ -109,6 +109,9 @@ func LiveState[T any](apiObject any, kind, apiVersion string) ([]byte, error) {
 		for _, key := range serverManagedMetaFields {
 			delete(meta, key)
 		}
+		// Strip metadata.finalizers — set by K8S controllers (e.g. kubernetes.io/pvc-protection),
+		// not user-managed.
+		delete(meta, "finalizers")
 		stripServerManagedAnnotations(meta)
 		stripServerManagedLabels(meta)
 	}
@@ -136,6 +139,14 @@ func stripServerDefaults(v interface{}) {
 		if _, hasName := val["name"]; hasName {
 			if _, hasImage := val["image"]; hasImage {
 				delete(val, "imagePullPolicy")
+			}
+		}
+
+		// Strip K8S-defaulted volumeMode on PVC specs (objects with accessModes).
+		// K8S always defaults volumeMode to "Filesystem" when not specified.
+		if _, hasAccessModes := val["accessModes"]; hasAccessModes {
+			if vm, ok := val["volumeMode"].(string); ok && vm == "Filesystem" {
+				delete(val, "volumeMode")
 			}
 		}
 
