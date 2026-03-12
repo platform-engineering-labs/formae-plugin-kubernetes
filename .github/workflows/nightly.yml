@@ -9,11 +9,60 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Conformance tests run the full CRUD lifecycle against real K8S resources
-  # in an ephemeral kind cluster. All tests run sequentially in a single job.
+  # Build formae from main once and share it across matrix jobs
+  build-formae:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Build formae from main
+        run: |
+          git clone --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          cd /tmp/formae
+          git fetch --tags
+          # Get latest release tag (sorted by semver) and pass to make
+          LATEST_TAG=$(git tag -l "[0-9]*" --sort=-version:refname | grep -v -- '-' | head -1)
+          echo "Building formae with VERSION=${LATEST_TAG}"
+          make build VERSION="${LATEST_TAG}"
+
+      - name: Upload formae binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: formae-binary
+          path: /tmp/formae/formae
+          retention-days: 1
+
+  # Discover test cases dynamically from testdata/
+  discover-tests:
+    runs-on: ubuntu-latest
+    outputs:
+      test-cases: ${{ steps.discover.outputs.test-cases }}
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v4
+
+      - name: Discover test cases
+        id: discover
+        run: |
+          TEST_CASES=$(ls testdata/*.pkl 2>/dev/null \
+            | xargs -n1 basename \
+            | grep -v '\-update\.pkl$' \
+            | grep -v '\-replace\.pkl$' \
+            | sed 's/\.pkl$//' \
+            | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "Discovered test cases: ${TEST_CASES}"
+          echo "test-cases=${TEST_CASES}" >> "$GITHUB_OUTPUT"
+
+  # Conformance tests run the full CRUD lifecycle against real K8S resources.
+  # Each test case gets its own kind cluster and fresh plugin process.
   conformance-tests:
+    needs: [build-formae, discover-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      matrix:
+        test-case: ${{ fromJson(needs.discover-tests.outputs.test-cases) }}
+      max-parallel: 10
+      fail-fast: false
     steps:
       - name: Checkout plugin
         uses: actions/checkout@v4
@@ -33,24 +82,23 @@ jobs:
         with:
           cluster_name: formae-test
 
-      - name: Build formae from main
-        run: |
-          git clone --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
-          cd /tmp/formae
-          git fetch --tags
-          # Get latest release tag (sorted by semver) and pass to make
-          LATEST_TAG=$(git tag -l "[0-9]*" --sort=-version:refname | grep -v -- '-' | head -1)
-          echo "Building formae with VERSION=${LATEST_TAG}"
-          make build VERSION="${LATEST_TAG}"
-          echo "FORMAE_BINARY=/tmp/formae/formae" >> $GITHUB_ENV
+      - name: Download formae binary
+        uses: actions/download-artifact@v4
+        with:
+          name: formae-binary
+          path: /tmp/formae
+
+      - name: Make formae executable
+        run: chmod +x /tmp/formae/formae
 
       - name: Install plugin
         run: make install
 
-      - name: Run conformance tests
+      - name: Run conformance tests (${{ matrix.test-case }})
         env:
-          FORMAE_TEST_RUN_ID: nightly-main-${{ github.run_id }}
-        run: make conformance-test-crud-run PARALLEL=1
+          FORMAE_BINARY: /tmp/formae/formae
+          FORMAE_TEST_RUN_ID: nightly-main-${{ github.run_id }}-${{ github.run_attempt }}
+        run: make conformance-test-crud-run conformance-test-discovery-run TEST=${{ matrix.test-case }} PARALLEL=1
 
   # Notify when nightly is fixed (was red, now green)
   notify-fixed:
