@@ -64,7 +64,7 @@ func (p *PodDisruptionBudget) Create(ctx context.Context, request *resource.Crea
 		return nil, fmt.Errorf("failed to apply poddisruptionbudget: %w", err)
 	}
 
-	properties, err := prov.LiveState[policyv1ac.PodDisruptionBudgetApplyConfiguration](result)
+	properties, err := prov.LiveState[policyv1ac.PodDisruptionBudgetApplyConfiguration](result, "PodDisruptionBudget", "policy/v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get poddisruptionbudget live state: %w", err)
 	}
@@ -93,7 +93,7 @@ func (p *PodDisruptionBudget) Read(ctx context.Context, request *resource.ReadRe
 		return nil, fmt.Errorf("failed to get poddisruptionbudget: %w", err)
 	}
 
-	properties, err := prov.LiveState[policyv1ac.PodDisruptionBudgetApplyConfiguration](result)
+	properties, err := prov.LiveState[policyv1ac.PodDisruptionBudgetApplyConfiguration](result, "PodDisruptionBudget", "policy/v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get poddisruptionbudget live state: %w", err)
 	}
@@ -131,7 +131,7 @@ func (p *PodDisruptionBudget) Update(ctx context.Context, request *resource.Upda
 		return nil, fmt.Errorf("failed to reconcile poddisruptionbudget metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[policyv1ac.PodDisruptionBudgetApplyConfiguration](result)
+	properties, err := prov.LiveState[policyv1ac.PodDisruptionBudgetApplyConfiguration](result, "PodDisruptionBudget", "policy/v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get poddisruptionbudget live state: %w", err)
 	}
@@ -186,7 +186,7 @@ func (p *PodDisruptionBudget) Status(ctx context.Context, request *resource.Stat
 		return nil, fmt.Errorf("failed to get poddisruptionbudget status: %w", err)
 	}
 
-	properties, err := prov.LiveState[policyv1ac.PodDisruptionBudgetApplyConfiguration](result)
+	properties, err := prov.LiveState[policyv1ac.PodDisruptionBudgetApplyConfiguration](result, "PodDisruptionBudget", "policy/v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get poddisruptionbudget live state: %w", err)
 	}

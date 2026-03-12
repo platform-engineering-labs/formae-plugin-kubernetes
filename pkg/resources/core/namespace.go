@@ -60,7 +60,7 @@ func (n *Namespace) Create(ctx context.Context, request *resource.CreateRequest)
 		return nil, fmt.Errorf("failed to apply namespace: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.NamespaceApplyConfiguration](result)
+	properties, err := prov.LiveState[v1coreac.NamespaceApplyConfiguration](result, "Namespace", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract namespace state: %w", err)
 	}
@@ -89,7 +89,7 @@ func (n *Namespace) Read(ctx context.Context, request *resource.ReadRequest) (*r
 		return nil, fmt.Errorf("failed to get namespace: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.NamespaceApplyConfiguration](result)
+	properties, err := prov.LiveState[v1coreac.NamespaceApplyConfiguration](result, "Namespace", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract namespace state: %w", err)
 	}
@@ -128,7 +128,7 @@ func (n *Namespace) Update(ctx context.Context, request *resource.UpdateRequest)
 		return nil, fmt.Errorf("failed to re-read namespace after reconcile: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.NamespaceApplyConfiguration](result)
+	properties, err := prov.LiveState[v1coreac.NamespaceApplyConfiguration](result, "Namespace", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract namespace state: %w", err)
 	}
@@ -183,7 +183,7 @@ func (n *Namespace) Status(ctx context.Context, request *resource.StatusRequest)
 		return nil, fmt.Errorf("failed to get namespace status: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.NamespaceApplyConfiguration](result)
+	properties, err := prov.LiveState[v1coreac.NamespaceApplyConfiguration](result, "Namespace", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract namespace state: %w", err)
 	}

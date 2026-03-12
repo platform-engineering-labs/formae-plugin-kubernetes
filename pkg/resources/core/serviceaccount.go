@@ -64,7 +64,7 @@ func (sa *ServiceAccount) Create(ctx context.Context, request *resource.CreateRe
 		return nil, fmt.Errorf("failed to apply serviceaccount: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.ServiceAccountApplyConfiguration](result)
+	properties, err := prov.LiveState[v1coreac.ServiceAccountApplyConfiguration](result, "ServiceAccount", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get serviceaccount live state: %w", err)
 	}
@@ -93,7 +93,7 @@ func (sa *ServiceAccount) Read(ctx context.Context, request *resource.ReadReques
 		return nil, fmt.Errorf("failed to get serviceaccount: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.ServiceAccountApplyConfiguration](result)
+	properties, err := prov.LiveState[v1coreac.ServiceAccountApplyConfiguration](result, "ServiceAccount", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get serviceaccount live state: %w", err)
 	}
@@ -131,7 +131,7 @@ func (sa *ServiceAccount) Update(ctx context.Context, request *resource.UpdateRe
 		return nil, fmt.Errorf("failed to reconcile serviceaccount metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.ServiceAccountApplyConfiguration](result)
+	properties, err := prov.LiveState[v1coreac.ServiceAccountApplyConfiguration](result, "ServiceAccount", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get serviceaccount live state: %w", err)
 	}
@@ -186,7 +186,7 @@ func (sa *ServiceAccount) Status(ctx context.Context, request *resource.StatusRe
 		return nil, fmt.Errorf("failed to get serviceaccount status: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.ServiceAccountApplyConfiguration](result)
+	properties, err := prov.LiveState[v1coreac.ServiceAccountApplyConfiguration](result, "ServiceAccount", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get serviceaccount live state: %w", err)
 	}

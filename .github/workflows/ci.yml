@@ -158,22 +158,7 @@ jobs:
       - name: Run conformance tests (${{ matrix.test-case }})
         env:
           FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
-        run: |
-          for attempt in 1 2 3; do
-            echo "=== Attempt ${attempt}/3 for ${{ matrix.test-case }} ==="
-            if make conformance-test-crud-run conformance-test-discovery-run TEST=${{ matrix.test-case }} PARALLEL=1; then
-              echo "=== PASSED on attempt ${attempt} ==="
-              exit 0
-            fi
-            echo "=== FAILED on attempt ${attempt} ==="
-            if [ "$attempt" -lt 3 ]; then
-              echo "Cleaning up before retry..."
-              ./scripts/ci/clean-environment.sh || true
-              sleep 5
-            fi
-          done
-          echo "=== FAILED after 3 attempts ==="
-          exit 1
+        run: make conformance-test-crud-run conformance-test-discovery-run TEST=${{ matrix.test-case }} PARALLEL=1
 
   # Notify when build is fixed (was red, now green)
   notify-fixed:

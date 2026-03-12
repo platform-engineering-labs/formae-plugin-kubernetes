@@ -64,7 +64,7 @@ func (s *Secret) Create(ctx context.Context, request *resource.CreateRequest) (*
 		return nil, fmt.Errorf("failed to apply secret: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.SecretApplyConfiguration](result)
+	properties, err := prov.LiveState[v1coreac.SecretApplyConfiguration](result, "Secret", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get secret live state: %w", err)
 	}
@@ -93,7 +93,7 @@ func (s *Secret) Read(ctx context.Context, request *resource.ReadRequest) (*reso
 		return nil, fmt.Errorf("failed to get secret: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.SecretApplyConfiguration](result)
+	properties, err := prov.LiveState[v1coreac.SecretApplyConfiguration](result, "Secret", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get secret live state: %w", err)
 	}
@@ -131,7 +131,7 @@ func (s *Secret) Update(ctx context.Context, request *resource.UpdateRequest) (*
 		return nil, fmt.Errorf("failed to reconcile secret metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.SecretApplyConfiguration](result)
+	properties, err := prov.LiveState[v1coreac.SecretApplyConfiguration](result, "Secret", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get secret live state: %w", err)
 	}
@@ -186,7 +186,7 @@ func (s *Secret) Status(ctx context.Context, request *resource.StatusRequest) (*
 		return nil, fmt.Errorf("failed to get secret status: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.SecretApplyConfiguration](result)
+	properties, err := prov.LiveState[v1coreac.SecretApplyConfiguration](result, "Secret", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get secret live state: %w", err)
 	}

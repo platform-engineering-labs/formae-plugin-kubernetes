@@ -64,7 +64,7 @@ func (n *NetworkPolicy) Create(ctx context.Context, request *resource.CreateRequ
 		return nil, fmt.Errorf("failed to apply networkpolicy: %w", err)
 	}
 
-	properties, err := prov.LiveState[networkingv1ac.NetworkPolicyApplyConfiguration](result)
+	properties, err := prov.LiveState[networkingv1ac.NetworkPolicyApplyConfiguration](result, "NetworkPolicy", "networking.k8s.io/v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get networkpolicy live state: %w", err)
 	}
@@ -93,7 +93,7 @@ func (n *NetworkPolicy) Read(ctx context.Context, request *resource.ReadRequest)
 		return nil, fmt.Errorf("failed to get networkpolicy: %w", err)
 	}
 
-	properties, err := prov.LiveState[networkingv1ac.NetworkPolicyApplyConfiguration](result)
+	properties, err := prov.LiveState[networkingv1ac.NetworkPolicyApplyConfiguration](result, "NetworkPolicy", "networking.k8s.io/v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get networkpolicy live state: %w", err)
 	}
@@ -131,7 +131,7 @@ func (n *NetworkPolicy) Update(ctx context.Context, request *resource.UpdateRequ
 		return nil, fmt.Errorf("failed to reconcile networkpolicy metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[networkingv1ac.NetworkPolicyApplyConfiguration](result)
+	properties, err := prov.LiveState[networkingv1ac.NetworkPolicyApplyConfiguration](result, "NetworkPolicy", "networking.k8s.io/v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get networkpolicy live state: %w", err)
 	}
@@ -187,7 +187,7 @@ func (n *NetworkPolicy) Status(ctx context.Context, request *resource.StatusRequ
 		return nil, fmt.Errorf("failed to get networkpolicy status: %w", err)
 	}
 
-	properties, err := prov.LiveState[networkingv1ac.NetworkPolicyApplyConfiguration](result)
+	properties, err := prov.LiveState[networkingv1ac.NetworkPolicyApplyConfiguration](result, "NetworkPolicy", "networking.k8s.io/v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get networkpolicy live state: %w", err)
 	}

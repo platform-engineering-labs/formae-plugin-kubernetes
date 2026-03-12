@@ -60,7 +60,7 @@ func (p *PersistentVolume) Create(ctx context.Context, request *resource.CreateR
 		return nil, fmt.Errorf("failed to apply persistentvolume: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.PersistentVolumeApplyConfiguration](result)
+	properties, err := prov.LiveState[v1coreac.PersistentVolumeApplyConfiguration](result, "PersistentVolume", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get persistentvolume live state: %w", err)
 	}
@@ -90,7 +90,7 @@ func (p *PersistentVolume) Read(ctx context.Context, request *resource.ReadReque
 		return nil, fmt.Errorf("failed to get persistentvolume: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.PersistentVolumeApplyConfiguration](result)
+	properties, err := prov.LiveState[v1coreac.PersistentVolumeApplyConfiguration](result, "PersistentVolume", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get persistentvolume live state: %w", err)
 	}
@@ -123,7 +123,7 @@ func (p *PersistentVolume) Update(ctx context.Context, request *resource.UpdateR
 		return nil, fmt.Errorf("failed to reconcile persistentvolume metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.PersistentVolumeApplyConfiguration](result)
+	properties, err := prov.LiveState[v1coreac.PersistentVolumeApplyConfiguration](result, "PersistentVolume", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get persistentvolume live state: %w", err)
 	}
@@ -179,7 +179,7 @@ func (p *PersistentVolume) Status(ctx context.Context, request *resource.StatusR
 		return nil, fmt.Errorf("failed to get persistentvolume status: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.PersistentVolumeApplyConfiguration](result)
+	properties, err := prov.LiveState[v1coreac.PersistentVolumeApplyConfiguration](result, "PersistentVolume", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get persistentvolume live state: %w", err)
 	}

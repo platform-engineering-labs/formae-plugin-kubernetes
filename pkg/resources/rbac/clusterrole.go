@@ -59,7 +59,7 @@ func (c *ClusterRole) Create(ctx context.Context, request *resource.CreateReques
 		return nil, fmt.Errorf("failed to apply clusterrole: %w", err)
 	}
 
-	properties, err := prov.LiveState[rbacv1ac.ClusterRoleApplyConfiguration](result)
+	properties, err := prov.LiveState[rbacv1ac.ClusterRoleApplyConfiguration](result, "ClusterRole", "rbac.authorization.k8s.io/v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get clusterrole live state: %w", err)
 	}
@@ -88,7 +88,7 @@ func (c *ClusterRole) Read(ctx context.Context, request *resource.ReadRequest) (
 		return nil, fmt.Errorf("failed to get clusterrole: %w", err)
 	}
 
-	properties, err := prov.LiveState[rbacv1ac.ClusterRoleApplyConfiguration](result)
+	properties, err := prov.LiveState[rbacv1ac.ClusterRoleApplyConfiguration](result, "ClusterRole", "rbac.authorization.k8s.io/v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get clusterrole live state: %w", err)
 	}
@@ -121,7 +121,7 @@ func (c *ClusterRole) Update(ctx context.Context, request *resource.UpdateReques
 		return nil, fmt.Errorf("failed to reconcile clusterrole metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[rbacv1ac.ClusterRoleApplyConfiguration](result)
+	properties, err := prov.LiveState[rbacv1ac.ClusterRoleApplyConfiguration](result, "ClusterRole", "rbac.authorization.k8s.io/v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get clusterrole live state: %w", err)
 	}
@@ -176,7 +176,7 @@ func (c *ClusterRole) Status(ctx context.Context, request *resource.StatusReques
 		return nil, fmt.Errorf("failed to get clusterrole status: %w", err)
 	}
 
-	properties, err := prov.LiveState[rbacv1ac.ClusterRoleApplyConfiguration](result)
+	properties, err := prov.LiveState[rbacv1ac.ClusterRoleApplyConfiguration](result, "ClusterRole", "rbac.authorization.k8s.io/v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get clusterrole live state: %w", err)
 	}

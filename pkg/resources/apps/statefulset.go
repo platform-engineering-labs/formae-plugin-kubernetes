@@ -230,7 +230,7 @@ func (ss *StatefulSet) List(ctx context.Context, request *resource.ListRequest) 
 // extractStatefulSetState extracts SSA state and strips server-managed fields
 // from volumeClaimTemplates (status, which the API server injects into VCTs).
 func extractStatefulSetState(result *appsv1.StatefulSet) (json.RawMessage, error) {
-	properties, err := prov.LiveState[appsv1ac.StatefulSetApplyConfiguration](result)
+	properties, err := prov.LiveState[appsv1ac.StatefulSetApplyConfiguration](result, "StatefulSet", "apps/v1")
 	if err != nil {
 		return nil, err
 	}

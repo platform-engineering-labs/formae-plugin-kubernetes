@@ -64,7 +64,7 @@ func (l *LimitRange) Create(ctx context.Context, request *resource.CreateRequest
 		return nil, fmt.Errorf("failed to apply limitrange: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.LimitRangeApplyConfiguration](result)
+	properties, err := prov.LiveState[v1coreac.LimitRangeApplyConfiguration](result, "LimitRange", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get limitrange live state: %w", err)
 	}
@@ -93,7 +93,7 @@ func (l *LimitRange) Read(ctx context.Context, request *resource.ReadRequest) (*
 		return nil, fmt.Errorf("failed to get limitrange: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.LimitRangeApplyConfiguration](result)
+	properties, err := prov.LiveState[v1coreac.LimitRangeApplyConfiguration](result, "LimitRange", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get limitrange live state: %w", err)
 	}
@@ -131,7 +131,7 @@ func (l *LimitRange) Update(ctx context.Context, request *resource.UpdateRequest
 		return nil, fmt.Errorf("failed to reconcile limitrange metadata: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.LimitRangeApplyConfiguration](result)
+	properties, err := prov.LiveState[v1coreac.LimitRangeApplyConfiguration](result, "LimitRange", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get limitrange live state: %w", err)
 	}
@@ -186,7 +186,7 @@ func (l *LimitRange) Status(ctx context.Context, request *resource.StatusRequest
 		return nil, fmt.Errorf("failed to get limitrange status: %w", err)
 	}
 
-	properties, err := prov.LiveState[v1coreac.LimitRangeApplyConfiguration](result)
+	properties, err := prov.LiveState[v1coreac.LimitRangeApplyConfiguration](result, "LimitRange", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get limitrange live state: %w", err)
 	}

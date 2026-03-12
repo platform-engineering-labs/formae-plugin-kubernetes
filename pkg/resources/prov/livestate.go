@@ -63,6 +63,9 @@ const serviceAccountMountPrefix = "/var/run/secrets/kubernetes.io/serviceaccount
 // filtered through the typed apply configuration type T with server-managed
 // fields stripped.
 //
+// kind and apiVersion are injected into the result because client-go's typed
+// clients do not populate TypeMeta on returned objects.
+//
 // The apply config round-trip removes most server-only fields, but
 // ObjectMetaApplyConfiguration still includes uid, resourceVersion,
 // creationTimestamp, generation, etc. We strip these explicitly to prevent
@@ -73,7 +76,7 @@ const serviceAccountMountPrefix = "/var/run/secrets/kubernetes.io/serviceaccount
 //   - empty objects {} (e.g. resources:{}, objectSelector:{})
 //   - imagePullPolicy on containers (K8S-defaulted based on image tag)
 //   - auto-injected service account volumeMounts
-func LiveState[T any](apiObject any) ([]byte, error) {
+func LiveState[T any](apiObject any, kind, apiVersion string) ([]byte, error) {
 	raw, err := json.Marshal(apiObject)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal api object: %w", err)
@@ -96,6 +99,11 @@ func LiveState[T any](apiObject any) ([]byte, error) {
 	}
 
 	delete(result, "status")
+
+	// Inject kind and apiVersion — client-go typed clients strip TypeMeta
+	// from returned objects, but Formae requires these as required fields.
+	result["kind"] = kind
+	result["apiVersion"] = apiVersion
 
 	if meta, ok := result["metadata"].(map[string]interface{}); ok {
 		for _, key := range serverManagedMetaFields {
