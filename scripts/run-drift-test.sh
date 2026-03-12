@@ -69,11 +69,14 @@ echo "========================================"
 echo "Drift Detection Test"
 echo "========================================"
 
-# --- Step 0: Start agent ---
+# --- Step 0: Install drift-test config and start agent ---
 echo ""
-echo "[0/6] Starting formae agent..."
+echo "[0/6] Starting formae agent (sync interval: 5s)..."
+FORMAE_CONFIG_DIR="${HOME}/.config/formae"
+mkdir -p "${FORMAE_CONFIG_DIR}"
+cp "${SCRIPT_DIR}/ci/drift-test-config.pkl" "${FORMAE_CONFIG_DIR}/formae.conf.pkl"
 "${FORMAE_BINARY}" agent stop 2>/dev/null || true
-"${FORMAE_BINARY}" agent start&
+"${FORMAE_BINARY}" agent start &
 sleep 2
 
 # --- Step 1: Initial apply ---
@@ -100,9 +103,8 @@ echo "    - Deployment replicas: 2 → 5"
 echo "    - ConfigMap log_level: info → debug"
 echo "    - Deployment label added: env=production"
 
-# Wait for changes to propagate and formae sync to detect drift.
-# The agent syncs periodically; allow enough time for it to observe the drifted state.
-sleep 60
+# Wait for formae sync to detect drift (agent config uses 5s sync interval).
+sleep 15
 
 # Verify drift exists
 echo ""
