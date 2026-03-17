@@ -32,10 +32,12 @@ jobs:
           retention-days: 1
 
   # Discover test cases dynamically from testdata/
+  # Splits into resource tests and chart tests for different timeout configs.
   discover-tests:
     runs-on: ubuntu-latest
     outputs:
-      test-cases: ${{ steps.discover.outputs.test-cases }}
+      resource-tests: ${{ steps.discover.outputs.resource-tests }}
+      chart-tests: ${{ steps.discover.outputs.chart-tests }}
     steps:
       - name: Checkout plugin
         uses: actions/checkout@v4
@@ -43,24 +45,30 @@ jobs:
       - name: Discover test cases
         id: discover
         run: |
-          TEST_CASES=$(ls testdata/*.pkl 2>/dev/null \
+          ALL_CASES=$(ls testdata/*.pkl 2>/dev/null \
             | xargs -n1 basename \
             | grep -v '\-update\.pkl$' \
             | grep -v '\-replace\.pkl$' \
-            | sed 's/\.pkl$//' \
-            | jq -R -s -c 'split("\n") | map(select(length > 0))')
-          echo "Discovered test cases: ${TEST_CASES}"
-          echo "test-cases=${TEST_CASES}" >> "$GITHUB_OUTPUT"
+            | sed 's/\.pkl$//')
 
-  # Conformance tests run the full CRUD lifecycle against real K8S resources.
-  # Each test case gets its own kind cluster and fresh plugin process.
+          RESOURCE_TESTS=$(echo "$ALL_CASES" | grep -v '\-chart$' \
+            | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          CHART_TESTS=$(echo "$ALL_CASES" | grep '\-chart$' \
+            | jq -R -s -c 'split("\n") | map(select(length > 0))')
+
+          echo "Resource tests: ${RESOURCE_TESTS}"
+          echo "Chart tests: ${CHART_TESTS}"
+          echo "resource-tests=${RESOURCE_TESTS}" >> "$GITHUB_OUTPUT"
+          echo "chart-tests=${CHART_TESTS}" >> "$GITHUB_OUTPUT"
+
+  # Conformance tests for individual K8S resource types.
   conformance-tests:
     needs: [build-formae, discover-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       matrix:
-        test-case: ${{ fromJson(needs.discover-tests.outputs.test-cases) }}
+        test-case: ${{ fromJson(needs.discover-tests.outputs.resource-tests) }}
       max-parallel: 10
       fail-fast: false
     steps:
@@ -100,9 +108,58 @@ jobs:
           FORMAE_TEST_RUN_ID: nightly-main-${{ github.run_id }}-${{ github.run_attempt }}
         run: make conformance-test-crud-run conformance-test-discovery-run TEST=${{ matrix.test-case }} PARALLEL=1
 
+  # Chart conformance tests deploy full Helm charts (many resources).
+  # Discovery needs a longer timeout since charts create numerous resources.
+  chart-conformance-tests:
+    needs: [build-formae, discover-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        test-case: ${{ fromJson(needs.discover-tests.outputs.chart-tests) }}
+      max-parallel: 10
+      fail-fast: false
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Set up Pkl
+        uses: pkl-community/setup-pkl@v0
+        with:
+          pkl-version: 0.30.0
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: formae-test
+
+      - name: Download formae binary
+        uses: actions/download-artifact@v4
+        with:
+          name: formae-binary
+          path: /tmp/formae
+
+      - name: Make formae executable
+        run: chmod +x /tmp/formae/formae
+
+      - name: Install plugin
+        run: make install
+
+      - name: Run chart conformance tests (${{ matrix.test-case }})
+        env:
+          FORMAE_BINARY: /tmp/formae/formae
+          FORMAE_TEST_RUN_ID: nightly-main-${{ github.run_id }}-${{ github.run_attempt }}
+          FORMAE_TEST_DISCOVERY_TIMEOUT: "5"
+        run: make conformance-test-crud-run conformance-test-discovery-run TEST=${{ matrix.test-case }} PARALLEL=1
+
   # Notify when nightly is fixed (was red, now green)
   notify-fixed:
-    needs: [conformance-tests]
+    needs: [conformance-tests, chart-conformance-tests]
     runs-on: ubuntu-latest
     if: success()
     steps:
@@ -163,7 +220,7 @@ jobs:
 
   # Notify on failure
   notify-failure:
-    needs: [conformance-tests]
+    needs: [conformance-tests, chart-conformance-tests]
     runs-on: ubuntu-latest
     if: failure()
     steps:

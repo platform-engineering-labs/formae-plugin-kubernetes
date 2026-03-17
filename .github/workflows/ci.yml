@@ -99,12 +99,14 @@ jobs:
         run: make verify-schema
 
   # Discover test cases dynamically from testdata/
+  # Splits into resource tests and chart tests for different timeout configs.
   discover-tests:
     needs: [build, lint, pkl-validate, verify-schema, test-unit]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     outputs:
-      test-cases: ${{ steps.discover.outputs.test-cases }}
+      resource-tests: ${{ steps.discover.outputs.resource-tests }}
+      chart-tests: ${{ steps.discover.outputs.chart-tests }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -112,17 +114,23 @@ jobs:
       - name: Discover test cases
         id: discover
         run: |
-          TEST_CASES=$(ls testdata/*.pkl 2>/dev/null \
+          ALL_CASES=$(ls testdata/*.pkl 2>/dev/null \
             | xargs -n1 basename \
             | grep -v '\-update\.pkl$' \
             | grep -v '\-replace\.pkl$' \
-            | sed 's/\.pkl$//' \
-            | jq -R -s -c 'split("\n") | map(select(length > 0))')
-          echo "Discovered test cases: ${TEST_CASES}"
-          echo "test-cases=${TEST_CASES}" >> "$GITHUB_OUTPUT"
+            | sed 's/\.pkl$//')
 
-  # Conformance tests run the full CRUD lifecycle against real K8S resources.
-  # Each test case gets its own kind cluster and fresh plugin process.
+          RESOURCE_TESTS=$(echo "$ALL_CASES" | grep -v '\-chart$' \
+            | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          CHART_TESTS=$(echo "$ALL_CASES" | grep '\-chart$' \
+            | jq -R -s -c 'split("\n") | map(select(length > 0))')
+
+          echo "Resource tests: ${RESOURCE_TESTS}"
+          echo "Chart tests: ${CHART_TESTS}"
+          echo "resource-tests=${RESOURCE_TESTS}" >> "$GITHUB_OUTPUT"
+          echo "chart-tests=${CHART_TESTS}" >> "$GITHUB_OUTPUT"
+
+  # Conformance tests for individual K8S resource types.
   conformance-tests:
     needs: [discover-tests]
     runs-on: ubuntu-latest
@@ -130,7 +138,7 @@ jobs:
     timeout-minutes: 15
     strategy:
       matrix:
-        test-case: ${{ fromJson(needs.discover-tests.outputs.test-cases) }}
+        test-case: ${{ fromJson(needs.discover-tests.outputs.resource-tests) }}
       max-parallel: 10
       fail-fast: false
     steps:
@@ -161,6 +169,50 @@ jobs:
         uses: nick-fields/retry@v3
         with:
           timeout_minutes: 10
+          max_attempts: 3
+          command: make conformance-test-crud-run conformance-test-discovery-run TEST=${{ matrix.test-case }} PARALLEL=1
+
+  # Chart conformance tests deploy full Helm charts (many resources).
+  # Discovery needs a longer timeout since charts create numerous resources.
+  chart-conformance-tests:
+    needs: [discover-tests]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        test-case: ${{ fromJson(needs.discover-tests.outputs.chart-tests) }}
+      max-parallel: 10
+      fail-fast: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Set up Pkl
+        uses: pkl-community/setup-pkl@v0
+        with:
+          pkl-version: 0.30.0
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: formae-test
+
+      - name: Install plugin
+        run: make install
+
+      - name: Run chart conformance tests (${{ matrix.test-case }})
+        env:
+          FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          FORMAE_TEST_DISCOVERY_TIMEOUT: "5"
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 15
           max_attempts: 3
           command: make conformance-test-crud-run conformance-test-discovery-run TEST=${{ matrix.test-case }} PARALLEL=1
 
@@ -208,7 +260,7 @@ jobs:
 
   # Notify when build is fixed (was red, now green)
   notify-fixed:
-    needs: [build, test-unit, lint, pkl-validate, verify-schema, conformance-tests, drift-test]
+    needs: [build, test-unit, lint, pkl-validate, verify-schema, conformance-tests, chart-conformance-tests, drift-test]
     runs-on: ubuntu-latest
     if: success() && github.event_name == 'push'
     steps:
@@ -270,7 +322,7 @@ jobs:
 
   # Notify on failure
   notify-failure:
-    needs: [build, test-unit, lint, pkl-validate, verify-schema, conformance-tests, drift-test]
+    needs: [build, test-unit, lint, pkl-validate, verify-schema, conformance-tests, chart-conformance-tests, drift-test]
     runs-on: ubuntu-latest
     if: failure() && github.event_name == 'push'
     steps:
