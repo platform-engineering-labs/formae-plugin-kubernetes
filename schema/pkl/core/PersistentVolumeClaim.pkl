@@ -46,5 +46,44 @@ open class PersistentVolumeClaim extends k8s.Resource {
   metadata: k8s.ObjectMeta
 
   @k8s.FieldHint {}
-  spec: Dynamic?
+  spec: PersistentVolumeClaimSpec?
+}
+
+@k8s.SubResourceHint {}
+open class PersistentVolumeClaimSpec extends formae.SubResource {
+  @k8s.FieldHint { required = true }
+  accessModes: Listing<String>
+
+  @k8s.FieldHint {}
+  resources: k8s.ResourceRequirements?
+
+  @k8s.FieldHint { hasProviderDefault = true }
+  storageClassName: (String|formae.Resolvable)?
+
+  @k8s.FieldHint { hasProviderDefault = true }
+  volumeMode: String? = "Filesystem"
+
+  @k8s.FieldHint {}
+  volumeName: (String|formae.Resolvable)?
+
+  @k8s.FieldHint {}
+  selector: k8s.LabelSelector?
+
+  @k8s.FieldHint {}
+  dataSource: DataSource?
+
+  @k8s.FieldHint {}
+  dataSourceRef: DataSource?
+}
+
+@k8s.SubResourceHint {}
+open class DataSource extends formae.SubResource {
+  @k8s.FieldHint { required = true }
+  kind: String
+
+  @k8s.FieldHint { required = true }
+  name: (String|formae.Resolvable)
+
+  @k8s.FieldHint {}
+  apiGroup: String?
 }

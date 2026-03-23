@@ -69,7 +69,7 @@ open class IngressSpec extends formae.SubResource {
 @k8s.SubResourceHint {}
 open class IngressBackend extends formae.SubResource {
   @k8s.FieldHint {}
-  resource: Dynamic?
+  resource : Mapping?
 
   @k8s.FieldHint {}
   service: IngressServiceBackend?

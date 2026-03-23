@@ -53,8 +53,8 @@ open class CronJob extends k8s.Resource {
 
 @k8s.SubResourceHint {}
 open class CronJobSpec extends formae.SubResource {
-  @k8s.FieldHint {}
-  suspend: Boolean?
+  @k8s.FieldHint { hasProviderDefault = true }
+  suspend: Boolean? = false
 
   @k8s.FieldHint { required = true }
   schedule: String
@@ -65,8 +65,8 @@ open class CronJobSpec extends formae.SubResource {
   @k8s.FieldHint {}
   startingDeadlineSeconds: Int?
 
-  @k8s.FieldHint {}
-  concurrencyPolicy: String?
+  @k8s.FieldHint { hasProviderDefault = true }
+  concurrencyPolicy: String? = "Allow"
 
   @k8s.FieldHint {}
   timeZone: String?

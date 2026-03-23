@@ -49,8 +49,8 @@ open class StorageClass extends k8s.Resource {
   @k8s.FieldHint {}
   allowVolumeExpansion: Boolean?
 
-  @k8s.FieldHint {}
-  reclaimPolicy: String?
+  @k8s.FieldHint { hasProviderDefault = true }
+  reclaimPolicy: String? = "Delete"
 
   @k8s.FieldHint {}
   mountOptions: Listing<String>?

@@ -41,5 +41,5 @@ open class PersistentVolume extends k8s.Resource {
   metadata: k8s.ObjectMeta
 
   @k8s.FieldHint {}
-  spec: Dynamic?
+  spec : Mapping?
 }

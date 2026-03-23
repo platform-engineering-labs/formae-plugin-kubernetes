@@ -42,5 +42,5 @@ open class CustomResourceDefinition extends k8s.Resource {
   metadata: k8s.ObjectMeta
 
   @k8s.FieldHint { required = true }
-  spec: Dynamic
+  spec : Mapping
 }

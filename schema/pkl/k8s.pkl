@@ -62,11 +62,11 @@ open class ObjectMeta extends formae.SubResource {
   namespace: (String|formae.Resolvable)?
 
   /// Labels are key/value pairs for resource organization.
-  @FieldHint {}
+  @FieldHint { hasProviderDefault = true }
   labels: Mapping<String, String>?
 
   /// Annotations are key/value pairs for arbitrary metadata.
-  @FieldHint {}
+  @FieldHint { hasProviderDefault = true }
   annotations: Mapping<String, String>?
 }
 // =============================================================================
@@ -98,7 +98,7 @@ open class LabelSelector extends formae.SubResource {
   @FieldHint {}
   matchExpressions: Listing<LabelSelectorRequirement>?
 
-  @FieldHint {}
+  @FieldHint { hasProviderDefault = true }
   matchLabels: Mapping<String, String>?
 }
 
@@ -249,7 +249,7 @@ open class PodTemplateSpec extends formae.SubResource {
 @SubResourceHint {}
 open class Volume extends formae.SubResource {
   @FieldHint {}
-  quobyte: Dynamic?
+  quobyte : Mapping?
 
   @FieldHint {}
   azureFile: AzureFileVolumeSource?
@@ -279,16 +279,16 @@ open class Volume extends formae.SubResource {
   glusterfs: GlusterfsVolumeSource?
 
   @FieldHint {}
-  gcePersistentDisk: Dynamic?
+  gcePersistentDisk : Mapping?
 
   @FieldHint {}
   image: ImageVolumeSource?
 
   @FieldHint {}
-  photonPersistentDisk: Dynamic?
+  photonPersistentDisk : Mapping?
 
   @FieldHint {}
-  azureDisk: Dynamic?
+  azureDisk : Mapping?
 
   @FieldHint {}
   cinder: CinderVolumeSource?
@@ -297,10 +297,10 @@ open class Volume extends formae.SubResource {
   downwardAPI: DownwardAPIVolumeSource?
 
   @FieldHint {}
-  awsElasticBlockStore: Dynamic?
+  awsElasticBlockStore : Mapping?
 
   @FieldHint {}
-  flocker: Dynamic?
+  flocker : Mapping?
 
   @FieldHint {}
   iscsi: ISCSIVolumeSource?
@@ -321,7 +321,7 @@ open class Volume extends formae.SubResource {
   name: String
 
   @FieldHint {}
-  nfs: Dynamic?
+  nfs : Mapping?
 
   @FieldHint {}
   persistentVolumeClaim: PersistentVolumeClaimVolumeSource?
@@ -330,16 +330,16 @@ open class Volume extends formae.SubResource {
   gitRepo: GitRepoVolumeSource?
 
   @FieldHint {}
-  portworxVolume: Dynamic?
+  portworxVolume : Mapping?
 
   @FieldHint {}
-  vsphereVolume: Dynamic?
+  vsphereVolume : Mapping?
 
   @FieldHint {}
-  fc: Dynamic?
+  fc : Mapping?
 
   @FieldHint {}
-  hostPath: Dynamic?
+  hostPath : Mapping?
 }
 
 @SubResourceHint {}
@@ -431,8 +431,8 @@ open class ResourceRequirements extends formae.SubResource {
 
 @SubResourceHint {}
 open class JobSpec extends formae.SubResource {
-  @FieldHint {}
-  suspend: Boolean?
+  @FieldHint { hasProviderDefault = true }
+  suspend: Boolean? = false
 
   @FieldHint { required = true }
   template: PodTemplateSpec
@@ -443,17 +443,17 @@ open class JobSpec extends formae.SubResource {
   @FieldHint {}
   backoffLimitPerIndex: Int?
 
-  @FieldHint {}
+  @FieldHint { hasProviderDefault = true }
   manualSelector: Boolean?
 
-  @FieldHint {}
-  parallelism: Int?
+  @FieldHint { hasProviderDefault = true }
+  parallelism: Int? = 1
 
-  @FieldHint {}
-  completions: Int?
+  @FieldHint { hasProviderDefault = true }
+  completions: Int? = 1
 
-  @FieldHint {}
-  completionMode: String?
+  @FieldHint { hasProviderDefault = true }
+  completionMode: String? = "NonIndexed"
 
   @FieldHint {}
   podFailurePolicy: PodFailurePolicy?
@@ -461,7 +461,7 @@ open class JobSpec extends formae.SubResource {
   @FieldHint {}
   ttlSecondsAfterFinished: Int?
 
-  @FieldHint {}
+  @FieldHint { hasProviderDefault = true }
   podReplacementPolicy: String?
 
   @FieldHint {}
@@ -603,10 +603,10 @@ open class HostAlias extends formae.SubResource {
 @SubResourceHint {}
 open class PodSecurityContext extends formae.SubResource {
   @FieldHint {}
-  seLinuxOptions: Dynamic?
+  seLinuxOptions : Mapping?
 
   @FieldHint {}
-  appArmorProfile: Dynamic?
+  appArmorProfile : Mapping?
 
   @FieldHint {}
   fsGroup: Int?
@@ -630,10 +630,10 @@ open class PodSecurityContext extends formae.SubResource {
   runAsUser: Int?
 
   @FieldHint {}
-  seccompProfile: Dynamic?
+  seccompProfile : Mapping?
 
   @FieldHint {}
-  windowsOptions: Dynamic?
+  windowsOptions : Mapping?
 
   @FieldHint {}
   supplementalGroups: Listing<Int>?
@@ -726,7 +726,7 @@ open class Container extends formae.SubResource {
   imagePullPolicy: String?
 
   @FieldHint {}
-  livenessProbe: Dynamic?
+  livenessProbe : Mapping?
 
   @FieldHint {}
   stdin: Boolean?
@@ -744,10 +744,10 @@ open class Container extends formae.SubResource {
   resources: ResourceRequirements?
 
   @FieldHint {}
-  securityContext: Dynamic?
+  securityContext : Mapping?
 
   @FieldHint {}
-  startupProbe: Dynamic?
+  startupProbe : Mapping?
 
   @FieldHint {}
   env: Listing<EnvVar>?
@@ -768,7 +768,7 @@ open class Container extends formae.SubResource {
   args: Listing<String>?
 
   @FieldHint {}
-  lifecycle: Dynamic?
+  lifecycle : Mapping?
 
   @FieldHint { required = true }
   name: String
@@ -777,7 +777,7 @@ open class Container extends formae.SubResource {
   tty: Boolean?
 
   @FieldHint {}
-  readinessProbe: Dynamic?
+  readinessProbe : Mapping?
 
   @FieldHint {}
   resizePolicy: Listing<Dynamic>?
@@ -804,7 +804,7 @@ open class Affinity extends formae.SubResource {
 @SubResourceHint {}
 open class NodeAffinity extends formae.SubResource {
   @FieldHint {}
-  requiredDuringSchedulingIgnoredDuringExecution: Dynamic?
+  requiredDuringSchedulingIgnoredDuringExecution : Mapping?
 
   @FieldHint {}
   preferredDuringSchedulingIgnoredDuringExecution: Listing<PreferredSchedulingTerm>?
@@ -813,7 +813,7 @@ open class NodeAffinity extends formae.SubResource {
 @SubResourceHint {}
 open class PreferredSchedulingTerm extends formae.SubResource {
   @FieldHint { required = true }
-  preference: Dynamic
+  preference : Mapping
 
   @FieldHint { required = true }
   weight: Int
@@ -888,7 +888,7 @@ open class FlexVolumeSource extends formae.SubResource {
   options: Mapping<String, String>?
 
   @FieldHint {}
-  secretRef: Dynamic?
+  secretRef : Mapping?
 
   @FieldHint {}
   readOnly: Boolean?
@@ -912,7 +912,7 @@ open class PersistentVolumeClaimTemplate extends formae.SubResource {
   metadata: ObjectMeta?
 
   @FieldHint { required = true }
-  spec: Dynamic
+  spec : Mapping
 }
 
 @SubResourceHint {}
@@ -1050,7 +1050,7 @@ open class CephFSVolumeSource extends formae.SubResource {
   path: String?
 
   @FieldHint {}
-  secretRef: Dynamic?
+  secretRef : Mapping?
 
   @FieldHint {}
   secretFile: String?
@@ -1083,7 +1083,7 @@ open class ScaleIOVolumeSource extends formae.SubResource {
   volumeName: String?
 
   @FieldHint { required = true }
-  secretRef: Dynamic
+  secretRef : Mapping
 
   @FieldHint {}
   readOnly: Boolean?
@@ -1131,7 +1131,7 @@ open class ImageVolumeSource extends formae.SubResource {
 @SubResourceHint {}
 open class CinderVolumeSource extends formae.SubResource {
   @FieldHint {}
-  secretRef: Dynamic?
+  secretRef : Mapping?
 
   @FieldHint { required = true }
   volumeID: String
@@ -1173,7 +1173,7 @@ open class ISCSIVolumeSource extends formae.SubResource {
   portals: Listing<String>?
 
   @FieldHint {}
-  secretRef: Dynamic?
+  secretRef : Mapping?
 
   @FieldHint {}
   initiatorName: String?
@@ -1197,7 +1197,7 @@ open class RBDVolumeSource extends formae.SubResource {
   pool: String?
 
   @FieldHint {}
-  secretRef: Dynamic?
+  secretRef : Mapping?
 
   @FieldHint {}
   readOnly: Boolean?
@@ -1239,7 +1239,7 @@ open class StorageOSVolumeSource extends formae.SubResource {
   volumeName: String?
 
   @FieldHint {}
-  secretRef: Dynamic?
+  secretRef : Mapping?
 
   @FieldHint {}
   readOnly: Boolean?
@@ -1254,7 +1254,7 @@ open class CSIVolumeSource extends formae.SubResource {
   driver: String
 
   @FieldHint {}
-  nodePublishSecretRef: Dynamic?
+  nodePublishSecretRef : Mapping?
 
   @FieldHint {}
   readOnly: Boolean?

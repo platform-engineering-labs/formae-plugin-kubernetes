@@ -67,7 +67,7 @@ open class EndpointAddress extends formae.SubResource {
   nodeName: String?
 
   @k8s.FieldHint {}
-  targetRef: Dynamic?
+  targetRef : Mapping?
 
   @k8s.FieldHint {}
   hostname: String?

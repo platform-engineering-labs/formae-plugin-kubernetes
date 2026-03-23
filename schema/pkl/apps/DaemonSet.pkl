@@ -56,11 +56,11 @@ open class DaemonSetSpec extends formae.SubResource {
   @k8s.FieldHint { required = true }
   template: k8s.PodTemplateSpec
 
-  @k8s.FieldHint {}
+  @k8s.FieldHint { hasProviderDefault = true }
   updateStrategy: DaemonSetUpdateStrategy?
 
-  @k8s.FieldHint {}
-  revisionHistoryLimit: Int?
+  @k8s.FieldHint { hasProviderDefault = true }
+  revisionHistoryLimit: Int? = 10
 
   @k8s.FieldHint { required = true }
   selector: k8s.LabelSelector

@@ -59,8 +59,8 @@ open class ServiceSpec extends formae.SubResource {
   @k8s.FieldHint {}
   healthCheckNodePort: Int?
 
-  @k8s.FieldHint {}
-  ipFamilyPolicy: String?
+  @k8s.FieldHint { hasProviderDefault = true }
+  ipFamilyPolicy: String? = "SingleStack"
 
   @k8s.FieldHint {}
   externalIPs: Listing<String>?
@@ -101,14 +101,14 @@ open class ServiceSpec extends formae.SubResource {
   @k8s.FieldHint {}
   externalTrafficPolicy: String?
 
-  @k8s.FieldHint {}
+  @k8s.FieldHint { hasProviderDefault = true }
   selector: Mapping<String, String>?
 
   @k8s.FieldHint {}
   publishNotReadyAddresses: Boolean?
 
-  @k8s.FieldHint {}
-  internalTrafficPolicy: String?
+  @k8s.FieldHint { hasProviderDefault = true }
+  internalTrafficPolicy: String? = "Cluster"
 
   @k8s.FieldHint {}
   clusterIP: String?

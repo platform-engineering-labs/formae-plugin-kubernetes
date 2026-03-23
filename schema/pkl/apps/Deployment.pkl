@@ -62,8 +62,8 @@ open class DeploymentSpec extends formae.SubResource {
   @k8s.FieldHint {}
   replicas: Int?
 
-  @k8s.FieldHint {}
-  revisionHistoryLimit: Int?
+  @k8s.FieldHint { hasProviderDefault = true }
+  revisionHistoryLimit: Int? = 10
 
   @k8s.FieldHint { required = true }
   selector: k8s.LabelSelector
@@ -71,11 +71,11 @@ open class DeploymentSpec extends formae.SubResource {
   @k8s.FieldHint {}
   minReadySeconds: Int?
 
-  @k8s.FieldHint {}
+  @k8s.FieldHint { hasProviderDefault = true }
   strategy: DeploymentStrategy?
 
-  @k8s.FieldHint {}
-  progressDeadlineSeconds: Int?
+  @k8s.FieldHint { hasProviderDefault = true }
+  progressDeadlineSeconds: Int? = 600
 }
 
 @k8s.SubResourceHint {}
@@ -83,7 +83,7 @@ open class DeploymentStrategy extends formae.SubResource {
   @k8s.FieldHint {}
   `type`: String?
 
-  @k8s.FieldHint {}
+  @k8s.FieldHint { hasProviderDefault = true }
   rollingUpdate: RollingUpdateDeployment?
 }
 

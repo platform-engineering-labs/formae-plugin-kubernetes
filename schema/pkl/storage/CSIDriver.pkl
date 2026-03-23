@@ -48,28 +48,28 @@ open class CSIDriver extends k8s.Resource {
 
 @k8s.SubResourceHint {}
 open class CSIDriverSpec extends formae.SubResource {
-  @k8s.FieldHint {}
+  @k8s.FieldHint { hasProviderDefault = true }
   fsGroupPolicy: String?
 
   @k8s.FieldHint {}
   attachRequired: Boolean?
 
-  @k8s.FieldHint {}
+  @k8s.FieldHint { hasProviderDefault = true }
   requiresRepublish: Boolean?
 
-  @k8s.FieldHint {}
+  @k8s.FieldHint { hasProviderDefault = true }
   storageCapacity: Boolean?
 
   @k8s.FieldHint {}
   tokenRequests: Listing<TokenRequest>?
 
-  @k8s.FieldHint {}
+  @k8s.FieldHint { hasProviderDefault = true }
   volumeLifecycleModes: Listing<String>?
 
   @k8s.FieldHint {}
   podInfoOnMount: Boolean?
 
-  @k8s.FieldHint {}
+  @k8s.FieldHint { hasProviderDefault = true }
   seLinuxMount: Boolean?
 }
 
