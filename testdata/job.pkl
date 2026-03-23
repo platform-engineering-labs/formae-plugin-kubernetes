@@ -30,6 +30,9 @@ forma {
     metadata = new k8s.ObjectMeta {
       name = "test-job-\(v.testRunID)"
       namespace = ns.res.name
+      labels = new Mapping {
+        ["app"] = "test-job"
+      }
     }
     spec = new k8s.JobSpec {
       backoffLimit = 3

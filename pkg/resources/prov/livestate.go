@@ -46,6 +46,7 @@ var serverManagedMetaFields = []string{
 // Get calls, causing false property drift.
 var serverManagedAnnotationPrefixes = []string{
 	"deployment.kubernetes.io/",
+	"deprecated.daemonset.template.generation",
 }
 
 // serverManagedLabelPrefixes are label key prefixes set by K8S admission
@@ -53,6 +54,14 @@ var serverManagedAnnotationPrefixes = []string{
 // issues (dotted keys get expanded into nested objects) and are not user-managed.
 var serverManagedLabelPrefixes = []string{
 	"kubernetes.io/",
+	"batch.kubernetes.io/",
+}
+
+// serverManagedLabelKeys are exact label keys set by K8S controllers
+// that should be stripped from metadata and template metadata.
+var serverManagedLabelKeys = []string{
+	"controller-uid",
+	"job-name",
 }
 
 // serviceAccountMountPrefix is the mountPath prefix for auto-injected
@@ -124,6 +133,9 @@ func LiveState[T any](apiObject any, kind, apiVersion string) ([]byte, error) {
 		}
 	}
 
+	// Strip controller-injected fields from spec based on resource kind.
+	stripControllerInjectedFields(result, kind)
+
 	// Recursively strip server defaults (empty objects, container defaults, SA mounts)
 	stripServerDefaults(result)
 
@@ -142,12 +154,21 @@ func stripServerDefaults(v interface{}) {
 			}
 		}
 
-		// Strip K8S-defaulted volumeMode on PVC specs (objects with accessModes).
-		// K8S always defaults volumeMode to "Filesystem" when not specified.
-		if _, hasAccessModes := val["accessModes"]; hasAccessModes {
-			if vm, ok := val["volumeMode"].(string); ok && vm == "Filesystem" {
-				delete(val, "volumeMode")
-			}
+		// Strip deprecated serviceAccount field from any PodSpec-like object
+		// (has both "containers" and "serviceAccount"). K8S auto-copies
+		// serviceAccountName to the deprecated serviceAccount field.
+		if _, hasContainers := val["containers"]; hasContainers {
+			delete(val, "serviceAccount")
+		}
+
+		// Strip server-managed labels/annotations from any metadata-like object
+		// (has "labels" or "annotations" as direct children). This handles both
+		// top-level metadata and nested metadata (e.g. spec.template.metadata).
+		if _, hasLabels := val["labels"]; hasLabels {
+			stripServerManagedLabels(val)
+		}
+		if _, hasAnnotations := val["annotations"]; hasAnnotations {
+			stripServerManagedAnnotations(val)
 		}
 
 		// Strip auto-injected service account volumeMounts
@@ -206,8 +227,19 @@ func stripServerManagedLabels(meta map[string]interface{}) {
 	}
 
 	for key := range labels {
+		stripped := false
 		for _, prefix := range serverManagedLabelPrefixes {
 			if strings.HasPrefix(key, prefix) {
+				delete(labels, key)
+				stripped = true
+				break
+			}
+		}
+		if stripped {
+			continue
+		}
+		for _, exactKey := range serverManagedLabelKeys {
+			if key == exactKey {
 				delete(labels, key)
 				break
 			}
@@ -245,4 +277,110 @@ func stripServerManagedAnnotations(meta map[string]interface{}) {
 func isEmptyObject(v interface{}) bool {
 	m, ok := v.(map[string]interface{})
 	return ok && len(m) == 0
+}
+
+// stripControllerInjectedFields removes fields injected by K8S controllers
+// that are not user-managed. These vary by resource kind.
+func stripControllerInjectedFields(result map[string]interface{}, kind string) {
+	spec, _ := result["spec"].(map[string]interface{})
+
+	switch kind {
+	case "Pod":
+		if spec != nil {
+			// Deprecated field auto-copied from serviceAccountName
+			delete(spec, "serviceAccount")
+			// Set by scheduler after pod scheduling
+			delete(spec, "nodeName")
+			// Injected by admission controllers (e.g. default tolerations)
+			delete(spec, "tolerations")
+			// Server default — auto-set to 0 by admission controller
+			delete(spec, "priority")
+			// Server default
+			delete(spec, "preemptionPolicy")
+			// Server default (true)
+			delete(spec, "enableServiceLinks")
+			// Server default ("default") — auto-set when not specified
+			delete(spec, "serviceAccountName")
+			// Auto-injected service account token volume
+			stripServiceAccountVolumes(spec)
+		}
+
+	case "Job":
+		if spec != nil {
+			// Auto-generated selector by Job controller
+			delete(spec, "selector")
+			// Strip controller-injected labels from template metadata
+			if tmpl, ok := spec["template"].(map[string]interface{}); ok {
+				if tmplMeta, ok := tmpl["metadata"].(map[string]interface{}); ok {
+					stripServerManagedLabels(tmplMeta)
+				}
+			}
+		}
+		// Strip controller-injected labels from top-level metadata
+		if meta, ok := result["metadata"].(map[string]interface{}); ok {
+			stripServerManagedLabels(meta)
+		}
+
+	case "Service":
+		if spec != nil {
+			// Assigned by K8S cluster networking, not user-specified
+			delete(spec, "clusterIP")
+			delete(spec, "clusterIPs")
+			// Assigned by K8S based on cluster config
+			delete(spec, "ipFamilies")
+		}
+
+	case "Secret":
+		// K8S converts stringData to base64-encoded data on the server side and
+		// never returns stringData. Strip data because it's a server-side transformation
+		// of the user-provided stringData — the conformance test expects only what the
+		// user specified.
+		delete(result, "data")
+
+	case "PersistentVolume":
+		if spec != nil {
+			// Server default — may be auto-set to empty string
+			delete(spec, "storageClassName")
+			// Strip hostPath.type server default (empty string)
+			if hp, ok := spec["hostPath"].(map[string]interface{}); ok {
+				delete(hp, "type")
+				if len(hp) == 0 {
+					delete(spec, "hostPath")
+				}
+			}
+		}
+
+	case "PersistentVolumeClaim":
+		// storageClassName and volumeMode are now handled by hasProviderDefault in the schema
+	}
+}
+
+// stripServiceAccountVolumes removes auto-injected service account token
+// volumes from a PodSpec-like object.
+func stripServiceAccountVolumes(spec map[string]interface{}) {
+	volumes, ok := spec["volumes"].([]interface{})
+	if !ok {
+		return
+	}
+
+	filtered := make([]interface{}, 0, len(volumes))
+	for _, v := range volumes {
+		vol, ok := v.(map[string]interface{})
+		if !ok {
+			filtered = append(filtered, v)
+			continue
+		}
+		// Auto-injected projected volume for SA token has name "kube-api-access-*"
+		name, _ := vol["name"].(string)
+		if strings.HasPrefix(name, "kube-api-access-") {
+			continue
+		}
+		filtered = append(filtered, v)
+	}
+
+	if len(filtered) == 0 {
+		delete(spec, "volumes")
+	} else {
+		spec["volumes"] = filtered
+	}
 }

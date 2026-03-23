@@ -17,16 +17,17 @@ forma {
     metadata = new k8s.ObjectMeta {
       name = "test-pv-\(v.testRunID)"
     }
-    spec = new Dynamic {
-      capacity = new Mapping {
+    spec = new Mapping {
+      ["capacity"] = new Mapping {
         ["storage"] = "2Gi"
       }
-      accessModes = new Listing {
+      ["accessModes"] = new Listing {
         "ReadWriteOnce"
       }
-      persistentVolumeReclaimPolicy = "Retain"
-      hostPath = new Dynamic {
-        path = "/tmp/test-pv"
+      ["persistentVolumeReclaimPolicy"] = "Retain"
+      ["volumeMode"] = "Filesystem"
+      ["hostPath"] = new Mapping {
+        ["path"] = "/tmp/test-pv"
       }
     }
   }

@@ -27,7 +27,7 @@ FORMAE_BINARY ?= $(shell realpath $(firstword $(wildcard $(CURDIR)/../../formae/
 PLUGIN_BASE_DIR := $(HOME)/.pel/formae/plugins
 INSTALL_DIR := $(PLUGIN_BASE_DIR)/$(PLUGIN_NAME)/v$(PLUGIN_VERSION)
 
-.PHONY: all build test test-unit test-integration lint verify-schema clean install help setup-credentials clean-environment conformance-test conformance-test-crud conformance-test-discovery conformance-test-crud-run conformance-test-discovery-run generate-schema chart-test drift-test
+.PHONY: all build test test-unit test-integration lint verify-schema clean install help setup-credentials clean-environment conformance-test conformance-test-crud conformance-test-discovery conformance-test-crud-run conformance-test-discovery-run conformance-test-resources conformance-test-charts generate-schema chart-test drift-test
 
 all: build
 
@@ -156,6 +156,36 @@ conformance-test-crud-run:
 conformance-test-discovery-run:
 	@echo "Running discovery conformance tests..."
 	@FORMAE_BINARY="$(FORMAE_BINARY)" FORMAE_TEST_FILTER="$(TEST)" FORMAE_TEST_TYPE=discovery FORMAE_TEST_PARALLEL="$(PARALLEL)" FORMAE_TEST_TIMEOUT="$(TIMEOUT)" ./scripts/run-conformance-tests.sh $(VERSION)
+
+## conformance-test-resources: Run conformance tests for non-chart resource types only
+## Excludes *-chart tests via RE2 regex (no negative lookahead in Go regexp).
+## Usage: make conformance-test-resources [TIMEOUT=10] [PARALLEL=1]
+conformance-test-resources: install setup-credentials
+	@echo "Pre-test cleanup..."
+	@./scripts/ci/clean-environment.sh || true
+	@echo ""
+	@$(MAKE) conformance-test-crud-run conformance-test-discovery-run TEST='/^([^c]|c[^h]|ch[^a]|cha[^r]|char[^t])*$$$$/' PARALLEL=$(PARALLEL) TIMEOUT=$(TIMEOUT); \
+	TEST_EXIT=$$?; \
+	echo ""; \
+	echo "Post-test cleanup..."; \
+	./scripts/ci/clean-environment.sh || true; \
+	exit $$TEST_EXIT
+
+## conformance-test-charts: Run conformance tests for chart-based test cases only
+## Uses regex filter to select only chart tests. Higher discovery timeout (10min)
+## because charts produce many resources that take longer to discover.
+## Usage: make conformance-test-charts [DISCOVERY_TIMEOUT=10] [TIMEOUT=10] [PARALLEL=1]
+DISCOVERY_TIMEOUT ?= 10
+conformance-test-charts: install setup-credentials
+	@echo "Pre-test cleanup..."
+	@./scripts/ci/clean-environment.sh || true
+	@echo ""
+	@FORMAE_TEST_DISCOVERY_TIMEOUT="$(DISCOVERY_TIMEOUT)" $(MAKE) conformance-test-crud-run conformance-test-discovery-run TEST='/.*-chart/' PARALLEL=$(PARALLEL) TIMEOUT=$(TIMEOUT); \
+	TEST_EXIT=$$?; \
+	echo ""; \
+	echo "Post-test cleanup..."; \
+	./scripts/ci/clean-environment.sh || true; \
+	exit $$TEST_EXIT
 
 ## chart-test: Run chart smoke tests (deploy + verify + cleanup)
 ## Usage: make chart-test [CHART=nginx] [TIMEOUT=10]
