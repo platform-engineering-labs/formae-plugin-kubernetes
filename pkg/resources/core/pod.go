@@ -96,6 +96,16 @@ func (p *Pod) Read(ctx context.Context, request *resource.ReadRequest) (*resourc
 		return nil, fmt.Errorf("failed to get pod: %w", err)
 	}
 
+	// Treat pods with a deletion timestamp as deleted. Pod deletion is async —
+	// the pod enters Terminating (DeletionTimestamp set) and waits for the grace
+	// period. For sync/OOB-delete detection, a terminating pod is effectively gone.
+	if result.DeletionTimestamp != nil {
+		return &resource.ReadResult{
+			ResourceType: request.ResourceType,
+			ErrorCode:    resource.OperationErrorCodeNotFound,
+		}, nil
+	}
+
 	properties, err := prov.LiveState[v1coreac.PodApplyConfiguration](result, "Pod", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pod live state: %w", err)
