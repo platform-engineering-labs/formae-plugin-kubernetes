@@ -3,8 +3,8 @@ module github.com/platform-engineering-labs/formae-plugin-k8s
 go 1.25.0
 
 require (
-	github.com/platform-engineering-labs/formae/pkg/plugin v0.1.20
-	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.1.38
+	github.com/platform-engineering-labs/formae/pkg/plugin v0.1.21
+	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.1.39
 	k8s.io/api v0.35.0
 	k8s.io/apiextensions-apiserver v0.35.0
 	k8s.io/apimachinery v0.35.0
@@ -88,3 +88,7 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+replace github.com/platform-engineering-labs/formae/pkg/plugin => ../formae/pkg/plugin
+
+replace github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests => ../formae/pkg/plugin-conformance-tests
