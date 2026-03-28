@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/platform-engineering-labs/formae/pkg/plugin v0.1.19
-	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.1.33
+	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.1.34
 	k8s.io/api v0.35.0
 	k8s.io/apiextensions-apiserver v0.35.0
 	k8s.io/apimachinery v0.35.0
