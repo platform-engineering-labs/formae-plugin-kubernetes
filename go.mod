@@ -2,12 +2,6 @@ module github.com/platform-engineering-labs/formae-plugin-k8s
 
 go 1.25.0
 
-replace github.com/platform-engineering-labs/formae/pkg/plugin => /Users/stheno/git/pel/formae/pkg/plugin
-
-replace github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests => /Users/stheno/git/pel/formae/pkg/plugin-conformance-tests
-
-replace github.com/platform-engineering-labs/formae/pkg/model => /Users/stheno/git/pel/formae/pkg/model
-
 require (
 	github.com/aws/aws-sdk-go-v2 v1.41.5
 	github.com/aws/aws-sdk-go-v2/config v1.32.13
