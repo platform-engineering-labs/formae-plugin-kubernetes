@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/prov"
@@ -200,6 +201,12 @@ func (c *ClusterRole) List(ctx context.Context, request *resource.ListRequest) (
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, cr := range result.Items {
+		// Skip K8S system ClusterRoles — managed by the control plane.
+		// Filtering at List level prevents formae from processing 60+ system
+		// resources through the changeset pipeline during discovery.
+		if strings.HasPrefix(cr.Name, "system:") {
+			continue
+		}
 		nativeIDs = append(nativeIDs, cr.Name)
 	}
 

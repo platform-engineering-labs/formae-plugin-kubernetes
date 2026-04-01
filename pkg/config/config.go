@@ -5,6 +5,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -32,6 +33,19 @@ type Config struct {
 	// Defaults to true (production behavior). Set to false for local clusters
 	// without a cloud load balancer controller (OrbStack, minikube, kind).
 	WaitForLoadBalancer *bool `json:"WaitForLoadBalancer,omitempty"`
+
+	// Endpoint is the API server URL for direct connection (e.g., EKS cluster endpoint).
+	// When set, bypasses kubeconfig and connects directly. Requires CertificateAuthority.
+	Endpoint string `json:"Endpoint,omitempty"`
+
+	// CertificateAuthority is the base64-encoded CA certificate for the API server.
+	// Used with Endpoint for direct cluster authentication.
+	CertificateAuthority string `json:"CertificateAuthority,omitempty"`
+
+	// ClusterName is the K8S cluster name. Required for EKS authentication —
+	// used in the STS presigned token header. If Endpoint matches *.eks.amazonaws.com
+	// and ClusterName is set, the plugin auto-generates an STS bearer token.
+	ClusterName string `json:"ClusterName,omitempty"`
 }
 
 // FromTargetConfig extracts Config from the target configuration bytes.
@@ -49,20 +63,46 @@ func FromTargetConfig(targetConfig []byte) (*Config, error) {
 }
 
 // ToK8sConfig converts the plugin config to a Kubernetes rest.Config.
+// If Endpoint and CertificateAuthority are set, connects directly to the
+// API server (e.g., EKS). Otherwise uses kubeconfig file-based auth.
 func (c *Config) ToK8sConfig() (*rest.Config, error) {
+	// Direct endpoint connection (e.g., EKS cluster provisioned by Formae)
+	if c.Endpoint != "" {
+		caData, err := base64.StdEncoding.DecodeString(c.CertificateAuthority)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode certificate authority: %w", err)
+		}
+
+		cfg := &rest.Config{
+			Host: c.Endpoint,
+			TLSClientConfig: rest.TLSClientConfig{
+				CAData: caData,
+			},
+		}
+
+		// Auto-detect EKS and generate STS token
+		if c.isEKS() {
+			token, err := c.getEKSToken()
+			if err != nil {
+				return nil, fmt.Errorf("failed to get EKS token: %w", err)
+			}
+			cfg.BearerToken = token
+		}
+
+		return cfg, nil
+	}
+
+	// Kubeconfig-based connection
 	kubeconfig := c.Kubeconfig
 	if kubeconfig == "" {
-		// Check KUBECONFIG env var first
 		kubeconfig = os.Getenv("KUBECONFIG")
 	}
 	if kubeconfig == "" {
-		// Fall back to default location
 		if home := homedir.HomeDir(); home != "" {
 			kubeconfig = filepath.Join(home, ".kube", "config")
 		}
 	}
 
-	// Build config with optional context override
 	configOverrides := &clientcmd.ConfigOverrides{}
 	if c.Context != "" {
 		configOverrides.CurrentContext = c.Context
@@ -97,3 +137,4 @@ func (c *Config) EffectiveNamespace() string {
 	}
 	return "default"
 }
+

@@ -32,11 +32,26 @@ open class Config {
   /// without a cloud LB controller (OrbStack, minikube, kind).
   hidden waitForLoadBalancer: Boolean?
 
+  /// API server endpoint URL (e.g., from EKS cluster). When set, connects
+  /// directly instead of using kubeconfig. Requires certificateAuthority.
+  hidden endpoint: (String|formae.Resolvable)?
+
+  /// Base64-encoded CA certificate for the API server. Used with endpoint
+  /// for direct cluster authentication (e.g., EKS clusters provisioned by Formae).
+  hidden certificateAuthority: (String|formae.Resolvable)?
+
+  /// Cluster name for EKS authentication. When set together with an EKS endpoint
+  /// (*.eks.amazonaws.com), the plugin auto-generates an AWS STS bearer token.
+  hidden clusterName: (String|formae.Resolvable)?
+
   fixed Type: String = type
   fixed Context: String? = context
   fixed Namespace: String? = namespace
   fixed Kubeconfig: String? = kubeconfig
   fixed WaitForLoadBalancer: Boolean? = waitForLoadBalancer
+  fixed Endpoint: (String|formae.Resolvable)? = endpoint
+  fixed CertificateAuthority: (String|formae.Resolvable)? = certificateAuthority
+  fixed ClusterName: (String|formae.Resolvable)? = clusterName
 }
 // =============================================================================
 // Annotation aliases for K8S resources

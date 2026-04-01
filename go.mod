@@ -2,9 +2,17 @@ module github.com/platform-engineering-labs/formae-plugin-k8s
 
 go 1.25.0
 
+replace github.com/platform-engineering-labs/formae/pkg/plugin => /Users/stheno/git/pel/formae/pkg/plugin
+
+replace github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests => /Users/stheno/git/pel/formae/pkg/plugin-conformance-tests
+
+replace github.com/platform-engineering-labs/formae/pkg/model => /Users/stheno/git/pel/formae/pkg/model
+
 require (
+	github.com/aws/aws-sdk-go-v2 v1.41.5
+	github.com/aws/aws-sdk-go-v2/config v1.32.13
 	github.com/platform-engineering-labs/formae/pkg/plugin v0.1.21
-	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.1.39
+	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.1.41
 	k8s.io/api v0.35.0
 	k8s.io/apiextensions-apiserver v0.35.0
 	k8s.io/apimachinery v0.35.0
@@ -15,6 +23,18 @@ require (
 	ergo.services/actor/statemachine v0.0.0-20251202053101-c0aa08b403e5 // indirect
 	ergo.services/ergo v1.999.310 // indirect
 	github.com/apple/pkl-go v0.12.0 // indirect
+	github.com/aws/aws-sdk-go-v2/credentials v1.19.13 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.21 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.21 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.21 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.6 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.7 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.21 // indirect
+	github.com/aws/aws-sdk-go-v2/service/signin v1.0.9 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.30.14 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.18 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sts v1.41.10 // indirect
+	github.com/aws/smithy-go v1.24.2 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect

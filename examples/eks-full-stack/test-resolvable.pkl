@@ -1,0 +1,68 @@
+// Minimal test: EKS cluster + K8S namespace via target config resolvables.
+//
+// Creates an EKS cluster on AWS, then uses $ref resolvables to wire
+// the cluster's endpoint + CA into the K8S target, and creates a namespace.
+//
+//   formae apply --mode reconcile --yes --watch test-resolvable.pkl
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "./infrastructure/vars.pkl"
+import "./infrastructure/vpc.pkl"
+import "./infrastructure/network.pkl"
+import "./infrastructure/security_groups.pkl"
+import "./infrastructure/iam.pkl"
+import "./infrastructure/eks.pkl"
+
+import "@k8s/core/Namespace.pkl" as ns
+import "@k8s/k8s.pkl" as k8s
+
+local _eksCluster = eks.eksCluster(properties)
+
+local _k8sTarget = new formae.Target {
+  label = "k8s-target"
+  config = new k8s.Config {
+    endpoint = _eksCluster.res.endpoint
+    certificateAuthority = _eksCluster.res.certificateAuthorityData
+    clusterName = _eksCluster.res.name
+    waitForLoadBalancer = false
+  }
+}
+
+properties = vars.props
+
+forma {
+  vars.stack
+  vars.target
+
+  // AWS infrastructure
+  vpc.nvpc(properties)
+  network.igw(properties)
+  network.attachIgw(properties)
+  for (subnet in network.subnets(properties)) { subnet }
+  network.routeTable(properties)
+  network.publicRoute(properties)
+  for (assoc in network.subnetAssocs(properties)) { assoc }
+  for (sg in security_groups.securityGroups(properties)) { sg }
+  iam.clusterRole(properties)
+  iam.nodeRole(properties)
+
+  // EKS cluster
+  _eksCluster
+
+  // K8S target (resolves endpoint + CA from EKS)
+  _k8sTarget
+
+  // Single namespace to prove cross-cloud works
+  new ns.Namespace {
+    target = _k8sTarget.res
+    label = "test-namespace"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+      }
+    }
+  }
+}

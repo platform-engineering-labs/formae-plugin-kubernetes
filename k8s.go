@@ -49,7 +49,7 @@ var _ plugin.ResourcePlugin = &Plugin{}
 func (p *Plugin) RateLimit() plugin.RateLimitConfig {
 	return plugin.RateLimitConfig{
 		Scope:                            plugin.RateLimitScopeNamespace,
-		MaxRequestsPerSecondForNamespace: 1,
+		MaxRequestsPerSecondForNamespace: 10,
 	}
 }
 
@@ -88,6 +88,20 @@ func (p *Plugin) DiscoveryFilters() []plugin.MatchFilter {
 			ResourceTypes: []string{"K8S::Core::Service"},
 			Conditions: []plugin.FilterCondition{
 				{PropertyPath: "$.metadata.name", PropertyValue: "kubernetes"},
+			},
+		},
+		// Exclude system:* ClusterRoles and ClusterRoleBindings (K8S control plane managed)
+		// Uses JSONPath search() for prefix matching via existence check
+		{
+			ResourceTypes: []string{"K8S::Rbac::ClusterRole"},
+			Conditions: []plugin.FilterCondition{
+				{PropertyPath: `$.metadata[?search(@, '^system:')]`},
+			},
+		},
+		{
+			ResourceTypes: []string{"K8S::Rbac::ClusterRoleBinding"},
+			Conditions: []plugin.FilterCondition{
+				{PropertyPath: `$.metadata[?search(@, '^system:')]`},
 			},
 		},
 	}
