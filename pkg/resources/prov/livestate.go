@@ -36,7 +36,6 @@ var serverManagedMetaFields = []string{
 	"resourceVersion",
 	"creationTimestamp",
 	"generation",
-	"deletionTimestamp",
 	"deletionGracePeriodSeconds",
 }
 

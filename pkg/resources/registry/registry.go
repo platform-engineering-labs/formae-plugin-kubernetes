@@ -27,11 +27,16 @@ var (
 )
 
 // Register registers a resource type with its provisioner factory.
+// The factory is automatically wrapped with lifecycle-aware behavior
+// that detects terminating K8S objects (deletionTimestamp set).
 func Register(resourceType string, operations []resource.Operation, factory ProvisionerFactory) {
 	mu.Lock()
 	defer mu.Unlock()
+	wrappedFactory := func(client *transport.Client, cfg *config.Config) prov.Provisioner {
+		return prov.Wrap(factory(client, cfg))
+	}
 	registrations[resourceType] = &registration{
-		factory:    factory,
+		factory:    wrappedFactory,
 		operations: operations,
 	}
 }

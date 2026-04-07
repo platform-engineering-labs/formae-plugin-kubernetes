@@ -213,9 +213,11 @@ func (p *PersistentVolume) List(ctx context.Context, request *resource.ListReque
 }
 
 // fromPhase maps K8S PersistentVolumePhase to Formae OperationStatus.
+// Released means the PVC was deleted and the PV is orphaned — it requires
+// admin intervention and cannot be reused without manual cleanup.
 func (p *PersistentVolume) fromPhase(phase v1.PersistentVolumePhase) resource.OperationStatus {
 	switch phase {
-	case v1.VolumeFailed:
+	case v1.VolumeFailed, v1.VolumeReleased:
 		return resource.OperationStatusFailure
 	default:
 		return resource.OperationStatusSuccess

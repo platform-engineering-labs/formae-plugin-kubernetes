@@ -95,6 +95,14 @@ func (p *PersistentVolumeClaim) Read(ctx context.Context, request *resource.Read
 		return nil, fmt.Errorf("failed to get persistentvolumeclaim: %w", err)
 	}
 
+	// A Lost PVC's backing PV was deleted — the claim can never bind again.
+	if result.Status.Phase == v1.ClaimLost {
+		return &resource.ReadResult{
+			ResourceType: request.ResourceType,
+			ErrorCode:    resource.OperationErrorCodeNotFound,
+		}, nil
+	}
+
 	properties, err := prov.LiveState[v1coreac.PersistentVolumeClaimApplyConfiguration](result, "PersistentVolumeClaim", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get persistentvolumeclaim live state: %w", err)

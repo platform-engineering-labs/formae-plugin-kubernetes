@@ -89,16 +89,6 @@ func (n *Namespace) Read(ctx context.Context, request *resource.ReadRequest) (*r
 		return nil, fmt.Errorf("failed to get namespace: %w", err)
 	}
 
-	// Treat Terminating namespaces as deleted. K8S namespace deletion is
-	// async — the namespace enters Terminating and waits for finalizers.
-	// For sync/OOB-delete detection, a Terminating namespace is effectively gone.
-	if result.Status.Phase == v1.NamespaceTerminating {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
-	}
-
 	properties, err := prov.LiveState[v1coreac.NamespaceApplyConfiguration](result, "Namespace", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract namespace state: %w", err)

@@ -228,13 +228,15 @@ func (d *Deployment) List(ctx context.Context, request *resource.ListRequest) (*
 }
 
 // fromConditions maps K8S Deployment conditions to Formae OperationStatus.
-// Only explicit ReplicaFailure is reported as Failure. All other states
-// (including ongoing rollouts and crashlooping pods) return Success because
-// the Deployment spec was accepted by the API server. Runtime health is
-// a separate concern from provisioning.
+// Reports Failure when K8S itself declares the rollout stuck or a replica
+// cannot be created. Runtime pod health (e.g. CrashLoopBackOff) is a
+// separate concern from provisioning — those are surfaced via statusMessage.
 func (d *Deployment) fromConditions(conditions []appsv1.DeploymentCondition) resource.OperationStatus {
 	for _, cond := range conditions {
 		if cond.Type == appsv1.DeploymentReplicaFailure && cond.Status == "True" {
+			return resource.OperationStatusFailure
+		}
+		if cond.Type == appsv1.DeploymentProgressing && cond.Status == "False" && cond.Reason == "ProgressDeadlineExceeded" {
 			return resource.OperationStatusFailure
 		}
 	}

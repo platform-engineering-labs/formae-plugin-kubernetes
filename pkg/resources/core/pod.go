@@ -75,7 +75,7 @@ func (p *Pod) Create(ctx context.Context, request *resource.CreateRequest) (*res
 			Operation:          resource.OperationCreate,
 			OperationStatus:    p.fromPhase(result.Status.Phase),
 			RequestID:          fmt.Sprintf("%d", result.Generation),
-			StatusMessage:      result.Status.Message,
+			StatusMessage:      p.statusMessage(result),
 			ErrorCode:          p.fromReason(result.Status.Reason),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
@@ -94,16 +94,6 @@ func (p *Pod) Read(ctx context.Context, request *resource.ReadRequest) (*resourc
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to get pod: %w", err)
-	}
-
-	// Treat pods with a deletion timestamp as deleted. Pod deletion is async —
-	// the pod enters Terminating (DeletionTimestamp set) and waits for the grace
-	// period. For sync/OOB-delete detection, a terminating pod is effectively gone.
-	if result.DeletionTimestamp != nil {
-		return &resource.ReadResult{
-			ResourceType: request.ResourceType,
-			ErrorCode:    resource.OperationErrorCodeNotFound,
-		}, nil
 	}
 
 	properties, err := prov.LiveState[v1coreac.PodApplyConfiguration](result, "Pod", "v1")
@@ -154,7 +144,7 @@ func (p *Pod) Update(ctx context.Context, request *resource.UpdateRequest) (*res
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    p.fromPhase(result.Status.Phase),
 			RequestID:          result.ResourceVersion,
-			StatusMessage:      result.Status.Message,
+			StatusMessage:      p.statusMessage(result),
 			ErrorCode:          p.fromReason(result.Status.Reason),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
@@ -211,7 +201,7 @@ func (p *Pod) Status(ctx context.Context, request *resource.StatusRequest) (*res
 			Operation:          resource.OperationCheckStatus,
 			OperationStatus:    p.fromPhase(result.Status.Phase),
 			RequestID:          request.RequestID,
-			StatusMessage:      result.Status.Message,
+			StatusMessage:      p.statusMessage(result),
 			ErrorCode:          p.fromReason(result.Status.Reason),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
@@ -259,6 +249,40 @@ func (p *Pod) fromPhase(phase v1.PodPhase) resource.OperationStatus {
 	default:
 		return resource.OperationStatusSuccess
 	}
+}
+
+// statusMessage builds a human-readable message from pod status, including
+// container-level warnings (CrashLoopBackOff, ImagePullBackOff, etc.) that
+// are invisible at the pod phase level.
+func (p *Pod) statusMessage(pod *v1.Pod) string {
+	msg := fmt.Sprintf("phase: %s", pod.Status.Phase)
+
+	var warnings []string
+	for _, cs := range pod.Status.ContainerStatuses {
+		if cs.State.Waiting != nil {
+			switch cs.State.Waiting.Reason {
+			case "CrashLoopBackOff", "ImagePullBackOff", "ErrImagePull",
+				"CreateContainerConfigError", "InvalidImageName":
+				warnings = append(warnings, fmt.Sprintf("container %s: %s", cs.Name, cs.State.Waiting.Reason))
+			}
+		}
+	}
+	for _, cs := range pod.Status.InitContainerStatuses {
+		if cs.State.Waiting != nil {
+			switch cs.State.Waiting.Reason {
+			case "CrashLoopBackOff", "ImagePullBackOff", "ErrImagePull",
+				"CreateContainerConfigError", "InvalidImageName":
+				warnings = append(warnings, fmt.Sprintf("init container %s: %s", cs.Name, cs.State.Waiting.Reason))
+			}
+		}
+	}
+
+	if len(warnings) > 0 {
+		for _, w := range warnings {
+			msg += fmt.Sprintf(" (WARNING: %s)", w)
+		}
+	}
+	return msg
 }
 
 // fromReason maps K8S pod reason to Formae error code.
