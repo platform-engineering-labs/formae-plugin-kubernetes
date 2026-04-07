@@ -5,8 +5,8 @@ go 1.25.0
 require (
 	github.com/aws/aws-sdk-go-v2 v1.41.5
 	github.com/aws/aws-sdk-go-v2/config v1.32.13
-	github.com/platform-engineering-labs/formae/pkg/plugin v0.1.21-0.20260407134926-6e0e901477de
-	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.1.41
+	github.com/platform-engineering-labs/formae/pkg/plugin v0.1.22
+	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.1.42
 	github.com/stretchr/testify v1.11.1
 	k8s.io/api v0.35.0
 	k8s.io/apiextensions-apiserver v0.35.0
