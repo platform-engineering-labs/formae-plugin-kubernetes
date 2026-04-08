@@ -33,7 +33,7 @@ jobs:
           make build VERSION="${LATEST_TAG}"
 
       - name: Upload formae binary and Makefile
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: formae-binary
           path: |
