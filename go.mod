@@ -9,8 +9,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.13
 	github.com/oracle/oci-go-sdk/v65 v65.112.0
 	github.com/ovh/go-ovh v1.9.0
-	github.com/platform-engineering-labs/formae/pkg/model v0.1.6
-	github.com/platform-engineering-labs/formae/pkg/plugin v0.1.22
+	github.com/platform-engineering-labs/formae/pkg/model v0.1.23
+	github.com/platform-engineering-labs/formae/pkg/plugin v0.1.23
 	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.1.42
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/oauth2 v0.36.0
