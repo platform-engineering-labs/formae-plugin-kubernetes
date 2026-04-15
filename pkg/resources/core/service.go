@@ -231,7 +231,7 @@ func (svc *Service) List(ctx context.Context, request *resource.ListRequest) (*r
 // When WaitForLoadBalancer is enabled, LoadBalancer services report InProgress
 // until an external IP is assigned. Otherwise returns Success immediately.
 func (svc *Service) operationStatus(s *v1.Service) resource.OperationStatus {
-	if svc.Config.ShouldWaitForLoadBalancer() && s.Spec.Type == v1.ServiceTypeLoadBalancer {
+	if svc.Config.HasLoadBalancerController() && s.Spec.Type == v1.ServiceTypeLoadBalancer {
 		if len(s.Status.LoadBalancer.Ingress) == 0 {
 			return resource.OperationStatusInProgress
 		}

@@ -6,10 +6,7 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
-	"sync"
-	"time"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/prov"
@@ -36,23 +33,10 @@ import (
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/storage"
 )
 
-// clientCacheTTL is how long a cached K8S client is reused before being
-// recreated. Keeps EKS STS tokens fresh (60s expiry) while avoiding a
-// new TLS handshake on every CRUD call.
-const clientCacheTTL = 50 * time.Second
-
-type cachedClient struct {
-	client    *transport.Client
-	createdAt time.Time
-}
-
 // Plugin implements the Formae ResourcePlugin interface for Kubernetes.
 // The SDK automatically provides identity methods (Name, Version, Namespace)
 // by reading formae-plugin.pkl at startup.
-type Plugin struct {
-	mu      sync.Mutex
-	clients map[string]*cachedClient
-}
+type Plugin struct{}
 
 // Compile-time check: Plugin must satisfy ResourcePlugin interface.
 var _ plugin.ResourcePlugin = &Plugin{}
@@ -136,8 +120,9 @@ func (p *Plugin) LabelConfig() model.LabelConfig {
 // CRUD Operations
 // =============================================================================
 
-// getProvisioner creates or retrieves a provisioner for the given resource type.
-// Clients are cached by target config hash to avoid a new TLS handshake per call.
+// getProvisioner creates a provisioner for the given resource type.
+// With WrapTransport handling token refresh, clients no longer need
+// the TTL-based cache that was previously used for EKS token rotation.
 func (p *Plugin) getProvisioner(ctx context.Context, resourceType string, targetConfig []byte) (prov.Provisioner, error) {
 	if !registry.HasProvisioner(resourceType) {
 		return nil, fmt.Errorf("unsupported resource type: %s", resourceType)
@@ -148,44 +133,13 @@ func (p *Plugin) getProvisioner(ctx context.Context, resourceType string, target
 		return nil, fmt.Errorf("failed to extract config: %w", err)
 	}
 
-	client, err := p.getOrCreateClient(cfg, targetConfig)
+	client, err := transport.NewClient(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create K8S client: %w", err)
 	}
 
 	factory, _ := registry.GetFactory(resourceType)
 	return factory(client, cfg), nil
-}
-
-// getOrCreateClient returns a cached client for the given target config,
-// or creates a new one if the cache is empty or expired.
-func (p *Plugin) getOrCreateClient(cfg *config.Config, targetConfig []byte) (*transport.Client, error) {
-	key := fmt.Sprintf("%x", sha256.Sum256(targetConfig))
-
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if p.clients == nil {
-		p.clients = make(map[string]*cachedClient)
-	}
-
-	if cached, ok := p.clients[key]; ok {
-		if time.Since(cached.createdAt) < clientCacheTTL {
-			return cached.client, nil
-		}
-		delete(p.clients, key)
-	}
-
-	client, err := transport.NewClient(cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	p.clients[key] = &cachedClient{
-		client:    client,
-		createdAt: time.Now(),
-	}
-	return client, nil
 }
 
 // Create provisions a new K8S resource.
