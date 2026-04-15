@@ -104,10 +104,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: formae-binary
-          path: /tmp/formae
+          path: /tmp/formae-artifact
 
-      - name: Make formae executable
-        run: chmod +x /tmp/formae/formae
+      - name: Clone formae source for replace directives
+        run: |
+          git clone --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          cp /tmp/formae-artifact/formae /tmp/formae/formae
+          chmod +x /tmp/formae/formae
 
       # Temporary: until Orbital package manager handles plugin version
       # coordination, the formae Makefile is the source of truth for which
@@ -182,10 +185,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: formae-binary
-          path: /tmp/formae
+          path: /tmp/formae-artifact
 
-      - name: Make formae executable
-        run: chmod +x /tmp/formae/formae
+      - name: Clone formae source for replace directives
+        run: |
+          git clone --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          cp /tmp/formae-artifact/formae /tmp/formae/formae
+          chmod +x /tmp/formae/formae
 
       # Temporary: until Orbital package manager handles plugin version
       # coordination, the formae Makefile is the source of truth for which
