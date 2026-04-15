@@ -1,0 +1,363 @@
+// Reusable bookstore webapp module.
+//
+// Deploys a frontend (nginx) and backend (Node.js API) with supporting
+// infrastructure. Parameterized by K8S target — reusable across any
+// cloud provider (EKS, GKE, AKS, etc).
+//
+// Usage:
+//   import "../shared/bookstore.pkl" as bookstore
+//   forma {
+//     for (r in bookstore.allResources(_k8sTarget)) { r }
+//   }
+
+import "@formae/formae.pkl"
+import "@k8s/core/Namespace.pkl" as ns
+import "@k8s/core/ConfigMap.pkl" as cm
+import "@k8s/core/Secret.pkl" as sec
+import "@k8s/core/Service.pkl" as svc
+import "@k8s/core/ServiceAccount.pkl" as sa
+import "@k8s/apps/Deployment.pkl" as dep
+import "@k8s/k8s.pkl" as k8s
+
+// ---------------------------------------------------------------------------
+// Configuration
+// ---------------------------------------------------------------------------
+local appName = "bookstore"
+
+local frontendImage = "nginx:1.27-alpine"
+local frontendReplicas = 2
+
+local backendImage = "node:22-alpine"
+local backendReplicas = 2
+
+local dbHost = "postgres.database.svc.cluster.local"
+local dbName = "bookstore"
+local dbUser = "bookstore-app"
+local dbPassword = "change-me-in-production"
+
+// ---------------------------------------------------------------------------
+// Shared labels
+// ---------------------------------------------------------------------------
+local commonLabels = new Mapping {
+  ["app"] = appName
+  ["managed-by"] = "formae"
+}
+
+local frontendLabels = new Mapping {
+  ...commonLabels
+  ["component"] = "frontend"
+}
+
+local backendLabels = new Mapping {
+  ...commonLabels
+  ["component"] = "backend"
+}
+
+// ---------------------------------------------------------------------------
+// Resource functions — all parameterized by target
+// ---------------------------------------------------------------------------
+
+function appNamespace(k8sTarget: formae.Target): ns.Namespace =
+  new ns.Namespace {
+    target = k8sTarget.res
+    label = "\(appName)-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = appName
+      labels = commonLabels
+    }
+  }
+
+function frontendConfig(k8sTarget: formae.Target, appNs: ns.Namespace): cm.ConfigMap =
+  new cm.ConfigMap {
+    target = k8sTarget.res
+    label = "\(appName)-frontend-config"
+    metadata = new k8s.ObjectMeta {
+      name = "\(appName)-frontend-config"
+      namespace = appNs.res.name
+      labels = frontendLabels
+    }
+    data = new Mapping {
+      ["default.conf"] = new Listing {
+        "server {"
+        "    listen 80;"
+        "    server_name _;"
+        ""
+        "    location /api {"
+        "        proxy_pass http://\(appName)-backend;"
+        "        proxy_set_header Host $host;"
+        "        proxy_set_header X-Real-IP $remote_addr;"
+        "    }"
+        ""
+        "    location / {"
+        "        root /usr/share/nginx/html;"
+        "        index index.html;"
+        "    }"
+        "}"
+      }.join("\n")
+      ["index.html"] = new Listing {
+        "<!DOCTYPE html>"
+        "<html><head>"
+        "  <title>Bookstore</title>"
+        "  <style>"
+        "    body { font-family: system-ui, sans-serif; max-width: 600px; margin: 60px auto; padding: 0 20px; }"
+        "    h1 { border-bottom: 2px solid #333; padding-bottom: 10px; }"
+        "    code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; }"
+        "    #api-result { background: #f4f4f4; padding: 16px; border-radius: 6px; white-space: pre; font-family: monospace; }"
+        "  </style>"
+        "</head><body>"
+        "  <h1>Bookstore</h1>"
+        "  <p>Frontend served by <strong>nginx</strong>. Backend API at <code>/api</code>.</p>"
+        "  <h2>API Response</h2>"
+        "  <div id=\"api-result\">Loading...</div>"
+        "  <script>"
+        "    fetch('/api').then(r=>r.json()).then(d=>{"
+        "      document.getElementById('api-result').textContent=JSON.stringify(d,null,2)"
+        "    }).catch(e=>{"
+        "      document.getElementById('api-result').textContent='Error: '+e.message"
+        "    })"
+        "  </script>"
+        "</body></html>"
+      }.join("\n")
+    }
+  }
+
+function backendConfig(k8sTarget: formae.Target, appNs: ns.Namespace): cm.ConfigMap =
+  new cm.ConfigMap {
+    target = k8sTarget.res
+    label = "\(appName)-backend-config"
+    metadata = new k8s.ObjectMeta {
+      name = "\(appName)-backend-config"
+      namespace = appNs.res.name
+      labels = backendLabels
+    }
+    data = new Mapping {
+      ["DB_HOST"] = dbHost
+      ["DB_NAME"] = dbName
+      ["DB_PORT"] = "5432"
+      ["LOG_LEVEL"] = "info"
+      ["PORT"] = "3000"
+    }
+  }
+
+function dbCredentials(k8sTarget: formae.Target, appNs: ns.Namespace): sec.Secret =
+  new sec.Secret {
+    target = k8sTarget.res
+    label = "\(appName)-db-credentials"
+    metadata = new k8s.ObjectMeta {
+      name = "\(appName)-db-credentials"
+      namespace = appNs.res.name
+      labels = backendLabels
+    }
+    type = "Opaque"
+    stringData = new Mapping {
+      ["DB_USER"] = dbUser
+      ["DB_PASSWORD"] = dbPassword
+    }
+  }
+
+function backendServiceAccount(k8sTarget: formae.Target, appNs: ns.Namespace): sa.ServiceAccount =
+  new sa.ServiceAccount {
+    target = k8sTarget.res
+    label = "\(appName)-backend-sa"
+    metadata = new k8s.ObjectMeta {
+      name = "\(appName)-backend"
+      namespace = appNs.res.name
+      labels = backendLabels
+    }
+    automountServiceAccountToken = false
+  }
+
+function frontendDeployment(k8sTarget: formae.Target, appNs: ns.Namespace): dep.Deployment =
+  new dep.Deployment {
+    target = k8sTarget.res
+    label = "\(appName)-frontend"
+    metadata = new k8s.ObjectMeta {
+      name = "\(appName)-frontend"
+      namespace = appNs.res.name
+      labels = frontendLabels
+    }
+    spec = new dep.DeploymentSpec {
+      replicas = frontendReplicas
+      selector = new k8s.LabelSelector {
+        matchLabels = frontendLabels
+      }
+      template = new k8s.PodTemplateSpec {
+        metadata = new k8s.ObjectMeta {
+          name = appName
+          labels = frontendLabels
+        }
+        spec = new k8s.PodSpec {
+          containers = new Listing {
+            new k8s.Container {
+              name = "nginx"
+              image = frontendImage
+              ports = new Listing {
+                new k8s.ContainerPort {
+                  name = "http"
+                  containerPort = 80
+                }
+              }
+              volumeMounts = new Listing {
+                new k8s.VolumeMount {
+                  name = "nginx-config"
+                  mountPath = "/etc/nginx/conf.d"
+                  readOnly = true
+                }
+                new k8s.VolumeMount {
+                  name = "html"
+                  mountPath = "/usr/share/nginx/html"
+                  readOnly = true
+                }
+              }
+              resources = new k8s.ResourceRequirements {
+                requests = new Mapping {
+                  ["cpu"] = "50m"
+                  ["memory"] = "64Mi"
+                }
+                limits = new Mapping {
+                  ["cpu"] = "200m"
+                  ["memory"] = "128Mi"
+                }
+              }
+            }
+          }
+          volumes = new Listing {
+            new k8s.Volume {
+              name = "nginx-config"
+              configMap = new k8s.ConfigMapVolumeSource {
+                name = "\(appName)-frontend-config"
+                items = new Listing {
+                  new k8s.KeyToPath { key = "default.conf"; path = "default.conf" }
+                }
+              }
+            }
+            new k8s.Volume {
+              name = "html"
+              configMap = new k8s.ConfigMapVolumeSource {
+                name = "\(appName)-frontend-config"
+                items = new Listing {
+                  new k8s.KeyToPath { key = "index.html"; path = "index.html" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+function backendDeployment(k8sTarget: formae.Target, appNs: ns.Namespace): dep.Deployment =
+  new dep.Deployment {
+    target = k8sTarget.res
+    label = "\(appName)-backend"
+    metadata = new k8s.ObjectMeta {
+      name = "\(appName)-backend"
+      namespace = appNs.res.name
+      labels = backendLabels
+    }
+    spec = new dep.DeploymentSpec {
+      replicas = backendReplicas
+      selector = new k8s.LabelSelector {
+        matchLabels = backendLabels
+      }
+      template = new k8s.PodTemplateSpec {
+        metadata = new k8s.ObjectMeta {
+          name = appName
+          labels = backendLabels
+        }
+        spec = new k8s.PodSpec {
+          serviceAccountName = "\(appName)-backend"
+          containers = new Listing {
+            new k8s.Container {
+              name = "api"
+              image = backendImage
+              command = new Listing { "node"; "-e" }
+              args = new Listing {
+                #"require("http").createServer((req,res)=>{res.writeHead(200,{"Content-Type":"application/json"});res.end(JSON.stringify({status:"ok",path:req.url,ts:new Date().toISOString()}))}).listen(3000,()=>console.log("API listening on :3000"))"#
+              }
+              ports = new Listing {
+                new k8s.ContainerPort {
+                  name = "http"
+                  containerPort = 3000
+                }
+              }
+              env = new Listing {
+                new k8s.EnvVar { name = "NODE_ENV"; value = "production" }
+              }
+              resources = new k8s.ResourceRequirements {
+                requests = new Mapping {
+                  ["cpu"] = "100m"
+                  ["memory"] = "128Mi"
+                }
+                limits = new Mapping {
+                  ["cpu"] = "500m"
+                  ["memory"] = "256Mi"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+function frontendService(k8sTarget: formae.Target, appNs: ns.Namespace): svc.Service =
+  new svc.Service {
+    target = k8sTarget.res
+    label = "\(appName)-frontend-svc"
+    metadata = new k8s.ObjectMeta {
+      name = "\(appName)-frontend"
+      namespace = appNs.res.name
+      labels = frontendLabels
+      annotations = new Mapping {
+        ["service.beta.kubernetes.io/aws-load-balancer-scheme"] = "internet-facing"
+      }
+    }
+    spec = new svc.ServiceSpec {
+      type = "LoadBalancer"
+      selector = frontendLabels
+      ports = new Listing {
+        new svc.ServicePort {
+          port = 80
+          targetPort = 80
+        }
+      }
+    }
+  }
+
+function backendService(k8sTarget: formae.Target, appNs: ns.Namespace): svc.Service =
+  new svc.Service {
+    target = k8sTarget.res
+    label = "\(appName)-backend-svc"
+    metadata = new k8s.ObjectMeta {
+      name = "\(appName)-backend"
+      namespace = appNs.res.name
+      labels = backendLabels
+    }
+    spec = new svc.ServiceSpec {
+      selector = backendLabels
+      ports = new Listing {
+        new svc.ServicePort {
+          port = 80
+          targetPort = 3000
+        }
+      }
+    }
+  }
+
+// ---------------------------------------------------------------------------
+// Convenience: all resources as a listing
+// ---------------------------------------------------------------------------
+
+function allResources(k8sTarget: formae.Target) = new Listing {
+  local _ns = appNamespace(k8sTarget)
+  _ns
+  frontendConfig(k8sTarget, _ns)
+  backendConfig(k8sTarget, _ns)
+  dbCredentials(k8sTarget, _ns)
+  backendServiceAccount(k8sTarget, _ns)
+  frontendDeployment(k8sTarget, _ns)
+  backendDeployment(k8sTarget, _ns)
+  frontendService(k8sTarget, _ns)
+  backendService(k8sTarget, _ns)
+}

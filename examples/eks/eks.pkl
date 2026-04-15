@@ -1,0 +1,70 @@
+// EKS end-to-end example
+//
+// Provisions a full EKS cluster on AWS (VPC, subnets, IAM, EKS AutoMode),
+// then deploys the bookstore webapp using provider-agnostic auth with
+// STS token refresh via WrapTransport.
+//
+//   formae apply --mode reconcile --yes --watch examples/eks/eks.pkl
+//
+// Access (after deploy, via port-forward):
+//   aws eks update-kubeconfig --name eks-fullstack --region us-west-2
+//   kubectl -n bookstore port-forward svc/bookstore-frontend 8080:80
+//   open http://localhost:8080
+//
+// Teardown:
+//   formae destroy --yes examples/eks/eks.pkl
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "./infrastructure/vars.pkl"
+import "./infrastructure/vpc.pkl"
+import "./infrastructure/network.pkl"
+import "./infrastructure/security_groups.pkl"
+import "./infrastructure/iam.pkl"
+import "./infrastructure/eks.pkl"
+
+import "./bookstore.pkl" as bookstore
+import "@k8s/k8s.pkl" as k8s
+
+local _eksCluster = eks.eksCluster(properties)
+
+local _k8sTarget = new formae.Target {
+  label = "k8s-target"
+  config = new k8s.Config {
+    hasLoadBalancer = true
+    auth = new k8s.EKSAuth {
+      endpoint = _eksCluster.res.endpoint
+      certificateAuthority = _eksCluster.res.certificateAuthorityData
+      clusterName = _eksCluster.res.name
+    }
+  }
+}
+
+properties = vars.props
+
+forma {
+  vars.stack
+  vars.target
+
+  // AWS infrastructure
+  vpc.nvpc(properties)
+  network.igw(properties)
+  network.attachIgw(properties)
+  for (subnet in network.subnets(properties)) { subnet }
+  network.routeTable(properties)
+  network.publicRoute(properties)
+  for (assoc in network.subnetAssocs(properties)) { assoc }
+  for (sg in security_groups.securityGroups(properties)) { sg }
+  iam.clusterRole(properties)
+  iam.nodeRole(properties)
+
+  // EKS cluster
+  _eksCluster
+
+  // K8S target (resolves endpoint + CA from EKS)
+  _k8sTarget
+
+  // Bookstore webapp
+  for (r in bookstore.allResources(_k8sTarget)) { r }
+}
