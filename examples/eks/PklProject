@@ -6,4 +6,5 @@ dependencies {
   }
   ["aws"] = import("../../../formae-plugin-aws/schema/pkl/PklProject")
   ["k8s"] = import("../../schema/pkl/PklProject")
+  ["apps"] = import("../apps/PklProject")
 }
