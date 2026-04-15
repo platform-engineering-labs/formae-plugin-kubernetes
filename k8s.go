@@ -15,6 +15,7 @@ import (
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/prov"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/registry"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/transport"
+	"github.com/platform-engineering-labs/formae/pkg/model"
 	"github.com/platform-engineering-labs/formae/pkg/plugin"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 
@@ -62,47 +63,47 @@ var _ plugin.ResourcePlugin = &Plugin{}
 
 // RateLimit returns the rate limiting configuration for this plugin.
 // K8S API is generally more tolerant than cloud provider APIs.
-func (p *Plugin) RateLimit() plugin.RateLimitConfig {
-	return plugin.RateLimitConfig{
-		Scope:                            plugin.RateLimitScopeNamespace,
+func (p *Plugin) RateLimit() model.RateLimitConfig {
+	return model.RateLimitConfig{
+		Scope:                            model.RateLimitScopeNamespace,
 		MaxRequestsPerSecondForNamespace: 10,
 	}
 }
 
 // DiscoveryFilters returns filters to exclude certain resources from discovery.
 // Excludes system namespaces by default.
-func (p *Plugin) DiscoveryFilters() []plugin.MatchFilter {
-	return []plugin.MatchFilter{
+func (p *Plugin) DiscoveryFilters() []model.MatchFilter {
+	return []model.MatchFilter{
 		// Exclude kube-system namespace resources
 		{
 			ResourceTypes: []string{"K8S::Core::Namespace"},
-			Conditions: []plugin.FilterCondition{
+			Conditions: []model.FilterCondition{
 				{PropertyPath: "$.metadata.name", PropertyValue: "kube-system"},
 			},
 		},
 		{
 			ResourceTypes: []string{"K8S::Core::Namespace"},
-			Conditions: []plugin.FilterCondition{
+			Conditions: []model.FilterCondition{
 				{PropertyPath: "$.metadata.name", PropertyValue: "kube-public"},
 			},
 		},
 		{
 			ResourceTypes: []string{"K8S::Core::Namespace"},
-			Conditions: []plugin.FilterCondition{
+			Conditions: []model.FilterCondition{
 				{PropertyPath: "$.metadata.name", PropertyValue: "kube-node-lease"},
 			},
 		},
 		// Exclude default ServiceAccount (auto-created per namespace)
 		{
 			ResourceTypes: []string{"K8S::Core::ServiceAccount"},
-			Conditions: []plugin.FilterCondition{
+			Conditions: []model.FilterCondition{
 				{PropertyPath: "$.metadata.name", PropertyValue: "default"},
 			},
 		},
 		// Exclude default kubernetes API service
 		{
 			ResourceTypes: []string{"K8S::Core::Service"},
-			Conditions: []plugin.FilterCondition{
+			Conditions: []model.FilterCondition{
 				{PropertyPath: "$.metadata.name", PropertyValue: "kubernetes"},
 			},
 		},
@@ -110,13 +111,13 @@ func (p *Plugin) DiscoveryFilters() []plugin.MatchFilter {
 		// Uses JSONPath search() for prefix matching via existence check
 		{
 			ResourceTypes: []string{"K8S::Rbac::ClusterRole"},
-			Conditions: []plugin.FilterCondition{
+			Conditions: []model.FilterCondition{
 				{PropertyPath: `$.metadata[?search(@, '^system:')]`},
 			},
 		},
 		{
 			ResourceTypes: []string{"K8S::Rbac::ClusterRoleBinding"},
-			Conditions: []plugin.FilterCondition{
+			Conditions: []model.FilterCondition{
 				{PropertyPath: `$.metadata[?search(@, '^system:')]`},
 			},
 		},
@@ -125,8 +126,8 @@ func (p *Plugin) DiscoveryFilters() []plugin.MatchFilter {
 
 // LabelConfig returns the configuration for extracting human-readable labels
 // from discovered resources. K8S resources use metadata.name.
-func (p *Plugin) LabelConfig() plugin.LabelConfig {
-	return plugin.LabelConfig{
+func (p *Plugin) LabelConfig() model.LabelConfig {
+	return model.LabelConfig{
 		DefaultQuery: "$.metadata.name",
 	}
 }
