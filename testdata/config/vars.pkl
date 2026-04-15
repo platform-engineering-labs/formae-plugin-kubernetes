@@ -14,6 +14,7 @@ target = new formae.Target {
   label = "k8s-target"
   namespace = "K8S"
   config = new k8s.Config {
-    waitForLoadBalancer = false
+    hasLoadBalancer = false
+    auth = new k8s.KubeconfigAuth {}
   }
 }

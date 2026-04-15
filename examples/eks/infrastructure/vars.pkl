@@ -44,7 +44,7 @@ stack: formae.Stack = new {
 }
 
 target: formae.Target = new formae.Target {
-  label = "aws-target"
+  label = "eks-aws-target"
   config = new aws.Config {
     region = module.props.region.value
   }

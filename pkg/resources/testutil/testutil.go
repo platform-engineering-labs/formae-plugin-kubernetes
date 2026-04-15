@@ -48,11 +48,14 @@ func SetupEnv(t *testing.T) *TestEnv {
 		ns = ns[:63]
 	}
 
-	waitForLB := false
-	cfg := &config.Config{
-		Context:             "orbstack",
-		Namespace:           ns,
-		WaitForLoadBalancer: &waitForLB,
+	targetJSON := fmt.Sprintf(`{
+		"DefaultNamespace": %q,
+		"HasLoadBalancer": false,
+		"Auth": {"Type": "Kubeconfig", "Context": "orbstack"}
+	}`, ns)
+	cfg, err := config.FromTargetConfig([]byte(targetJSON))
+	if err != nil {
+		t.Fatalf("failed to parse target config: %v", err)
 	}
 
 	client, err := transport.NewClient(cfg)

@@ -234,7 +234,7 @@ func (ing *Ingress) List(ctx context.Context, request *resource.ListRequest) (*r
 // address is assigned. Otherwise returns Success immediately (suitable for
 // clusters without an ingress controller).
 func (ing *Ingress) operationStatus(i *networkingv1.Ingress) resource.OperationStatus {
-	if ing.Config.ShouldWaitForLoadBalancer() && len(i.Status.LoadBalancer.Ingress) == 0 {
+	if ing.Config.HasLoadBalancerController() && len(i.Status.LoadBalancer.Ingress) == 0 {
 		return resource.OperationStatusInProgress
 	}
 	return resource.OperationStatusSuccess

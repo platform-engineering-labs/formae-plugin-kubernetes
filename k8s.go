@@ -6,15 +6,13 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
-	"sync"
-	"time"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/prov"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/registry"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/transport"
+	"github.com/platform-engineering-labs/formae/pkg/model"
 	"github.com/platform-engineering-labs/formae/pkg/plugin"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 
@@ -35,23 +33,10 @@ import (
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/storage"
 )
 
-// clientCacheTTL is how long a cached K8S client is reused before being
-// recreated. Keeps EKS STS tokens fresh (60s expiry) while avoiding a
-// new TLS handshake on every CRUD call.
-const clientCacheTTL = 50 * time.Second
-
-type cachedClient struct {
-	client    *transport.Client
-	createdAt time.Time
-}
-
 // Plugin implements the Formae ResourcePlugin interface for Kubernetes.
 // The SDK automatically provides identity methods (Name, Version, Namespace)
 // by reading formae-plugin.pkl at startup.
-type Plugin struct {
-	mu      sync.Mutex
-	clients map[string]*cachedClient
-}
+type Plugin struct{}
 
 // Compile-time check: Plugin must satisfy ResourcePlugin interface.
 var _ plugin.ResourcePlugin = &Plugin{}
@@ -62,47 +47,47 @@ var _ plugin.ResourcePlugin = &Plugin{}
 
 // RateLimit returns the rate limiting configuration for this plugin.
 // K8S API is generally more tolerant than cloud provider APIs.
-func (p *Plugin) RateLimit() plugin.RateLimitConfig {
-	return plugin.RateLimitConfig{
-		Scope:                            plugin.RateLimitScopeNamespace,
+func (p *Plugin) RateLimit() model.RateLimitConfig {
+	return model.RateLimitConfig{
+		Scope:                            model.RateLimitScopeNamespace,
 		MaxRequestsPerSecondForNamespace: 10,
 	}
 }
 
 // DiscoveryFilters returns filters to exclude certain resources from discovery.
 // Excludes system namespaces by default.
-func (p *Plugin) DiscoveryFilters() []plugin.MatchFilter {
-	return []plugin.MatchFilter{
+func (p *Plugin) DiscoveryFilters() []model.MatchFilter {
+	return []model.MatchFilter{
 		// Exclude kube-system namespace resources
 		{
 			ResourceTypes: []string{"K8S::Core::Namespace"},
-			Conditions: []plugin.FilterCondition{
+			Conditions: []model.FilterCondition{
 				{PropertyPath: "$.metadata.name", PropertyValue: "kube-system"},
 			},
 		},
 		{
 			ResourceTypes: []string{"K8S::Core::Namespace"},
-			Conditions: []plugin.FilterCondition{
+			Conditions: []model.FilterCondition{
 				{PropertyPath: "$.metadata.name", PropertyValue: "kube-public"},
 			},
 		},
 		{
 			ResourceTypes: []string{"K8S::Core::Namespace"},
-			Conditions: []plugin.FilterCondition{
+			Conditions: []model.FilterCondition{
 				{PropertyPath: "$.metadata.name", PropertyValue: "kube-node-lease"},
 			},
 		},
 		// Exclude default ServiceAccount (auto-created per namespace)
 		{
 			ResourceTypes: []string{"K8S::Core::ServiceAccount"},
-			Conditions: []plugin.FilterCondition{
+			Conditions: []model.FilterCondition{
 				{PropertyPath: "$.metadata.name", PropertyValue: "default"},
 			},
 		},
 		// Exclude default kubernetes API service
 		{
 			ResourceTypes: []string{"K8S::Core::Service"},
-			Conditions: []plugin.FilterCondition{
+			Conditions: []model.FilterCondition{
 				{PropertyPath: "$.metadata.name", PropertyValue: "kubernetes"},
 			},
 		},
@@ -110,13 +95,13 @@ func (p *Plugin) DiscoveryFilters() []plugin.MatchFilter {
 		// Uses JSONPath search() for prefix matching via existence check
 		{
 			ResourceTypes: []string{"K8S::Rbac::ClusterRole"},
-			Conditions: []plugin.FilterCondition{
+			Conditions: []model.FilterCondition{
 				{PropertyPath: `$.metadata[?search(@, '^system:')]`},
 			},
 		},
 		{
 			ResourceTypes: []string{"K8S::Rbac::ClusterRoleBinding"},
-			Conditions: []plugin.FilterCondition{
+			Conditions: []model.FilterCondition{
 				{PropertyPath: `$.metadata[?search(@, '^system:')]`},
 			},
 		},
@@ -125,8 +110,8 @@ func (p *Plugin) DiscoveryFilters() []plugin.MatchFilter {
 
 // LabelConfig returns the configuration for extracting human-readable labels
 // from discovered resources. K8S resources use metadata.name.
-func (p *Plugin) LabelConfig() plugin.LabelConfig {
-	return plugin.LabelConfig{
+func (p *Plugin) LabelConfig() model.LabelConfig {
+	return model.LabelConfig{
 		DefaultQuery: "$.metadata.name",
 	}
 }
@@ -135,8 +120,9 @@ func (p *Plugin) LabelConfig() plugin.LabelConfig {
 // CRUD Operations
 // =============================================================================
 
-// getProvisioner creates or retrieves a provisioner for the given resource type.
-// Clients are cached by target config hash to avoid a new TLS handshake per call.
+// getProvisioner creates a provisioner for the given resource type.
+// With WrapTransport handling token refresh, clients no longer need
+// the TTL-based cache that was previously used for EKS token rotation.
 func (p *Plugin) getProvisioner(ctx context.Context, resourceType string, targetConfig []byte) (prov.Provisioner, error) {
 	if !registry.HasProvisioner(resourceType) {
 		return nil, fmt.Errorf("unsupported resource type: %s", resourceType)
@@ -147,44 +133,13 @@ func (p *Plugin) getProvisioner(ctx context.Context, resourceType string, target
 		return nil, fmt.Errorf("failed to extract config: %w", err)
 	}
 
-	client, err := p.getOrCreateClient(cfg, targetConfig)
+	client, err := transport.NewClient(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create K8S client: %w", err)
 	}
 
 	factory, _ := registry.GetFactory(resourceType)
 	return factory(client, cfg), nil
-}
-
-// getOrCreateClient returns a cached client for the given target config,
-// or creates a new one if the cache is empty or expired.
-func (p *Plugin) getOrCreateClient(cfg *config.Config, targetConfig []byte) (*transport.Client, error) {
-	key := fmt.Sprintf("%x", sha256.Sum256(targetConfig))
-
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if p.clients == nil {
-		p.clients = make(map[string]*cachedClient)
-	}
-
-	if cached, ok := p.clients[key]; ok {
-		if time.Since(cached.createdAt) < clientCacheTTL {
-			return cached.client, nil
-		}
-		delete(p.clients, key)
-	}
-
-	client, err := transport.NewClient(cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	p.clients[key] = &cachedClient{
-		client:    client,
-		createdAt: time.Now(),
-	}
-	return client, nil
 }
 
 // Create provisions a new K8S resource.

@@ -1,24 +1,15 @@
-/*
- * Example: Bookstore v2 — rolling update via patch
- *
- * This file is identical to webapp.pkl except for the content served by
- * the frontend and backend.  When applied on top of a running v1:
- *
- *   formae apply examples/webapp-v2.pkl
- *
- * Formae detects the property diff and patches only the changed resources
- * (the two ConfigMaps and the backend Deployment).  Unchanged resources
- * (Namespace, Secret, ServiceAccount, Services, Ingress) are left alone.
- *
- * What changes in v2:
- *   - Frontend HTML shows "Bookstore v2" with a refreshed colour scheme
- *   - Backend API response includes a "version" field
- *   - Backend image bumped to show a rolling update of the Deployment
- *
- * Rollback to v1:
- *   formae apply examples/webapp.pkl
- */
-amends "@formae/forma.pkl"
+// Reusable bookstore webapp module.
+//
+// Deploys a frontend (nginx) and backend (Node.js API) with supporting
+// infrastructure. Parameterized by K8S target — reusable across any
+// cloud provider (EKS, GKE, AKS, etc).
+//
+// Usage:
+//   import "../shared/bookstore.pkl" as bookstore
+//   forma {
+//     for (r in bookstore.allResources(_k8sTarget)) { r }
+//   }
+
 import "@formae/formae.pkl"
 import "@k8s/core/Namespace.pkl" as ns
 import "@k8s/core/ConfigMap.pkl" as cm
@@ -26,20 +17,18 @@ import "@k8s/core/Secret.pkl" as sec
 import "@k8s/core/Service.pkl" as svc
 import "@k8s/core/ServiceAccount.pkl" as sa
 import "@k8s/apps/Deployment.pkl" as dep
-import "@k8s/networking/Ingress.pkl" as ing
 import "@k8s/k8s.pkl" as k8s
 
 // ---------------------------------------------------------------------------
-// Configuration — same as v1, only content changes
+// Configuration
 // ---------------------------------------------------------------------------
 local appName = "bookstore"
-local domain = "bookstore.example.com"
 
 local frontendImage = "nginx:1.27-alpine"
 local frontendReplicas = 2
 
 local backendImage = "node:22-alpine"
-local backendReplicas = 3
+local backendReplicas = 2
 
 local dbHost = "postgres.database.svc.cluster.local"
 local dbName = "bookstore"
@@ -65,26 +54,12 @@ local backendLabels = new Mapping {
 }
 
 // ---------------------------------------------------------------------------
-// Stack & Target
+// Resource functions — all parameterized by target
 // ---------------------------------------------------------------------------
-forma {
-  new formae.Stack {
-    label = "\(appName)-stack"
-    description = "Bookstore web application"
-  }
 
-  new formae.Target {
-    label = "\(appName)-target"
-    namespace = "K8S"
-    config = new k8s.Config {
-      waitForLoadBalancer = false
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // Namespace
-  // -------------------------------------------------------------------------
-  local appNs = new ns.Namespace {
+function appNamespace(k8sTarget: formae.Target): ns.Namespace =
+  new ns.Namespace {
+    target = k8sTarget.res
     label = "\(appName)-ns"
     metadata = new ns.NamespaceMetadata {
       name = appName
@@ -92,12 +67,9 @@ forma {
     }
   }
 
-  appNs
-
-  // -------------------------------------------------------------------------
-  // ConfigMap — frontend nginx config + v2 HTML
-  // -------------------------------------------------------------------------
+function frontendConfig(k8sTarget: formae.Target, appNs: ns.Namespace): cm.ConfigMap =
   new cm.ConfigMap {
+    target = k8sTarget.res
     label = "\(appName)-frontend-config"
     metadata = new k8s.ObjectMeta {
       name = "\(appName)-frontend-config"
@@ -125,18 +97,16 @@ forma {
       ["index.html"] = new Listing {
         "<!DOCTYPE html>"
         "<html><head>"
-        "  <title>Bookstore v2</title>"
+        "  <title>Bookstore</title>"
         "  <style>"
         "    body { font-family: system-ui, sans-serif; max-width: 600px; margin: 60px auto; padding: 0 20px; }"
-        "    h1 { border-bottom: 2px solid #0066cc; padding-bottom: 10px; color: #0066cc; }"
-        "    .version { display: inline-block; background: #0066cc; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; vertical-align: middle; }"
-        "    code { background: #e8f0fe; padding: 2px 6px; border-radius: 3px; }"
-        "    #api-result { background: #e8f0fe; padding: 16px; border-radius: 6px; white-space: pre; font-family: monospace; }"
+        "    h1 { border-bottom: 2px solid #333; padding-bottom: 10px; }"
+        "    code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; }"
+        "    #api-result { background: #f4f4f4; padding: 16px; border-radius: 6px; white-space: pre; font-family: monospace; }"
         "  </style>"
         "</head><body>"
-        "  <h1>Bookstore <span class=\"version\">v2</span></h1>"
+        "  <h1>Bookstore</h1>"
         "  <p>Frontend served by <strong>nginx</strong>. Backend API at <code>/api</code>.</p>"
-        "  <p>New in v2: catalog search, improved performance, and a fresh look.</p>"
         "  <h2>API Response</h2>"
         "  <div id=\"api-result\">Loading...</div>"
         "  <script>"
@@ -151,10 +121,9 @@ forma {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // ConfigMap — backend application config (unchanged)
-  // -------------------------------------------------------------------------
+function backendConfig(k8sTarget: formae.Target, appNs: ns.Namespace): cm.ConfigMap =
   new cm.ConfigMap {
+    target = k8sTarget.res
     label = "\(appName)-backend-config"
     metadata = new k8s.ObjectMeta {
       name = "\(appName)-backend-config"
@@ -170,10 +139,9 @@ forma {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Secret — database credentials (unchanged)
-  // -------------------------------------------------------------------------
+function dbCredentials(k8sTarget: formae.Target, appNs: ns.Namespace): sec.Secret =
   new sec.Secret {
+    target = k8sTarget.res
     label = "\(appName)-db-credentials"
     metadata = new k8s.ObjectMeta {
       name = "\(appName)-db-credentials"
@@ -187,10 +155,9 @@ forma {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // ServiceAccount — backend identity (unchanged)
-  // -------------------------------------------------------------------------
+function backendServiceAccount(k8sTarget: formae.Target, appNs: ns.Namespace): sa.ServiceAccount =
   new sa.ServiceAccount {
+    target = k8sTarget.res
     label = "\(appName)-backend-sa"
     metadata = new k8s.ObjectMeta {
       name = "\(appName)-backend"
@@ -200,11 +167,9 @@ forma {
     automountServiceAccountToken = false
   }
 
-  // -------------------------------------------------------------------------
-  // Deployment — frontend (unchanged image, but ConfigMap content changed
-  // above triggers a rollout when the ConfigMap is updated)
-  // -------------------------------------------------------------------------
+function frontendDeployment(k8sTarget: formae.Target, appNs: ns.Namespace): dep.Deployment =
   new dep.Deployment {
+    target = k8sTarget.res
     label = "\(appName)-frontend"
     metadata = new k8s.ObjectMeta {
       name = "\(appName)-frontend"
@@ -217,7 +182,8 @@ forma {
         matchLabels = frontendLabels
       }
       template = new k8s.PodTemplateSpec {
-        metadata = new k8s.PodTemplateMetadata {
+        metadata = new k8s.ObjectMeta {
+          name = appName
           labels = frontendLabels
         }
         spec = new k8s.PodSpec {
@@ -280,10 +246,9 @@ forma {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Deployment — backend v2 (updated API response with version field)
-  // -------------------------------------------------------------------------
+function backendDeployment(k8sTarget: formae.Target, appNs: ns.Namespace): dep.Deployment =
   new dep.Deployment {
+    target = k8sTarget.res
     label = "\(appName)-backend"
     metadata = new k8s.ObjectMeta {
       name = "\(appName)-backend"
@@ -296,7 +261,8 @@ forma {
         matchLabels = backendLabels
       }
       template = new k8s.PodTemplateSpec {
-        metadata = new k8s.PodTemplateMetadata {
+        metadata = new k8s.ObjectMeta {
+          name = appName
           labels = backendLabels
         }
         spec = new k8s.PodSpec {
@@ -307,7 +273,7 @@ forma {
               image = backendImage
               command = new Listing { "node"; "-e" }
               args = new Listing {
-                #"require("http").createServer((req,res)=>{res.writeHead(200,{"Content-Type":"application/json"});res.end(JSON.stringify({version:"2.0",status:"ok",path:req.url,features:["catalog-search","recommendations"],ts:new Date().toISOString()}))}).listen(3000,()=>console.log("API v2 listening on :3000"))"#
+                #"require("http").createServer((req,res)=>{res.writeHead(200,{"Content-Type":"application/json"});res.end(JSON.stringify({status:"ok",path:req.url,ts:new Date().toISOString()}))}).listen(3000,()=>console.log("API listening on :3000"))"#
               }
               ports = new Listing {
                 new k8s.ContainerPort {
@@ -335,17 +301,20 @@ forma {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Service — frontend (unchanged)
-  // -------------------------------------------------------------------------
+function frontendService(k8sTarget: formae.Target, appNs: ns.Namespace): svc.Service =
   new svc.Service {
+    target = k8sTarget.res
     label = "\(appName)-frontend-svc"
     metadata = new k8s.ObjectMeta {
       name = "\(appName)-frontend"
       namespace = appNs.res.name
       labels = frontendLabels
+      annotations = new Mapping {
+        ["service.beta.kubernetes.io/aws-load-balancer-scheme"] = "internet-facing"
+      }
     }
     spec = new svc.ServiceSpec {
+      type = "LoadBalancer"
       selector = frontendLabels
       ports = new Listing {
         new svc.ServicePort {
@@ -356,10 +325,9 @@ forma {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Service — backend (unchanged)
-  // -------------------------------------------------------------------------
+function backendService(k8sTarget: formae.Target, appNs: ns.Namespace): svc.Service =
   new svc.Service {
+    target = k8sTarget.res
     label = "\(appName)-backend-svc"
     metadata = new k8s.ObjectMeta {
       name = "\(appName)-backend"
@@ -377,51 +345,19 @@ forma {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Ingress (unchanged)
-  // -------------------------------------------------------------------------
-  new ing.Ingress {
-    label = "\(appName)-ingress"
-    metadata = new k8s.ObjectMeta {
-      name = "\(appName)-ingress"
-      namespace = appNs.res.name
-      labels = commonLabels
-    }
-    spec = new ing.IngressSpec {
-      ingressClassName = "nginx"
-      rules = new Listing {
-        new ing.IngressRule {
-          host = domain
-          http = new ing.HTTPIngressRuleValue {
-            paths = new Listing {
-              new ing.HTTPIngressPath {
-                path = "/api"
-                pathType = "Prefix"
-                backend = new ing.IngressBackend {
-                  service = new ing.IngressServiceBackend {
-                    name = "\(appName)-backend"
-                    port = new ing.ServiceBackendPort {
-                      number = 80
-                    }
-                  }
-                }
-              }
-              new ing.HTTPIngressPath {
-                path = "/"
-                pathType = "Prefix"
-                backend = new ing.IngressBackend {
-                  service = new ing.IngressServiceBackend {
-                    name = "\(appName)-frontend"
-                    port = new ing.ServiceBackendPort {
-                      number = 80
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
+// ---------------------------------------------------------------------------
+// Convenience: all resources as a listing
+// ---------------------------------------------------------------------------
+
+function allResources(k8sTarget: formae.Target) = new Listing {
+  local _ns = appNamespace(k8sTarget)
+  _ns
+  frontendConfig(k8sTarget, _ns)
+  backendConfig(k8sTarget, _ns)
+  dbCredentials(k8sTarget, _ns)
+  backendServiceAccount(k8sTarget, _ns)
+  frontendDeployment(k8sTarget, _ns)
+  backendDeployment(k8sTarget, _ns)
+  frontendService(k8sTarget, _ns)
+  backendService(k8sTarget, _ns)
 }
