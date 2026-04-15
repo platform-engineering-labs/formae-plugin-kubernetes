@@ -97,6 +97,27 @@ Before deploying, update the EKS context in `stage2-webapp.pkl`:
 ```pkl
 // Update this line with your actual cluster ARN or kubeconfig alias
 local eksContext = "eks-fullstack"   // or the full ARN
+
+// The target uses KubeconfigAuth for the two-stage flow:
+config = new k8s.Config {
+  hasLoadBalancer = false
+  auth = new k8s.KubeconfigAuth {
+    context = eksContext
+  }
+}
+```
+
+For the single-forma resolvable approach (`test-resolvable.pkl`), auth is wired directly:
+
+```pkl
+config = new k8s.Config {
+  hasLoadBalancer = false
+  auth = new k8s.EKSAuth {
+    endpoint = _eksCluster.res.endpoint
+    certificateAuthority = _eksCluster.res.certificateAuthorityData
+    clusterName = _eksCluster.res.name
+  }
+}
 ```
 
 Then deploy:

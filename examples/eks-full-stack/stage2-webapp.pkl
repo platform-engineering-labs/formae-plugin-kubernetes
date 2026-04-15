@@ -82,8 +82,10 @@ forma {
   new formae.Target {
     label = "\(appName)-eks-target"
     config = new k8s.Config {
-      context = eksContext
-      waitForLoadBalancer = false
+      hasLoadBalancer = false
+      auth = new k8s.KubeconfigAuth {
+        context = eksContext
+      }
     }
   }
 

@@ -55,7 +55,8 @@ forma {
     label = "ingress-nginx-target"
     namespace = "K8S"
     config = new k8s.Config {
-      waitForLoadBalancer = false
+      hasLoadBalancer = false
+      auth = new k8s.KubeconfigAuth {}
     }
   }
 
