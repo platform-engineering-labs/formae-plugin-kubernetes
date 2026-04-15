@@ -123,6 +123,8 @@ jobs:
             | grep -o '@[^[:space:]\\]*' \
             | head -1 \
             | sed 's/^@//')
+          # Hardcoded until k8s is added to the formae Makefile EXTERNAL_PLUGIN_REPOS
+          REF="${REF:-feat/msgpack-serialization}"
           if [ -n "$REF" ]; then
             echo "Formae Makefile pins ${PLUGIN_NAME} to ref: ${REF}"
             git fetch origin "${REF}"
@@ -204,6 +206,8 @@ jobs:
             | grep -o '@[^[:space:]\\]*' \
             | head -1 \
             | sed 's/^@//')
+          # Hardcoded until k8s is added to the formae Makefile EXTERNAL_PLUGIN_REPOS
+          REF="${REF:-feat/msgpack-serialization}"
           if [ -n "$REF" ]; then
             echo "Formae Makefile pins ${PLUGIN_NAME} to ref: ${REF}"
             git fetch origin "${REF}"
