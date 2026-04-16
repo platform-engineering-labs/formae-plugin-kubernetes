@@ -245,15 +245,12 @@ jobs:
       - name: Download formae
         run: |
           OS=$(uname | tr '[:upper:]' '[:lower:]')
-          ARCH=$(uname -m | tr -d '_')
-          VERSION=$(curl -s https://hub.platform.engineering/binaries/repo.json | \
-            jq -r "[.Packages[] | select(.Version | index(\"-\") | not) | select(.OsArch.OS == \"${OS}\" and .OsArch.Arch == \"${ARCH}\")][0].Version")
-          echo "Installing formae ${VERSION}..."
-          PKGNAME="formae@${VERSION}_${OS}-${ARCH}.tgz"
-          curl -fsSL "https://hub.platform.engineering/binaries/pkgs/${PKGNAME}" -o /tmp/formae.tgz
-          mkdir -p /tmp/formae && tar -xzf /tmp/formae.tgz -C /tmp/formae
-          FORMAE_BIN=$(find /tmp/formae -name formae -type f -executable | head -1)
-          echo "FORMAE_BINARY=${FORMAE_BIN}" >> "$GITHUB_ENV"
+          ARCH=$(uname -m | tr -d '_' | sed s/aarch64/arm64/)
+          INSTALL_DIR=$(mktemp -d)
+          curl -fsSL "https://hub.platform.engineering/get/binaries/${OS}-${ARCH}/pelmgr" -o "${INSTALL_DIR}/pelmgr"
+          chmod +x "${INSTALL_DIR}/pelmgr"
+          "${INSTALL_DIR}/pelmgr" --install-path "${INSTALL_DIR}" --yes install formae
+          echo "FORMAE_BINARY=${INSTALL_DIR}/bin/formae" >> "$GITHUB_ENV"
 
       - name: Run drift test
         run: make drift-test
