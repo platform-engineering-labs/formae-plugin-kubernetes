@@ -28,6 +28,45 @@ sed_inplace() {
     fi
 }
 
+# Sends a telemetry event to PostHog for tracking CI/dev binary downloads.
+# Gated on POSTHOG_API_KEY — silently no-ops when unset.
+formae_track_event() {
+  local api_key="${POSTHOG_API_KEY:-}"
+  if [[ -z "$api_key" ]]; then return; fi
+
+  local event="$1"; shift
+  local repo
+  repo=$(basename "$(git remote get-url origin 2>/dev/null)" .git 2>/dev/null || echo "unknown")
+
+  local payload
+  payload=$(jq -n \
+    --arg api_key "$api_key" \
+    --arg event "$event" \
+    --arg repo "$repo" \
+    --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg run_id "${GITHUB_RUN_ID:-}" \
+    '{
+      api_key: $api_key,
+      distinct_id: "formae-ci",
+      event: $event,
+      timestamp: $ts,
+      properties: {
+        "$process_person_profile": false,
+        repo: $repo,
+        ci_run_id: $run_id
+      }
+    }')
+
+  for kv in "$@"; do
+    local key="${kv%%=*}" val="${kv#*=}"
+    payload=$(echo "$payload" | jq --arg k "$key" --arg v "$val" '.properties[$k] = $v')
+  done
+
+  curl -sf -o /dev/null https://k.platform.engineering/capture/ \
+    -H "Content-Type: application/json" \
+    -d "$payload" || echo "[telemetry] event send failed (non-critical)" >&2 &
+}
+
 VERSION="${1:-latest}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -55,48 +94,47 @@ else
     echo "Using temp directory: ${INSTALL_DIR}"
     trap "rm -rf ${INSTALL_DIR}" EXIT
 
-    # Determine OS and architecture
+    # Determine OS and architecture for pelmgr download
     DETECTED_OS=$(uname | tr '[:upper:]' '[:lower:]')
-    DETECTED_ARCH=$(uname -m | tr -d '_')
+    DETECTED_ARCH=$(uname -m | tr -d '_' | sed s/aarch64/arm64/)
 
-    # Resolve version if "latest"
+    # Download pelmgr (the PEL package manager)
+    PELMGR="${INSTALL_DIR}/pelmgr"
+    echo "Downloading pelmgr..."
+    if ! curl -fsSL "https://hub.platform.engineering/get/binaries/${DETECTED_OS}-${DETECTED_ARCH}/pelmgr" -o "${PELMGR}"; then
+        echo "Error: Failed to download pelmgr"
+        exit 1
+    fi
+    chmod +x "${PELMGR}"
+
+    # Install formae via pelmgr
     if [[ "${VERSION}" == "latest" ]]; then
-        echo "Resolving latest version..."
-        VERSION=$(curl -s https://hub.platform.engineering/binaries/repo.json | \
-            jq -r "[.Packages[] | select(.Version | index(\"-\") | not) | select(.OsArch.OS == \"${DETECTED_OS}\" and .OsArch.Arch == \"${DETECTED_ARCH}\")][0].Version")
-        if [[ -z "${VERSION}" || "${VERSION}" == "null" ]]; then
-            echo "Error: Could not determine latest version for ${DETECTED_OS}-${DETECTED_ARCH}"
-            exit 1
-        fi
+        echo "Installing latest formae..."
+        "${PELMGR}" --install-path "${INSTALL_DIR}" --yes install formae
+    else
+        echo "Installing formae version ${VERSION}..."
+        "${PELMGR}" --install-path "${INSTALL_DIR}" --yes install "formae@${VERSION}"
     fi
 
-    echo "Downloading formae version ${VERSION}..."
-    PKGNAME="formae@${VERSION}_${DETECTED_OS}-${DETECTED_ARCH}.tgz"
-    DOWNLOAD_URL="https://hub.platform.engineering/binaries/pkgs/${PKGNAME}"
-
-    if ! curl -fsSL "${DOWNLOAD_URL}" -o "${INSTALL_DIR}/${PKGNAME}"; then
-        echo "Error: Failed to download ${DOWNLOAD_URL}"
+    FORMAE_BINARY="${INSTALL_DIR}/bin/formae"
+    if [[ ! -x "${FORMAE_BINARY}" ]]; then
+        echo "Error: formae binary not found at ${FORMAE_BINARY}"
+        find "${INSTALL_DIR}" -name "formae" -type f 2>/dev/null || ls -laR "${INSTALL_DIR}"
         exit 1
     fi
 
-    # Extract to install directory
-    echo "Extracting..."
-    tar -xzf "${INSTALL_DIR}/${PKGNAME}" -C "${INSTALL_DIR}"
-
-    # Find the formae binary
-    FORMAE_BINARY="${INSTALL_DIR}/formae/bin/formae"
-    if [[ ! -x "${FORMAE_BINARY}" ]]; then
-        if [[ -x "${INSTALL_DIR}/bin/formae" ]]; then
-            FORMAE_BINARY="${INSTALL_DIR}/bin/formae"
-        elif [[ -x "${INSTALL_DIR}/formae" ]]; then
-            FORMAE_BINARY="${INSTALL_DIR}/formae"
-        else
-            echo "Error: formae binary not found in ${INSTALL_DIR}"
-            find "${INSTALL_DIR}" -name "formae" -type f 2>/dev/null || ls -laR "${INSTALL_DIR}"
+    # Resolve VERSION from the installed binary (needed for PKL dependency updates)
+    if [[ "${VERSION}" == "latest" ]]; then
+        VERSION=$("${FORMAE_BINARY}" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+        if [[ -z "${VERSION}" ]]; then
+            echo "Error: Could not extract version from installed formae binary"
             exit 1
         fi
+        echo "Resolved latest to version: ${VERSION}"
     fi
 fi
+
+formae_track_event "ci_binary_download" "version=${VERSION}" "os=${DETECTED_OS:-$(uname | tr '[:upper:]' '[:lower:]')}" "arch=${DETECTED_ARCH:-$(uname -m | tr -d '_')}"
 
 echo ""
 echo "Using formae binary: ${FORMAE_BINARY}"

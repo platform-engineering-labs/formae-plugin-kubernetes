@@ -1,6 +1,6 @@
 module github.com/platform-engineering-labs/formae-plugin-k8s
 
-go 1.25.0
+go 1.26
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.20.0
@@ -10,8 +10,8 @@ require (
 	github.com/oracle/oci-go-sdk/v65 v65.112.0
 	github.com/ovh/go-ovh v1.9.0
 	github.com/platform-engineering-labs/formae/pkg/model v0.1.23
-	github.com/platform-engineering-labs/formae/pkg/plugin v0.1.23
-	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.1.42
+	github.com/platform-engineering-labs/formae/pkg/plugin v0.2.0
+	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.2.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/oauth2 v0.36.0
 	k8s.io/api v0.35.0
