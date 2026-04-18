@@ -9,7 +9,7 @@ version = "0.1.1"
 namespace = "K8S"
 description = "Kubernetes resource plugin for Formae"
 license = "Apache-2.0"
-minFormaeVersion = "0.82.0"
+minFormaeVersion = "0.84.0"
 
 output {
   renderer = new JsonRenderer {}
