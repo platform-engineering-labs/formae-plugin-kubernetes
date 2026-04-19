@@ -56,7 +56,7 @@ function publicRoute(properties: Dynamic?): route.Route = new route.Route {
   label = "eks-public-route"
   routeTableId = routeTable(properties).res.id
   destinationCidrBlock = "0.0.0.0/0"
-  gatewayId = igw(properties).res.id
+  gatewayId = attachIgw(properties).res.internetGatewayId
 }
 
 function subnetAssocs(properties: Dynamic?): Listing = new Listing {
