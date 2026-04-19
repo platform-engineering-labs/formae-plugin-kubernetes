@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/prov"
@@ -20,6 +21,13 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	v1coreac "k8s.io/client-go/applyconfigurations/core/v1"
 )
+
+// terminatingGracePeriod is how long we let a namespace stay in Terminating
+// phase before force-removing the `kubernetes` finalizer. Pods stuck on a
+// NotReady node (common on EKS AutoMode teardown) prevent K8s's own namespace
+// controller from completing deletion; without escalation the namespace hangs
+// forever and the formae destroy cascade-fails every downstream resource.
+const terminatingGracePeriod = 2 * time.Minute
 
 const ResourceTypeNamespace = "K8S::Core::Namespace"
 
@@ -183,6 +191,36 @@ func (n *Namespace) Status(ctx context.Context, request *resource.StatusRequest)
 		return nil, fmt.Errorf("failed to get namespace status: %w", err)
 	}
 
+	// Escalate a stuck Terminating namespace by clearing spec.finalizers.
+	// K8s's namespace controller reports ContentDeletionFailed when pods can't
+	// terminate (common on EKS AutoMode when the underlying node goes NotReady
+	// mid-teardown). Waiting forever cascades failures to downstream AWS
+	// resources.
+	if result.Status.Phase == v1.NamespaceTerminating && isContentDeletionFailed(result) && n.terminatingLongEnough(result) {
+		if err := n.forceRemoveFinalizers(ctx, result); err != nil {
+			// Log context but return InProgress so Formae keeps polling.
+			return &resource.StatusResult{
+				ProgressResult: &resource.ProgressResult{
+					Operation:       resource.OperationCheckStatus,
+					OperationStatus: resource.OperationStatusInProgress,
+					RequestID:       request.RequestID,
+					NativeID:        result.Name,
+					StatusMessage:   fmt.Sprintf("namespace stuck terminating; finalizer-clear attempt failed: %v", err),
+				},
+			}, nil
+		}
+		// Next Status poll will see NotFound and report success.
+		return &resource.StatusResult{
+			ProgressResult: &resource.ProgressResult{
+				Operation:       resource.OperationCheckStatus,
+				OperationStatus: resource.OperationStatusInProgress,
+				RequestID:       request.RequestID,
+				NativeID:        result.Name,
+				StatusMessage:   "cleared stuck finalizer; namespace deletion should complete",
+			},
+		}, nil
+	}
+
 	properties, err := prov.LiveState[v1coreac.NamespaceApplyConfiguration](result, "Namespace", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract namespace state: %w", err)
@@ -197,6 +235,42 @@ func (n *Namespace) Status(ctx context.Context, request *resource.StatusRequest)
 			ResourceProperties: properties,
 		},
 	}, nil
+}
+
+// isContentDeletionFailed reports whether K8s has given up on reclaiming
+// namespace content — typically pods left behind when a kubelet stops ack-ing
+// terminations.
+func isContentDeletionFailed(ns *v1.Namespace) bool {
+	for _, c := range ns.Status.Conditions {
+		if c.Type == v1.NamespaceDeletionContentFailure && c.Status == v1.ConditionTrue {
+			return true
+		}
+	}
+	return false
+}
+
+// terminatingLongEnough reports whether the namespace has been in Terminating
+// state long enough to warrant escalation. Uses deletionTimestamp as the
+// clock, so a freshly-deleted-but-slow namespace won't trigger.
+func (n *Namespace) terminatingLongEnough(ns *v1.Namespace) bool {
+	if ns.DeletionTimestamp == nil {
+		return false
+	}
+	return time.Since(ns.DeletionTimestamp.Time) >= terminatingGracePeriod
+}
+
+// forceRemoveFinalizers empties spec.finalizers via the /finalize subresource,
+// equivalent to `kubectl replace --raw /api/v1/namespaces/<name>/finalize`.
+// The `kubernetes` finalizer is owned by K8s itself; removing it unblocks
+// namespace deletion when the controller can't make progress.
+func (n *Namespace) forceRemoveFinalizers(ctx context.Context, ns *v1.Namespace) error {
+	if len(ns.Spec.Finalizers) == 0 {
+		return nil
+	}
+	patched := ns.DeepCopy()
+	patched.Spec.Finalizers = nil
+	_, err := n.Client.CoreV1().Namespaces().Finalize(ctx, patched, metav1.UpdateOptions{})
+	return err
 }
 
 func (n *Namespace) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
