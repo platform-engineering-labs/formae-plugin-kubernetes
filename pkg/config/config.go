@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -162,10 +163,16 @@ func (c *Config) buildKubeconfigConfig() (*rest.Config, error) {
 		overrides.CurrentContext = kc.Context
 	}
 
-	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+	cfg, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 		&clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfig},
 		overrides,
 	).ClientConfig()
+	if err != nil {
+		return nil, err
+	}
+	// Bound every request; matches the buildCloudConfig safety net.
+	cfg.Timeout = 30 * time.Second
+	return cfg, nil
 }
 
 func (c *Config) buildCloudConfig(providerFn func() (auth.AuthProvider, *CloudAuthConfig, error)) (*rest.Config, error) {
@@ -184,6 +191,11 @@ func (c *Config) buildCloudConfig(providerFn func() (auth.AuthProvider, *CloudAu
 		TLSClientConfig: rest.TLSClientConfig{
 			CAData: caData,
 		},
+		// Bound every request; without this, a silent apiserver or slow
+		// token refresh can wedge a CRUD call until formae's 40s-per-retry
+		// state-machine timeout elapses 11× and fails with
+		// PluginOperatorMissingInAction.
+		Timeout: 30 * time.Second,
 	}
 
 	// Suppress K8S API deprecation warnings
