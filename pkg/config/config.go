@@ -27,7 +27,6 @@ import (
 // Config holds the K8S plugin configuration extracted from target config.
 type Config struct {
 	DefaultNamespace string          `json:"DefaultNamespace,omitempty"`
-	HasLoadBalancer  *bool           `json:"HasLoadBalancer,omitempty"`
 	Auth             json.RawMessage `json:"Auth"`
 
 	// Parsed auth config — populated by FromTargetConfig
@@ -112,14 +111,6 @@ func (c *Config) EffectiveNamespace() string {
 		return c.DefaultNamespace
 	}
 	return "default"
-}
-
-// HasLoadBalancerController returns whether the cluster has a LB controller.
-func (c *Config) HasLoadBalancerController() bool {
-	if c.HasLoadBalancer == nil {
-		return true
-	}
-	return *c.HasLoadBalancer
 }
 
 // ToK8sConfig builds a rest.Config based on the auth strategy.

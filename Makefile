@@ -57,13 +57,6 @@ lint:
 verify-schema:
 	$(GO) run github.com/platform-engineering-labs/formae/pkg/plugin/testutil/cmd/verify-schema --namespace $(PLUGIN_NAMESPACE) ./schema/pkl
 
-## generate-schema: Regenerate PKL schemas from pkl-k8s via reflection
-## Uses tools/gen-schema/generator.pkl to introspect pkl-k8s types and
-## generate formae-compatible schemas in schema/pkl/.
-generate-schema:
-	@mkdir -p schema/pkl/core schema/pkl/apps schema/pkl/batch schema/pkl/networking schema/pkl/autoscaling schema/pkl/policy schema/pkl/rbac schema/pkl/storage schema/pkl/scheduling schema/pkl/admissionregistration schema/pkl/node schema/pkl/coordination schema/pkl/flowcontrol
-	pkl eval --project-dir tools/gen-schema --multiple-file-output-path schema/pkl/ tools/gen-schema/generator.pkl
-
 ## clean: Remove build artifacts
 clean:
 	rm -rf bin/ dist/

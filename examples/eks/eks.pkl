@@ -32,7 +32,6 @@ local _eksCluster = eks.eksCluster(properties)
 local _k8sTarget = new formae.Target {
   label = "k8s-target"
   config = new k8s.Config {
-    hasLoadBalancer = true
     auth = new k8s.EKSAuth {
       endpoint = _eksCluster.res.endpoint
       certificateAuthority = _eksCluster.res.certificateAuthorityData

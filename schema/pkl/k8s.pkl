@@ -22,12 +22,6 @@ open class Config {
   @formae.ConfigFieldHint { createOnly = false }
   hidden defaultNamespace: String?
 
-  /// Whether this cluster has a cloud load balancer controller.
-  /// Defaults to true (production/cloud clusters). Set to false for local
-  /// clusters without a LB controller (OrbStack, minikube, kind).
-  @formae.ConfigFieldHint { createOnly = false }
-  hidden hasLoadBalancer: Boolean?
-
   /// Authentication strategy. Determines how the plugin connects to the
   /// K8S API server.
   @formae.ConfigFieldHint { createOnly = true }
@@ -35,7 +29,6 @@ open class Config {
 
   fixed Type: String = type
   fixed DefaultNamespace: String? = defaultNamespace
-  fixed HasLoadBalancer: Boolean? = hasLoadBalancer
   fixed Auth: Auth = auth
 }
 

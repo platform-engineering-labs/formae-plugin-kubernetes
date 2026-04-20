@@ -73,7 +73,7 @@ func (svc *Service) Create(ctx context.Context, request *resource.CreateRequest)
 	return &resource.CreateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCreate,
-			OperationStatus:    svc.operationStatus(result),
+			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          fmt.Sprintf("%d", result.Generation),
 			StatusMessage:      svc.statusMessage(result),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
@@ -141,7 +141,7 @@ func (svc *Service) Update(ctx context.Context, request *resource.UpdateRequest)
 	return &resource.UpdateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationUpdate,
-			OperationStatus:    svc.operationStatus(result),
+			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          result.ResourceVersion,
 			StatusMessage:      svc.statusMessage(result),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
@@ -197,7 +197,7 @@ func (svc *Service) Status(ctx context.Context, request *resource.StatusRequest)
 	return &resource.StatusResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCheckStatus,
-			OperationStatus:    svc.operationStatus(result),
+			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          request.RequestID,
 			StatusMessage:      svc.statusMessage(result),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
@@ -227,24 +227,11 @@ func (svc *Service) List(ctx context.Context, request *resource.ListRequest) (*r
 	}, nil
 }
 
-// operationStatus maps Service state to Formae OperationStatus.
-// When WaitForLoadBalancer is enabled, LoadBalancer services report InProgress
-// until an external IP is assigned. Otherwise returns Success immediately.
-func (svc *Service) operationStatus(s *v1.Service) resource.OperationStatus {
-	if svc.Config.HasLoadBalancerController() && s.Spec.Type == v1.ServiceTypeLoadBalancer {
-		if len(s.Status.LoadBalancer.Ingress) == 0 {
-			return resource.OperationStatusInProgress
-		}
-	}
-	return resource.OperationStatusSuccess
-}
-
-// statusMessage builds a status message from Service state.
+// statusMessage builds a human-readable message from Service state.
+// The returned message is only rendered by formae for non-Success states,
+// which Service never produces — it is kept for logging/observability.
 func (svc *Service) statusMessage(s *v1.Service) string {
-	if s.Spec.Type == v1.ServiceTypeLoadBalancer {
-		if len(s.Status.LoadBalancer.Ingress) == 0 {
-			return "waiting for load balancer IP"
-		}
+	if s.Spec.Type == v1.ServiceTypeLoadBalancer && len(s.Status.LoadBalancer.Ingress) > 0 {
 		ingress := s.Status.LoadBalancer.Ingress[0]
 		if ingress.IP != "" {
 			return fmt.Sprintf("load balancer IP: %s", ingress.IP)

@@ -81,7 +81,7 @@ func TestIngressCRUDLifecycle(t *testing.T) {
 				},
 			})
 		},
-		// WaitForLoadBalancer=false, so always Success
+		// LoadBalancerTimeoutSeconds unset, so always Success
 		ExpectedCreateStatus: resource.OperationStatusSuccess,
 		ExpectedFinalStatus:  resource.OperationStatusSuccess,
 		StatusTimeout:        10 * time.Second,

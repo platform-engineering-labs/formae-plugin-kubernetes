@@ -73,7 +73,7 @@ func (ing *Ingress) Create(ctx context.Context, request *resource.CreateRequest)
 	return &resource.CreateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCreate,
-			OperationStatus:    ing.operationStatus(result),
+			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          fmt.Sprintf("%d", result.Generation),
 			StatusMessage:      ing.statusMessage(result),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
@@ -141,7 +141,7 @@ func (ing *Ingress) Update(ctx context.Context, request *resource.UpdateRequest)
 	return &resource.UpdateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationUpdate,
-			OperationStatus:    ing.operationStatus(result),
+			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          result.ResourceVersion,
 			StatusMessage:      ing.statusMessage(result),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
@@ -198,7 +198,7 @@ func (ing *Ingress) Status(ctx context.Context, request *resource.StatusRequest)
 	return &resource.StatusResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCheckStatus,
-			OperationStatus:    ing.operationStatus(result),
+			OperationStatus:    resource.OperationStatusSuccess,
 			RequestID:          request.RequestID,
 			StatusMessage:      ing.statusMessage(result),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
@@ -229,28 +229,18 @@ func (ing *Ingress) List(ctx context.Context, request *resource.ListRequest) (*r
 }
 
 
-// operationStatus maps Ingress state to Formae OperationStatus.
-// When WaitForLoadBalancer is enabled, reports InProgress until a load balancer
-// address is assigned. Otherwise returns Success immediately (suitable for
-// clusters without an ingress controller).
-func (ing *Ingress) operationStatus(i *networkingv1.Ingress) resource.OperationStatus {
-	if ing.Config.HasLoadBalancerController() && len(i.Status.LoadBalancer.Ingress) == 0 {
-		return resource.OperationStatusInProgress
-	}
-	return resource.OperationStatusSuccess
-}
-
-// statusMessage builds a status message from Ingress state.
+// statusMessage builds a human-readable message from Ingress state.
+// The returned message is only rendered by formae for non-Success states,
+// which Ingress never produces — it is kept for logging/observability.
 func (ing *Ingress) statusMessage(i *networkingv1.Ingress) string {
-	if len(i.Status.LoadBalancer.Ingress) == 0 {
-		return "waiting for load balancer address"
-	}
-	lbIngress := i.Status.LoadBalancer.Ingress[0]
-	if lbIngress.IP != "" {
-		return fmt.Sprintf("load balancer IP: %s", lbIngress.IP)
-	}
-	if lbIngress.Hostname != "" {
-		return fmt.Sprintf("load balancer hostname: %s", lbIngress.Hostname)
+	if len(i.Status.LoadBalancer.Ingress) > 0 {
+		lb := i.Status.LoadBalancer.Ingress[0]
+		if lb.IP != "" {
+			return fmt.Sprintf("load balancer IP: %s", lb.IP)
+		}
+		if lb.Hostname != "" {
+			return fmt.Sprintf("load balancer hostname: %s", lb.Hostname)
+		}
 	}
 	return "load balancer assigned"
 }

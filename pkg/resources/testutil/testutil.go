@@ -50,7 +50,6 @@ func SetupEnv(t *testing.T) *TestEnv {
 
 	targetJSON := fmt.Sprintf(`{
 		"DefaultNamespace": %q,
-		"HasLoadBalancer": false,
 		"Auth": {"Type": "Kubeconfig", "Context": "orbstack"}
 	}`, ns)
 	cfg, err := config.FromTargetConfig([]byte(targetJSON))
