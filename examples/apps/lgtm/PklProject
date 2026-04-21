@@ -1,0 +1,15 @@
+amends "pkl:Project"
+
+package {
+  name = "lgtm"
+  baseUri = "package://hub.platform.engineering/plugins/k8s/examples/apps/lgtm"
+  version = "0.1.0"
+  packageZipUrl = "https://hub.platform.engineering/plugins/k8s/examples/apps/lgtm@0.1.0.zip"
+}
+
+dependencies {
+  ["formae"] {
+    uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.84.0"
+  }
+  ["k8s"] = import("../../../schema/pkl/PklProject")
+}

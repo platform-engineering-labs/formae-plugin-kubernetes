@@ -1,0 +1,50 @@
+// Deploy the full LGTM observability stack on OrbStack (or any cluster
+// reachable via kubeconfig).
+//
+// Prereqs:
+//   - OrbStack with Kubernetes enabled (`orb config set k8s.enable true`)
+//   - ~4 CPU / 8Gi free — 25+ pods run as part of the stack
+//
+// Deploy:
+//   formae apply --mode reconcile --yes --watch examples/apps/lgtm/example-orbstack.pkl
+//
+// Access Grafana (LoadBalancer IP from OrbStack):
+//   kubectl -n observability get svc grafana -o wide
+//   # or port-forward: kubectl -n observability port-forward svc/grafana 3000:80
+//   open http://localhost:3000   # anonymous Admin
+//
+// MinIO console:
+//   kubectl -n observability port-forward svc/minio-console 9001
+//   open http://localhost:9001   # minioadmin / minioadmin-change-me
+//
+// Teardown:
+//   formae destroy --yes examples/apps/lgtm/example-orbstack.pkl
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/k8s.pkl" as k8s
+import "./lgtm.pkl" as lgtm
+
+// Toggle to `false` once you point real workloads at the stack; the three
+// telemetrygen Deployments will be skipped so dashboards show only genuine
+// traffic.
+local enableDemoTraffic = true
+
+local _k8sTarget = new formae.Target {
+  label = "lgtm-target"
+  namespace = "K8S"
+  config = new k8s.Config {
+    auth = new k8s.KubeconfigAuth {}
+  }
+}
+
+forma {
+  new formae.Stack {
+    label = "lgtm-stack"
+    description = "LGTM observability stack"
+  }
+
+  _k8sTarget
+
+  for (r in lgtm.allResources(_k8sTarget, enableDemoTraffic)) { r }
+}

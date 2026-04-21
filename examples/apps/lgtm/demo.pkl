@@ -1,0 +1,70 @@
+// telemetrygen — synthetic traffic producer. Three Deployments (logs,
+// metrics, traces) keep the LGTM dashboards populated.
+
+import "@formae/formae.pkl"
+import "@k8s/core/Namespace.pkl" as ns
+import "@k8s/apps/Deployment.pkl" as dep
+import "@k8s/k8s.pkl" as k8s
+
+local imageRef = "ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:latest"
+
+local commonLabels = new Mapping {
+  ["app.kubernetes.io/part-of"] = "lgtm"
+  ["app.kubernetes.io/name"] = "telemetrygen"
+  ["job"] = "telemetrygen"
+  ["managed-by"] = "formae"
+}
+
+function generator(
+  k8sTarget: formae.Target,
+  appNs: ns.Namespace,
+  nsName: String,
+  signal: String
+): dep.Deployment =
+  new dep.Deployment {
+    target = k8sTarget.res
+    label = "lgtm-telemetrygen-\(signal)"
+    metadata = new k8s.ObjectMeta {
+      name = "telemetrygen-\(signal)"
+      namespace = appNs.res.name
+      labels = (commonLabels) { ["signal"] = signal }
+    }
+    spec = new dep.DeploymentSpec {
+      replicas = 1
+      selector = new k8s.LabelSelector {
+        matchLabels = (commonLabels) { ["signal"] = signal }
+      }
+      template = new k8s.PodTemplateSpec {
+        metadata = new k8s.ObjectMeta {
+          name = "telemetrygen-\(signal)"
+          labels = (commonLabels) { ["signal"] = signal }
+        }
+        spec = new k8s.PodSpec {
+          containers = new Listing {
+            new k8s.Container {
+              name = "telemetrygen"
+              image = imageRef
+              args = new Listing {
+                signal
+                "--otlp-endpoint=otel-gateway.\(nsName).svc.cluster.local:4317"
+                "--otlp-insecure"
+                "--rate=1"
+                "--duration=168h"
+                "--service=telemetrygen"
+              }
+              resources = new k8s.ResourceRequirements {
+                requests = new Mapping { ["cpu"] = "10m"; ["memory"] = "32Mi" }
+                limits = new Mapping { ["cpu"] = "100m"; ["memory"] = "64Mi" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+function allResources(k8sTarget: formae.Target, appNs: ns.Namespace, nsName: String) = new Listing {
+  generator(k8sTarget, appNs, nsName, "logs")
+  generator(k8sTarget, appNs, nsName, "metrics")
+  generator(k8sTarget, appNs, nsName, "traces")
+}

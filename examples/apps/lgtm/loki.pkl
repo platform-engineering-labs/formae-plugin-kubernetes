@@ -1,0 +1,232 @@
+// Loki Simple Scalable — write/read/backend Deployments all sharing one
+// ConfigMap. Each Deployment differs only in the -target flag. Memberlist
+// headless Service forms the hash ring across all pods.
+
+import "@formae/formae.pkl"
+import "@k8s/core/Namespace.pkl" as ns
+import "@k8s/core/ConfigMap.pkl" as cm
+import "@k8s/core/Service.pkl" as svc
+import "@k8s/apps/Deployment.pkl" as dep
+import "@k8s/k8s.pkl" as k8s
+
+local appName = "loki"
+local imageRef = "grafana/loki:3.3.2"
+local configName = "\(appName)-config"
+local memberlistName = "\(appName)-memberlist"
+local httpPort = 3100
+local grpcPort = 9095
+local memberlistPort = 7946
+
+local commonLabels = new Mapping {
+  ["app.kubernetes.io/part-of"] = "lgtm"
+  ["app.kubernetes.io/name"] = appName
+  ["managed-by"] = "formae"
+}
+
+function lokiConfig(
+  k8sTarget: formae.Target,
+  appNs: ns.Namespace,
+  nsName: String,
+  minioEndpoint: String,
+  bucketName: String
+): cm.ConfigMap =
+  new cm.ConfigMap {
+    target = k8sTarget.res
+    label = "lgtm-loki-config"
+    metadata = new k8s.ObjectMeta {
+      name = configName
+      namespace = appNs.res.name
+      labels = commonLabels
+    }
+    data = new Mapping {
+      ["config-yaml"] = new Listing {
+        "auth_enabled: false"
+        "server:"
+        "  http_listen_port: \(httpPort)"
+        "  grpc_listen_port: \(grpcPort)"
+        "common:"
+        "  path_prefix: /var/loki"
+        "  replication_factor: 1"
+        "  compactor_address: http://loki-backend.\(nsName).svc.cluster.local:\(httpPort)"
+        "  compactor_grpc_address: loki-backend.\(nsName).svc.cluster.local:\(grpcPort)"
+        "  ring:"
+        "    kvstore:"
+        "      store: memberlist"
+        "memberlist:"
+        "  join_members:"
+        "    - \(memberlistName).\(nsName).svc.cluster.local:\(memberlistPort)"
+        "schema_config:"
+        "  configs:"
+        "    - from: 2024-01-01"
+        "      store: tsdb"
+        "      object_store: s3"
+        "      schema: v13"
+        "      index:"
+        "        prefix: loki_index_"
+        "        period: 24h"
+        "storage_config:"
+        "  tsdb_shipper:"
+        "    active_index_directory: /var/loki/index"
+        "    cache_location: /var/loki/index_cache"
+        "  aws:"
+        "    s3: http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@\(minioEndpoint)/\(bucketName)"
+        "    s3forcepathstyle: true"
+        "compactor:"
+        "  working_directory: /var/loki/compactor"
+        "  compaction_interval: 10m"
+        "ruler:"
+        "  storage:"
+        "    type: local"
+        "    local:"
+        "      directory: /var/loki/rules"
+        "limits_config:"
+        "  allow_structured_metadata: true"
+      }.join("\n")
+    }
+  }
+
+function lokiMemberlistService(k8sTarget: formae.Target, appNs: ns.Namespace): svc.Service =
+  new svc.Service {
+    target = k8sTarget.res
+    label = "lgtm-loki-memberlist"
+    metadata = new k8s.ObjectMeta {
+      name = memberlistName
+      namespace = appNs.res.name
+      labels = commonLabels
+    }
+    spec = new svc.ServiceSpec {
+      clusterIP = "None"
+      publishNotReadyAddresses = true
+      selector = commonLabels
+      ports = new Listing {
+        new svc.ServicePort { name = "memberlist"; port = memberlistPort; targetPort = memberlistPort }
+      }
+    }
+  }
+
+function tierDeployment(
+  k8sTarget: formae.Target,
+  appNs: ns.Namespace,
+  role: String,
+  replicaCount: Int,
+  targets: String,
+  credsSecret: String
+): dep.Deployment =
+  new dep.Deployment {
+    target = k8sTarget.res
+    label = "lgtm-loki-\(role)"
+    metadata = new k8s.ObjectMeta {
+      name = "\(appName)-\(role)"
+      namespace = appNs.res.name
+      labels = (commonLabels) { ["app.kubernetes.io/component"] = role }
+    }
+    spec = new dep.DeploymentSpec {
+      replicas = replicaCount
+      selector = new k8s.LabelSelector {
+        matchLabels = (commonLabels) { ["app.kubernetes.io/component"] = role }
+      }
+      template = new k8s.PodTemplateSpec {
+        metadata = new k8s.ObjectMeta {
+          name = "\(appName)-\(role)"
+          labels = (commonLabels) { ["app.kubernetes.io/component"] = role }
+        }
+        spec = new k8s.PodSpec {
+          containers = new Listing {
+            new k8s.Container {
+              name = appName
+              image = imageRef
+              args = new Listing {
+                "-config.file=/etc/loki/config.yaml"
+                "-config.expand-env=true"
+                "-target=\(targets)"
+              }
+              env = new Listing {
+                new k8s.EnvVar {
+                  name = "MINIO_ROOT_USER"
+                  valueFrom = new k8s.EnvVarSource {
+                    secretKeyRef = new k8s.SecretKeySelector { name = credsSecret; key = "MINIO_ROOT_USER" }
+                  }
+                }
+                new k8s.EnvVar {
+                  name = "MINIO_ROOT_PASSWORD"
+                  valueFrom = new k8s.EnvVarSource {
+                    secretKeyRef = new k8s.SecretKeySelector { name = credsSecret; key = "MINIO_ROOT_PASSWORD" }
+                  }
+                }
+              }
+              ports = new Listing {
+                new k8s.ContainerPort { name = "http"; containerPort = httpPort }
+                new k8s.ContainerPort { name = "grpc"; containerPort = grpcPort }
+                new k8s.ContainerPort { name = "memberlist"; containerPort = memberlistPort }
+              }
+              volumeMounts = new Listing {
+                new k8s.VolumeMount { name = "config"; mountPath = "/etc/loki"; readOnly = true }
+                new k8s.VolumeMount { name = "data"; mountPath = "/var/loki" }
+              }
+              resources = new k8s.ResourceRequirements {
+                requests = new Mapping { ["cpu"] = "50m"; ["memory"] = "128Mi" }
+                limits = new Mapping { ["cpu"] = "500m"; ["memory"] = "512Mi" }
+              }
+            }
+          }
+          volumes = new Listing {
+            new k8s.Volume {
+              name = "config"
+              configMap = new k8s.ConfigMapVolumeSource {
+                name = configName
+                items = new Listing {
+                  new k8s.KeyToPath { key = "config-yaml"; path = "config.yaml" }
+                }
+              }
+            }
+            new k8s.Volume {
+              name = "data"
+              emptyDir = new k8s.EmptyDirVolumeSource {}
+            }
+          }
+        }
+      }
+    }
+  }
+
+function tierService(k8sTarget: formae.Target, appNs: ns.Namespace, role: String): svc.Service =
+  new svc.Service {
+    target = k8sTarget.res
+    label = "lgtm-loki-\(role)-svc"
+    metadata = new k8s.ObjectMeta {
+      name = "\(appName)-\(role)"
+      namespace = appNs.res.name
+      labels = (commonLabels) { ["app.kubernetes.io/component"] = role }
+    }
+    spec = new svc.ServiceSpec {
+      selector = (commonLabels) { ["app.kubernetes.io/component"] = role }
+      ports = new Listing {
+        new svc.ServicePort { name = "http"; port = httpPort; targetPort = httpPort }
+        new svc.ServicePort { name = "grpc"; port = grpcPort; targetPort = grpcPort }
+      }
+    }
+  }
+
+function allResources(
+  k8sTarget: formae.Target,
+  appNs: ns.Namespace,
+  nsName: String,
+  credsSecret: String,
+  minioEndpoint: String,
+  bucketName: String
+) = new Listing {
+  lokiConfig(k8sTarget, appNs, nsName, minioEndpoint, bucketName)
+  lokiMemberlistService(k8sTarget, appNs)
+
+  // Loki's built-in Simple Scalable meta-targets bundle the right
+  // components per tier (read includes query-scheduler, backend includes
+  // compactor + index-gateway + ruler, write includes ingester+distributor).
+  tierDeployment(k8sTarget, appNs, "write",   2, "write",   credsSecret)
+  tierService(k8sTarget, appNs, "write")
+
+  tierDeployment(k8sTarget, appNs, "read",    2, "read",    credsSecret)
+  tierService(k8sTarget, appNs, "read")
+
+  tierDeployment(k8sTarget, appNs, "backend", 1, "backend", credsSecret)
+  tierService(k8sTarget, appNs, "backend")
+}

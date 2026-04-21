@@ -1,0 +1,228 @@
+// Grafana with pre-provisioned datasources + a demo dashboard.
+
+import "@formae/formae.pkl"
+import "@k8s/core/Namespace.pkl" as ns
+import "@k8s/core/ConfigMap.pkl" as cm
+import "@k8s/core/Service.pkl" as svc
+import "@k8s/apps/Deployment.pkl" as dep
+import "@k8s/k8s.pkl" as k8s
+
+local appName = "grafana"
+local imageRef = "grafana/grafana:11.4.0"
+
+local grafanaLabels = new Mapping {
+  ["app.kubernetes.io/part-of"] = "lgtm"
+  ["app.kubernetes.io/name"] = appName
+  ["managed-by"] = "formae"
+}
+
+// Keys use `-` instead of `.` — Formae's Mapping handling expands dotted keys
+// into nested objects. We use KeyToPath below to rename on-disk.
+function datasourcesConfig(k8sTarget: formae.Target, appNs: ns.Namespace, nsName: String): cm.ConfigMap =
+  new cm.ConfigMap {
+    target = k8sTarget.res
+    label = "lgtm-grafana-datasources"
+    metadata = new k8s.ObjectMeta {
+      name = "grafana-datasources"
+      namespace = appNs.res.name
+      labels = grafanaLabels
+    }
+    data = new Mapping {
+      ["datasources-yaml"] = new Listing {
+        "apiVersion: 1"
+        "datasources:"
+        "  - name: Loki"
+        "    type: loki"
+        "    uid: loki"
+        "    url: http://loki-read.\(nsName).svc.cluster.local:3100"
+        "    access: proxy"
+        "  - name: Tempo"
+        "    type: tempo"
+        "    uid: tempo"
+        "    url: http://tempo-read.\(nsName).svc.cluster.local:3200"
+        "    access: proxy"
+        "  - name: Mimir"
+        "    type: prometheus"
+        "    uid: mimir"
+        "    url: http://mimir-read.\(nsName).svc.cluster.local:8080/prometheus"
+        "    access: proxy"
+        "    isDefault: true"
+      }.join("\n")
+    }
+  }
+
+function dashboardProviderConfig(k8sTarget: formae.Target, appNs: ns.Namespace): cm.ConfigMap =
+  new cm.ConfigMap {
+    target = k8sTarget.res
+    label = "lgtm-grafana-dashprov"
+    metadata = new k8s.ObjectMeta {
+      name = "grafana-dashboard-provider"
+      namespace = appNs.res.name
+      labels = grafanaLabels
+    }
+    data = new Mapping {
+      ["dashboards-yaml"] = new Listing {
+        "apiVersion: 1"
+        "providers:"
+        "  - name: 'default'"
+        "    orgId: 1"
+        "    folder: ''"
+        "    type: file"
+        "    disableDeletion: false"
+        "    updateIntervalSeconds: 30"
+        "    allowUiUpdates: true"
+        "    options:"
+        "      path: /var/lib/grafana/dashboards"
+      }.join("\n")
+    }
+  }
+
+function demoDashboardConfig(k8sTarget: formae.Target, appNs: ns.Namespace): cm.ConfigMap =
+  new cm.ConfigMap {
+    target = k8sTarget.res
+    label = "lgtm-grafana-dashboard"
+    metadata = new k8s.ObjectMeta {
+      name = "grafana-demo-dashboard"
+      namespace = appNs.res.name
+      labels = grafanaLabels
+    }
+    data = new Mapping {
+      ["lgtm-demo-json"] = #"""
+        {
+          "title": "LGTM Demo",
+          "uid": "lgtm-demo",
+          "schemaVersion": 39,
+          "timezone": "browser",
+          "panels": [
+            {
+              "type": "logs",
+              "title": "Logs (Loki)",
+              "datasource": { "type": "loki", "uid": "loki" },
+              "targets": [{ "expr": "{service_name=\"telemetrygen\"}" }],
+              "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 }
+            },
+            {
+              "type": "timeseries",
+              "title": "Metrics (Mimir)",
+              "datasource": { "type": "prometheus", "uid": "mimir" },
+              "targets": [{ "expr": "rate({__name__=~\"gen_.+\"}[1m])" }],
+              "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 }
+            },
+            {
+              "type": "traces",
+              "title": "Traces (Tempo)",
+              "datasource": { "type": "tempo", "uid": "tempo" },
+              "targets": [{ "query": "{ resource.service.name=\"telemetrygen\" }" }],
+              "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 }
+            }
+          ]
+        }
+        """#
+    }
+  }
+
+function grafanaDeployment(k8sTarget: formae.Target, appNs: ns.Namespace): dep.Deployment =
+  new dep.Deployment {
+    target = k8sTarget.res
+    label = "lgtm-grafana"
+    metadata = new k8s.ObjectMeta { name = appName; namespace = appNs.res.name; labels = grafanaLabels }
+    spec = new dep.DeploymentSpec {
+      replicas = 2
+      selector = new k8s.LabelSelector { matchLabels = grafanaLabels }
+      template = new k8s.PodTemplateSpec {
+        metadata = new k8s.ObjectMeta { name = appName; labels = grafanaLabels }
+        spec = new k8s.PodSpec {
+          containers = new Listing {
+            new k8s.Container {
+              name = "grafana"
+              image = imageRef
+              env = new Listing {
+                new k8s.EnvVar { name = "GF_AUTH_ANONYMOUS_ENABLED"; value = "true" }
+                new k8s.EnvVar { name = "GF_AUTH_ANONYMOUS_ORG_ROLE"; value = "Admin" }
+                new k8s.EnvVar { name = "GF_AUTH_DISABLE_LOGIN_FORM"; value = "true" }
+              }
+              ports = new Listing {
+                new k8s.ContainerPort { name = "http"; containerPort = 3000 }
+              }
+              volumeMounts = new Listing {
+                new k8s.VolumeMount {
+                  name = "datasources"
+                  mountPath = "/etc/grafana/provisioning/datasources"
+                  readOnly = true
+                }
+                new k8s.VolumeMount {
+                  name = "dashboard-provider"
+                  mountPath = "/etc/grafana/provisioning/dashboards"
+                  readOnly = true
+                }
+                new k8s.VolumeMount {
+                  name = "demo-dashboard"
+                  mountPath = "/var/lib/grafana/dashboards"
+                  readOnly = true
+                }
+              }
+              resources = new k8s.ResourceRequirements {
+                requests = new Mapping { ["cpu"] = "100m"; ["memory"] = "256Mi" }
+                limits = new Mapping { ["cpu"] = "500m"; ["memory"] = "512Mi" }
+              }
+            }
+          }
+          volumes = new Listing {
+            new k8s.Volume {
+              name = "datasources"
+              configMap = new k8s.ConfigMapVolumeSource {
+                name = "grafana-datasources"
+                items = new Listing {
+                  new k8s.KeyToPath { key = "datasources-yaml"; path = "datasources.yaml" }
+                }
+              }
+            }
+            new k8s.Volume {
+              name = "dashboard-provider"
+              configMap = new k8s.ConfigMapVolumeSource {
+                name = "grafana-dashboard-provider"
+                items = new Listing {
+                  new k8s.KeyToPath { key = "dashboards-yaml"; path = "dashboards.yaml" }
+                }
+              }
+            }
+            new k8s.Volume {
+              name = "demo-dashboard"
+              configMap = new k8s.ConfigMapVolumeSource {
+                name = "grafana-demo-dashboard"
+                items = new Listing {
+                  new k8s.KeyToPath { key = "lgtm-demo-json"; path = "lgtm-demo.json" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+function grafanaService(k8sTarget: formae.Target, appNs: ns.Namespace): svc.Service =
+  new svc.Service {
+    target = k8sTarget.res
+    label = "lgtm-grafana-svc"
+    metadata = new k8s.ObjectMeta {
+      name = appName
+      namespace = appNs.res.name
+      labels = grafanaLabels
+    }
+    spec = new svc.ServiceSpec {
+      type = "LoadBalancer"
+      selector = grafanaLabels
+      ports = new Listing {
+        new svc.ServicePort { name = "http"; port = 80; targetPort = 3000 }
+      }
+    }
+  }
+
+function allResources(k8sTarget: formae.Target, appNs: ns.Namespace, nsName: String) = new Listing {
+  datasourcesConfig(k8sTarget, appNs, nsName)
+  dashboardProviderConfig(k8sTarget, appNs)
+  demoDashboardConfig(k8sTarget, appNs)
+  grafanaDeployment(k8sTarget, appNs)
+  grafanaService(k8sTarget, appNs)
+}
