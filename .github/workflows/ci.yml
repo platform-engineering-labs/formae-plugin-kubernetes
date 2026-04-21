@@ -224,6 +224,8 @@ jobs:
     needs: [build, test-unit, lint, pkl-validate, verify-schema, conformance-tests, chart-conformance-tests]
     runs-on: ubuntu-latest
     if: success() && github.event_name == 'push'
+    permissions:
+      actions: read
     steps:
       - name: Check if previous run failed
         id: check_previous
