@@ -1,0 +1,147 @@
+import "@formae/formae.pkl"
+import "@oci/oci.pkl"
+import "@oci/core/vcn.pkl"
+import "@oci/core/securitylist.pkl"
+
+import "./vars.pkl"
+
+class SecurityResources {
+  compartmentId: String
+  projectName: String
+  serviceLbSubnetCidr: String
+  workerNodeSubnetCidr: String
+  vcn: vcn.VCN
+
+  securityList: securitylist.SecurityList = new securitylist.SecurityList {
+    label = "oke-security-list"
+    compartmentId = outer.compartmentId
+    vcnId = vcn.res.id
+    displayName = projectName + "-security-list"
+
+    ingressSecurityRules {
+      // Allow worker nodes to communicate with each other
+      new securitylist.IngressSecurityRule {
+        description = "Allow pods on one worker node to communicate with pods on other worker nodes"
+        protocol = "all"
+        source = workerNodeSubnetCidr
+        sourceType = "CIDR_BLOCK"
+      }
+      // Path discovery from control plane
+      new securitylist.IngressSecurityRule {
+        description = "Path discovery from Kubernetes Control Plane"
+        protocol = "1"
+        source = serviceLbSubnetCidr
+        sourceType = "CIDR_BLOCK"
+        icmpOptions = new securitylist.IcmpOptions {
+          type = 3
+          code = 4
+        }
+      }
+      // TCP access from control plane
+      new securitylist.IngressSecurityRule {
+        description = "TCP access from Kubernetes Control Plane"
+        protocol = "6"
+        source = serviceLbSubnetCidr
+        sourceType = "CIDR_BLOCK"
+      }
+      // SSH access (optional - for debugging)
+      new securitylist.IngressSecurityRule {
+        description = "Inbound SSH traffic to worker nodes"
+        protocol = "6"
+        source = "0.0.0.0/0"
+        sourceType = "CIDR_BLOCK"
+        tcpOptions = new securitylist.TcpOptions {
+          destinationPortRange = new securitylist.PortRange { min = 22; max = 22 }
+        }
+      }
+      // External access to Kubernetes API endpoint
+      new securitylist.IngressSecurityRule {
+        description = "External access to Kubernetes API endpoint"
+        protocol = "6"
+        source = "0.0.0.0/0"
+        sourceType = "CIDR_BLOCK"
+        tcpOptions = new securitylist.TcpOptions {
+          destinationPortRange = new securitylist.PortRange { min = 6443; max = 6443 }
+        }
+      }
+    }
+
+    egressSecurityRules {
+      // Allow worker nodes to communicate with each other
+      new securitylist.EgressSecurityRule {
+        description = "Allow pods on one worker node to communicate with pods on other worker nodes"
+        protocol = "all"
+        destination = workerNodeSubnetCidr
+        destinationType = "CIDR_BLOCK"
+      }
+      // Access to Kubernetes API Endpoint
+      new securitylist.EgressSecurityRule {
+        description = "Access to Kubernetes API Endpoint"
+        protocol = "6"
+        destination = serviceLbSubnetCidr
+        destinationType = "CIDR_BLOCK"
+        tcpOptions = new securitylist.TcpOptions {
+          destinationPortRange = new securitylist.PortRange { min = 6443; max = 6443 }
+        }
+      }
+      // Worker to control plane communication
+      new securitylist.EgressSecurityRule {
+        description = "Kubernetes worker to control plane communication"
+        protocol = "6"
+        destination = serviceLbSubnetCidr
+        destinationType = "CIDR_BLOCK"
+        tcpOptions = new securitylist.TcpOptions {
+          destinationPortRange = new securitylist.PortRange { min = 12250; max = 12250 }
+        }
+      }
+      // Path discovery to control plane
+      new securitylist.EgressSecurityRule {
+        description = "Path discovery"
+        protocol = "1"
+        destination = serviceLbSubnetCidr
+        destinationType = "CIDR_BLOCK"
+        icmpOptions = new securitylist.IcmpOptions {
+          type = 3
+          code = 4
+        }
+      }
+      // Access to OCI services (critical for node registration)
+      new securitylist.EgressSecurityRule {
+        description = "Allow nodes to communicate with OKE to ensure correct start-up and continued functioning"
+        protocol = "6"
+        destination = "all-ord-services-in-oracle-services-network"
+        destinationType = "SERVICE_CIDR_BLOCK"
+        tcpOptions = new securitylist.TcpOptions {
+          destinationPortRange = new securitylist.PortRange { min = 443; max = 443 }
+        }
+      }
+      // ICMP to internet (path discovery)
+      new securitylist.EgressSecurityRule {
+        description = "ICMP Access from Kubernetes Control Plane"
+        protocol = "1"
+        destination = "0.0.0.0/0"
+        destinationType = "CIDR_BLOCK"
+        icmpOptions = new securitylist.IcmpOptions {
+          type = 3
+          code = 4
+        }
+      }
+      // Worker nodes access to internet
+      new securitylist.EgressSecurityRule {
+        description = "Worker Nodes access to Internet"
+        protocol = "all"
+        destination = "0.0.0.0/0"
+        destinationType = "CIDR_BLOCK"
+      }
+    }
+
+    freeformTags {
+      new oci.FreeformTag { key = "Name"; value = projectName + "-security-list" }
+      new oci.FreeformTag { key = "Project"; value = projectName }
+    }
+  }
+
+  hidden resources: Listing<formae.Resource> = new {
+    securityList
+  }
+}

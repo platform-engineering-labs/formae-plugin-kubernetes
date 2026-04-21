@@ -6,16 +6,15 @@ package oci
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
-	"io"
 	"net/http"
+	"net/url"
 	"time"
 
-	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/auth"
 	"github.com/oracle/oci-go-sdk/v65/common"
-	"github.com/oracle/oci-go-sdk/v65/containerengine"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/auth"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
 // Provider implements auth.AuthProvider for Oracle OKE clusters.
@@ -29,8 +28,8 @@ func NewProvider(clusterOCID, region string) *Provider {
 	return &Provider{ClusterOCID: clusterOCID, Region: region}
 }
 
-// ConfigureTransport fetches cluster credentials from OCI and configures
-// the rest.Config.
+// ConfigureTransport configures the rest.Config to inject OCI-signed bearer
+// tokens for OKE cluster authentication.
 func (p *Provider) ConfigureTransport(cfg *rest.Config) error {
 	source := &tokenSource{clusterOCID: p.ClusterOCID, region: p.Region}
 	cached := auth.NewCachedTokenSource(source)
@@ -40,44 +39,58 @@ func (p *Provider) ConfigureTransport(cfg *rest.Config) error {
 	return nil
 }
 
+// tokenURL builds the OKE cluster request URL used as the signing target.
+func tokenURL(region, clusterOCID string) string {
+	return fmt.Sprintf("https://containerengine.%s.oraclecloud.com/cluster_request/%s",
+		region, clusterOCID)
+}
+
+// buildPresignedToken creates a base64-encoded presigned URL token from the
+// signed authorization header and date. This matches the token format that
+// OKE's Kubernetes token webhook expects.
+func buildPresignedToken(baseURL, authorization, date string) string {
+	presigned := fmt.Sprintf("%s?authorization=%s&date=%s",
+		baseURL, url.QueryEscape(authorization), url.QueryEscape(date))
+	return base64.StdEncoding.EncodeToString([]byte(presigned))
+}
+
 type tokenSource struct {
 	clusterOCID string
 	region      string
 }
 
-func (s *tokenSource) Token(ctx context.Context) (string, time.Time, error) {
-	client, err := containerengine.NewContainerEngineClientWithConfigurationProvider(
-		common.DefaultConfigProvider(),
-	)
+// Token generates a short-lived bearer token by creating a presigned OCI API
+// request. This is equivalent to what `oci ce cluster generate-token` does.
+func (s *tokenSource) Token(_ context.Context) (string, time.Time, error) {
+	provider := common.DefaultConfigProvider()
+
+	region := s.region
+	if region == "" {
+		r, err := provider.Region()
+		if err != nil {
+			return "", time.Time{}, fmt.Errorf("failed to determine OCI region: %w", err)
+		}
+		region = r
+	}
+
+	baseURL := tokenURL(region, s.clusterOCID)
+
+	req, err := http.NewRequest(http.MethodGet, baseURL, nil)
 	if err != nil {
-		return "", time.Time{}, fmt.Errorf("failed to create OKE client: %w", err)
+		return "", time.Time{}, fmt.Errorf("failed to create signing request: %w", err)
 	}
 
-	if s.region != "" {
-		client.SetRegion(s.region)
+	now := time.Now().UTC()
+	req.Header.Set("date", now.Format(http.TimeFormat))
+	req.Header.Set("host", req.URL.Host)
+
+	signer := common.DefaultRequestSigner(provider)
+	if err := signer.Sign(req); err != nil {
+		return "", time.Time{}, fmt.Errorf("failed to sign OKE token request: %w", err)
 	}
 
-	resp, err := client.CreateKubeconfig(ctx, containerengine.CreateKubeconfigRequest{
-		ClusterId: &s.clusterOCID,
-	})
-	if err != nil {
-		return "", time.Time{}, fmt.Errorf("failed to get OKE kubeconfig: %w", err)
-	}
-	defer func() { _ = resp.Content.Close() }()
+	token := buildPresignedToken(baseURL, req.Header.Get("authorization"), req.Header.Get("date"))
+	expiry := now.Add(4 * time.Minute)
 
-	content, err := io.ReadAll(resp.Content)
-	if err != nil {
-		return "", time.Time{}, fmt.Errorf("failed to read OKE kubeconfig response: %w", err)
-	}
-
-	kc, err := clientcmd.RESTConfigFromKubeConfig(content)
-	if err != nil {
-		return "", time.Time{}, fmt.Errorf("failed to parse OKE kubeconfig: %w", err)
-	}
-
-	if kc.BearerToken != "" {
-		return kc.BearerToken, time.Now().Add(30 * time.Minute), nil
-	}
-
-	return "", time.Time{}, fmt.Errorf("OKE kubeconfig does not contain a bearer token")
+	return token, expiry, nil
 }
