@@ -219,6 +219,12 @@ func (r *ReplicaSet) List(ctx context.Context, request *resource.ListRequest) (*
 
 	nativeIDs := make([]string, 0, len(result.Items))
 	for _, rs := range result.Items {
+		// Skip ReplicaSets owned by a controller (typically a Deployment).
+		// Filtering at List level prevents formae from processing controller-
+		// created ReplicaSets through the changeset pipeline during discovery.
+		if len(rs.OwnerReferences) > 0 {
+			continue
+		}
 		nativeIDs = append(nativeIDs, prov.NativeID(rs.Namespace, rs.Name))
 	}
 

@@ -105,6 +105,89 @@ func (p *Plugin) DiscoveryFilters() []model.MatchFilter {
 				{PropertyPath: `$.metadata[?search(@, '^system:')]`},
 			},
 		},
+		// Exclude Jobs created by a CronJob on schedule. Standalone Jobs
+		// (no ownerReferences) are still discovered.
+		{
+			ResourceTypes: []string{"K8S::Batch::Job"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: `$.metadata.ownerReferences[?@.kind == "CronJob"]`},
+			},
+		},
+		// Exclude ReplicaSets owned by a Deployment. Standalone ReplicaSets
+		// (rare, but valid) are still discovered.
+		{
+			ResourceTypes: []string{"K8S::Apps::ReplicaSet"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.ownerReferences[0]"},
+			},
+		},
+		// Exclude Pods created by a controller (ReplicaSet, Job, DaemonSet,
+		// StatefulSet). Standalone Pods are still discovered.
+		{
+			ResourceTypes: []string{"K8S::Core::Pod"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.ownerReferences[0]"},
+			},
+		},
+		// Exclude Endpoints objects — K8S maintains one per Service with
+		// the Service as owner.
+		{
+			ResourceTypes: []string{"K8S::Core::Endpoints"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.ownerReferences[0]"},
+			},
+		},
+		// Exclude auto-generated ServiceAccount token Secrets.
+		{
+			ResourceTypes: []string{"K8S::Core::Secret"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.type", PropertyValue: "kubernetes.io/service-account-token"},
+			},
+		},
+		// Exclude Leases in kube-system — all are control-plane leader
+		// election artifacts (kube-controller-manager, kube-scheduler,
+		// cloud-controller-manager, node leases, etc.).
+		{
+			ResourceTypes: []string{"K8S::Coordination::Lease"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.namespace", PropertyValue: "kube-system"},
+			},
+		},
+		// Exclude system-* FlowSchemas (ship with the apiserver).
+		{
+			ResourceTypes: []string{"K8S::Flowcontrol::FlowSchema"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: `$.metadata[?search(@, '^system-')]`},
+			},
+		},
+		// FlowSchema also includes 'exempt' and 'global-default' — match them explicitly.
+		{
+			ResourceTypes: []string{"K8S::Flowcontrol::FlowSchema"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "exempt"},
+			},
+		},
+		{
+			ResourceTypes: []string{"K8S::Flowcontrol::FlowSchema"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "global-default"},
+			},
+		},
+		// Exclude system-* PriorityLevelConfigurations.
+		{
+			ResourceTypes: []string{"K8S::Flowcontrol::PriorityLevelConfiguration"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: `$.metadata[?search(@, '^system-')]`},
+			},
+		},
+		// Exclude system-* PriorityClasses (system-cluster-critical,
+		// system-node-critical — ship with the apiserver).
+		{
+			ResourceTypes: []string{"K8S::Scheduling::PriorityClass"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: `$.metadata[?search(@, '^system-')]`},
+			},
+		},
 	}
 }
 
