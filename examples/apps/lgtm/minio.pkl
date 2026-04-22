@@ -5,6 +5,7 @@
 import "@formae/formae.pkl"
 import "@k8s/core/Namespace.pkl" as ns
 import "@k8s/core/Service.pkl" as svc
+import "@k8s/core/PersistentVolumeClaim.pkl" as pvc
 import "@k8s/apps/StatefulSet.pkl" as ss
 import "@k8s/k8s.pkl" as k8s
 
@@ -98,12 +99,12 @@ function minioStatefulSet(
         }
       }
       volumeClaimTemplates = new Listing {
-        new Dynamic {
-          metadata = new Mapping { ["name"] = "data" }
-          spec = new Mapping {
-            ["accessModes"] = new Listing { "ReadWriteOnce" }
-            ["resources"] = new Mapping {
-              ["requests"] = new Mapping { ["storage"] = "20Gi" }
+        new ss.PersistentVolumeClaimTemplate {
+          metadata = new k8s.ObjectMeta { name = "data" }
+          spec = new pvc.PersistentVolumeClaimSpec {
+            accessModes = new Listing { "ReadWriteOnce" }
+            resources = new k8s.ResourceRequirements {
+              requests = new Mapping { ["storage"] = "20Gi" }
             }
           }
         }

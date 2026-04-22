@@ -11,9 +11,6 @@ dependencies {
   ["helm"] {
     uri = "package://pkg.pkl-lang.org/pkl-readers/helm@0.1.1"
   }
-  ["k8s"] {
-    uri = "package://pkg.pkl-lang.org/pkl-k8s/k8s@1.2.1"
-  }
   ["k8s"] = import("../schema/pkl/PklProject")
   ["formae"] {
     uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.84.0"

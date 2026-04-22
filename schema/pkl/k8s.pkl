@@ -212,8 +212,8 @@ open class PodSpec extends formae.SubResource {
   @FieldHint {}
   serviceAccountName: (String|formae.Resolvable)?
 
-  @FieldHint {}
-  imagePullSecrets: Listing<Dynamic>?
+  @FieldHint { updateMethod = "EntitySet"; indexField = "name" }
+  imagePullSecrets: Listing<LocalObjectReference>?
 
   @FieldHint {}
   priorityClassName: (String|formae.Resolvable)?
@@ -237,7 +237,7 @@ open class PodSpec extends formae.SubResource {
   runtimeClassName: (String|formae.Resolvable)?
 
   @FieldHint {}
-  tolerations: Listing<Dynamic>?
+  tolerations: Listing<Toleration>?
 
   @FieldHint {}
   automountServiceAccountToken: Boolean?
@@ -275,8 +275,8 @@ open class PodSpec extends formae.SubResource {
   @FieldHint {}
   resources: ResourceRequirements?
 
-  @FieldHint {}
-  ephemeralContainers: Listing<Dynamic>?
+  @FieldHint { updateMethod = "EntitySet"; indexField = "name" }
+  ephemeralContainers: Listing<EphemeralContainer>?
 
   @FieldHint {}
   serviceAccount: String?
@@ -791,8 +791,8 @@ open class ClaimSource extends formae.SubResource {
 
 @SubResourceHint {}
 open class Container extends formae.SubResource {
-  @FieldHint {}
-  volumeDevices: Listing<Dynamic>?
+  @FieldHint { updateMethod = "EntitySet"; indexField = "name" }
+  volumeDevices: Listing<VolumeDevice>?
 
   @FieldHint {}
   image: String?
@@ -854,14 +854,14 @@ open class Container extends formae.SubResource {
   @FieldHint {}
   readinessProbe : Mapping?
 
-  @FieldHint {}
-  resizePolicy: Listing<Dynamic>?
+  @FieldHint { updateMethod = "EntitySet"; indexField = "resourceName" }
+  resizePolicy: Listing<ContainerResizePolicy>?
 
   @FieldHint {}
   stdinOnce: Boolean?
 
   @FieldHint {}
-  envFrom: Listing<Dynamic>?
+  envFrom: Listing<EnvFromSource>?
 }
 
 @SubResourceHint {}
@@ -1486,4 +1486,164 @@ open class PodTemplateMetadata extends formae.SubResource {
   /// Annotations for metadata
   @FieldHint {}
   annotations: Mapping<String, String>?
+}
+
+// =============================================================================
+// Shared typed list-element classes
+// -----------------------------------------------------------------------------
+// These replace previous Listing<Dynamic> usages with typed SubResource classes
+// so that per-field @FieldHint annotations (notably hasProviderDefault) apply
+// during diff comparison. Without these, K8s-injected defaults on list elements
+// would surface as phantom remove+add operations in the plan preview.
+// =============================================================================
+
+/// Reference to an object in the same namespace; typically used for secrets.
+@SubResourceHint {}
+open class LocalObjectReference extends formae.SubResource {
+  @FieldHint { required = true }
+  name: (String|formae.Resolvable)
+}
+
+/// Generic reference to a Kubernetes object. Most fields are optional; only
+/// `name` is typically set in practice.
+@SubResourceHint {}
+open class ObjectReference extends formae.SubResource {
+  @FieldHint {}
+  apiVersion: String?
+
+  @FieldHint {}
+  kind: String?
+
+  @FieldHint {}
+  namespace: String?
+
+  @FieldHint {}
+  name: (String|formae.Resolvable)?
+
+  @FieldHint {}
+  uid: String?
+
+  @FieldHint {}
+  resourceVersion: String?
+
+  @FieldHint {}
+  fieldPath: String?
+}
+
+/// Tolerates a node taint so a pod can be scheduled on matching nodes.
+@SubResourceHint {}
+open class Toleration extends formae.SubResource {
+  @FieldHint {}
+  key: String?
+
+  @FieldHint { hasProviderDefault = true }
+  operator: String? = "Equal"
+
+  @FieldHint {}
+  value: String?
+
+  @FieldHint {}
+  effect: String?
+
+  @FieldHint {}
+  tolerationSeconds: Int?
+}
+
+/// A raw block device to expose to a container.
+@SubResourceHint {}
+open class VolumeDevice extends formae.SubResource {
+  @FieldHint { required = true }
+  name: String
+
+  @FieldHint { required = true }
+  devicePath: String
+}
+
+/// In-place resize policy for a container resource.
+@SubResourceHint {}
+open class ContainerResizePolicy extends formae.SubResource {
+  @FieldHint { required = true }
+  resourceName: String
+
+  @FieldHint { required = true }
+  restartPolicy: String
+}
+
+/// An env-var source — a ConfigMap or Secret projected into container env.
+@SubResourceHint {}
+open class EnvFromSource extends formae.SubResource {
+  @FieldHint {}
+  prefix: String?
+
+  @FieldHint {}
+  configMapRef: ConfigMapEnvSource?
+
+  @FieldHint {}
+  secretRef: SecretEnvSource?
+}
+
+@SubResourceHint {}
+open class ConfigMapEnvSource extends formae.SubResource {
+  @FieldHint {}
+  name: (String|formae.Resolvable)?
+
+  @FieldHint {}
+  optional: Boolean?
+}
+
+@SubResourceHint {}
+open class SecretEnvSource extends formae.SubResource {
+  @FieldHint {}
+  name: (String|formae.Resolvable)?
+
+  @FieldHint {}
+  optional: Boolean?
+}
+
+/// Topology term used by StorageClass.allowedTopologies and related fields.
+@SubResourceHint {}
+open class TopologySelectorTerm extends formae.SubResource {
+  @FieldHint {}
+  matchLabelExpressions: Listing<TopologySelectorLabelRequirement>?
+}
+
+@SubResourceHint {}
+open class TopologySelectorLabelRequirement extends formae.SubResource {
+  @FieldHint { required = true }
+  key: String
+
+  @FieldHint { required = true }
+  values: Listing<String>
+}
+
+/// An ephemeral debug container injected into a running pod. Mirrors the
+/// subset of Container fields most commonly set, plus targetContainerName.
+@SubResourceHint {}
+open class EphemeralContainer extends formae.SubResource {
+  @FieldHint { required = true }
+  name: String
+
+  @FieldHint {}
+  image: String?
+
+  @FieldHint {}
+  command: Listing<String>?
+
+  @FieldHint {}
+  args: Listing<String>?
+
+  @FieldHint {}
+  env: Listing<EnvVar>?
+
+  @FieldHint {}
+  envFrom: Listing<EnvFromSource>?
+
+  @FieldHint {}
+  volumeMounts: Listing<VolumeMount>?
+
+  @FieldHint {}
+  imagePullPolicy: String?
+
+  @FieldHint {}
+  targetContainerName: String?
 }

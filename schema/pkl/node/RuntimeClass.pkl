@@ -61,7 +61,7 @@ open class Overhead extends formae.SubResource {
 @k8s.SubResourceHint {}
 open class Scheduling extends formae.SubResource {
   @k8s.FieldHint {}
-  tolerations: Listing<Dynamic>?
+  tolerations: Listing<k8s.Toleration>?
 
   @k8s.FieldHint {}
   nodeSelector: Mapping<String, String>?

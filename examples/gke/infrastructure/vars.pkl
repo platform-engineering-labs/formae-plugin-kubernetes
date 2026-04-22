@@ -54,3 +54,15 @@ target: formae.Target = new formae.Target {
     zone = module.props.zone.value
   }
 }
+
+// Allow direct `pkl eval` of this library file. Without the Class converter,
+// the default renderer fails on formae framework fields like
+// `fixed Type: Class = type`. Library imports into entrypoint files are
+// unaffected — `output` only applies to direct evaluation.
+output {
+  renderer = new JsonRenderer {
+    converters {
+      [Class] = (it) -> it.toString()
+    }
+  }
+}
