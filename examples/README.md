@@ -7,7 +7,8 @@ reusable app modules in `apps/`.
 ```
 examples/
 ├── apps/                      # Shared reusable workload modules
-│   └── bookstore.pkl          # Full-stack webapp (parameterized by target)
+│   ├── bookstore.pkl          # Full-stack webapp (parameterized by target)
+│   └── crossplane.pkl         # Crossplane control plane + CRDs
 ├── eks/                       # AWS EKS (cross-cloud with resolvables)
 │   ├── eks.pkl                # Provisions EKS + deploys bookstore
 │   └── infrastructure/        # VPC, subnets, IAM, EKS cluster
@@ -28,6 +29,7 @@ example imports from `@apps/` — write the app once, deploy to any cluster.
 | App | Description |
 |-----|-------------|
 | `bookstore.pkl` | Frontend (nginx) + backend (Node.js API) with ConfigMaps, Secrets, ServiceAccount, Deployments, Services |
+| `crossplane.pkl` | Crossplane control plane (Namespace, RBAC, Deployment, Service) — CRDs installed by Crossplane itself at startup |
 
 Future:
 - `nginx-ingress.pkl` — ingress controller
@@ -44,6 +46,24 @@ kubectl -n bookstore port-forward svc/bookstore-frontend 8080:80
 open http://localhost:8080
 formae destroy examples/vanilla/vanilla.pkl
 ```
+
+### Crossplane core
+
+Deploys the Crossplane control plane to any kubeconfig-accessible
+cluster. Crossplane's own init container installs its CRDs on first
+start, so formae doesn't manage them (they mutate at runtime and would
+fight a reconcile loop). After apply, the cluster accepts `Provider`,
+`Configuration`, `Composition`, `CompositeResourceDefinition`, etc.
+
+```bash
+formae apply --mode reconcile --yes --watch examples/vanilla/crossplane.pkl
+kubectl -n crossplane-system get pods
+kubectl get crds | grep crossplane
+formae destroy --yes examples/vanilla/crossplane.pkl
+```
+
+Crossplane itself installs no providers — use `kubectl apply` to add
+e.g. `provider-kubernetes`, `provider-aws`, `provider-gcp`.
 
 ## AWS EKS
 
