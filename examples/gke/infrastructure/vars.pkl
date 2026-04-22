@@ -1,0 +1,56 @@
+import "@formae/formae.pkl"
+import "@gcp/gcp.pkl"
+
+// ── Configurable properties ────────────────────────────────────────────────
+projectName = "gke-fullstack"
+region = "europe-west4"
+zone = "europe-west4-a"
+subnetCidr = "10.2.1.0/24"
+podsCidr = "10.2.16.0/20"
+servicesCidr = "10.2.32.0/20"
+
+// ── Formae properties (CLI-overridable via --prop) ─────────────────────────
+props = new Dynamic {
+  name = new formae.Prop {
+    flag = "name"
+    default = module.projectName
+  }
+  project = new formae.Prop {
+    flag = "project"
+  }
+  region = new formae.Prop {
+    flag = "region"
+    default = module.region
+  }
+  zone = new formae.Prop {
+    flag = "zone"
+    default = module.zone
+  }
+  subnetCidr = new formae.Prop {
+    flag = "subnetCidr"
+    default = module.subnetCidr
+  }
+  podsCidr = new formae.Prop {
+    flag = "podsCidr"
+    default = module.podsCidr
+  }
+  servicesCidr = new formae.Prop {
+    flag = "servicesCidr"
+    default = module.servicesCidr
+  }
+}
+
+// ── Stack & Target ─────────────────────────────────────────────────────────
+stack: formae.Stack = new {
+  label = "gke-fullstack"
+  description = "GKE cluster for full-stack Formae demo"
+}
+
+target: formae.Target = new formae.Target {
+  label = "gke-gcp-target"
+  config = new gcp.Config {
+    project = module.props.project.value
+    region = module.props.region.value
+    zone = module.props.zone.value
+  }
+}

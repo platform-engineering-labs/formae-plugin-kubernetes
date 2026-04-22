@@ -24,10 +24,16 @@ import "@k8s/k8s.pkl" as k8s
 // ---------------------------------------------------------------------------
 local appName = "bookstore"
 
-local frontendImage = "nginx:1.27-alpine"
+// Images pulled via Google's public mirror (`mirror.gcr.io`) instead of
+// directly from Docker Hub. Reason: private-node GKE clusters (required
+// in projects with `constraints/compute.vmExternalIpAccess`) can only
+// egress to Google services via Private Google Access. mirror.gcr.io is
+// a Google-operated pull-through cache of Docker Hub, so both GKE (via
+// PGA) and EKS (via public internet) resolve it successfully.
+local frontendImage = "mirror.gcr.io/library/nginx:1.27-alpine"
 local frontendReplicas = 2
 
-local backendImage = "node:22-alpine"
+local backendImage = "mirror.gcr.io/library/node:22-alpine"
 local backendReplicas = 2
 
 local dbHost = "postgres.database.svc.cluster.local"
@@ -309,6 +315,8 @@ function frontendService(k8sTarget: formae.Target, appNs: ns.Namespace): svc.Ser
       name = "\(appName)-frontend"
       namespace = appNs.res.name
       labels = frontendLabels
+      // AWS-specific annotation — ignored by GKE/AKS, which still create
+      // external LoadBalancers by default when `type = "LoadBalancer"`.
       annotations = new Mapping {
         ["service.beta.kubernetes.io/aws-load-balancer-scheme"] = "internet-facing"
       }

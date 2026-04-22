@@ -11,6 +11,9 @@ examples/
 ├── eks/                       # AWS EKS (cross-cloud with resolvables)
 │   ├── eks.pkl                # Provisions EKS + deploys bookstore
 │   └── infrastructure/        # VPC, subnets, IAM, EKS cluster
+├── gke/                       # GCP GKE (Autopilot, cross-cloud with resolvables)
+│   ├── gke.pkl                # Provisions GKE + deploys bookstore
+│   └── infrastructure/        # VPC, subnet, GKE cluster
 ├── vanilla/                   # Any kubeconfig-accessible cluster
 │   └── vanilla.pkl            # Deploys bookstore via KubeconfigAuth
 ├── charts/                    # Native PKL charts (no Helm)
@@ -62,6 +65,29 @@ your browser via the ELB hostname.
 
 ```bash
 formae destroy --yes examples/eks/eks.pkl
+```
+
+## GCP GKE
+
+Provisions a zonal Autopilot GKE cluster on GCP (VPC, subnet, cluster)
+and deploys the bookstore using provider-agnostic auth with OAuth2
+token refresh. Single forma — no manual kubeconfig step.
+
+Prerequisites:
+- GCP credentials configured (`gcloud auth application-default login`)
+- `formae-plugin-gcp` installed
+- `formae-plugin-k8s` installed
+
+```bash
+formae apply --mode reconcile --yes --watch \
+  --prop project=my-gcp-project examples/gke/gke.pkl
+```
+
+The frontend service gets a Google Cloud LoadBalancer — access it
+directly from your browser via the external IP.
+
+```bash
+formae destroy --yes --prop project=my-gcp-project examples/gke/gke.pkl
 ```
 
 ## Adding a New Cloud Provider Example

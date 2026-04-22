@@ -1,0 +1,65 @@
+// GKE end-to-end example
+//
+// Provisions a Standard zonal GKE cluster on GCP (VPC, subnet, 1-node pool),
+// then deploys the bookstore webapp using GCP OAuth2 auth with token
+// refresh via WrapTransport.
+//
+// Standard (not Autopilot) because Autopilot uses a Google-managed node
+// service account that is often blocked by the `compute.vmExternalIpAccess`
+// org policy — Standard uses the default Compute SA which orgs usually
+// exempt. Zonal keeps demo cost low; a single e2-medium node is enough
+// for the bookstore workload.
+//
+//   formae apply --mode reconcile --yes --watch \
+//     --project my-gcp-project examples/gke/gke.pkl
+//
+// Access:
+//   gcloud container clusters get-credentials gke-fullstack \
+//     --zone europe-west4-a --project my-gcp-project
+//   kubectl -n bookstore port-forward svc/bookstore-frontend 8080:80
+//   open http://localhost:8080
+//
+// Teardown:
+//   formae destroy --yes --prop project=my-gcp-project examples/gke/gke.pkl
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "./infrastructure/vars.pkl"
+import "./infrastructure/network.pkl"
+import "./infrastructure/gke.pkl"
+
+import "@apps/bookstore.pkl" as bookstore
+import "@k8s/k8s.pkl" as k8s
+
+local _gkeCluster = gke.gkeCluster(properties)
+
+local _k8sTarget = new formae.Target {
+  label = "k8s-target"
+  config = new k8s.Config {
+    auth = new k8s.GKEAuth {
+      endpoint = _gkeCluster.res.endpoint
+      certificateAuthority = _gkeCluster.res.clusterCaCertificate
+    }
+  }
+}
+
+properties = vars.props
+
+forma {
+  vars.stack
+  vars.target
+
+  // GCP network
+  network.vpc(properties)
+  network.subnet(properties)
+//
+  // GKE cluster
+  _gkeCluster
+//
+  // K8S target (resolves endpoint + CA from GKE)
+  _k8sTarget
+//
+  // Bookstore webapp
+  for (r in bookstore.allResources(_k8sTarget)) { r }
+}

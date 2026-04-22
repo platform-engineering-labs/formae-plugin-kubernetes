@@ -1,0 +1,74 @@
+import "@gcp/container/cluster.pkl"
+
+import "./network.pkl" as net
+import "./vars.pkl"
+
+function gkeCluster(properties: Dynamic?): cluster.Cluster = new cluster.Cluster {
+  target = vars.target.res
+  stack = vars.stack.res
+  label = "gke-cluster"
+  name = properties.name.value
+  description = "Standard zonal GKE cluster for \(properties.name.value)"
+  location = properties.zone.value
+  network = net.vpc(properties).res.selfLink
+  subnetwork = net.subnet(properties).res.selfLink
+
+  initialNodeCount = 1
+  nodeConfig = new cluster.NodeConfig {
+    machineType = "e2-medium"
+    diskSizeGb = 50
+    diskType = "pd-standard"
+    oauthScopes = new Listing {
+      "https://www.googleapis.com/auth/cloud-platform"
+    }
+  }
+
+  releaseChannel = new cluster.ReleaseChannel {
+    channel = "REGULAR"
+  }
+
+  ipAllocationPolicy = new cluster.IPAllocationPolicy {
+    useIpAliases = true
+    clusterSecondaryRangeName = "pods"
+    servicesSecondaryRangeName = "services"
+  }
+
+  addonsConfig = new cluster.AddonsConfig {
+    httpLoadBalancing = new cluster.HttpLoadBalancing {
+      disabled = false
+    }
+    horizontalPodAutoscaling = new cluster.HorizontalPodAutoscaling {
+      disabled = false
+    }
+  }
+
+  // Private nodes: required in projects with the
+  // `constraints/compute.vmExternalIpAccess` org policy, because user
+  // VMs (GKE nodes) aren't allowed external IPs. Keep the apiserver
+  // public so the dev machine can still reach it.
+  //
+  // Image pulls from Docker Hub will fail (no external egress on nodes);
+  // bookstore.pkl uses `mirror.gcr.io/library/...` so pulls route through
+  // Private Google Access via the subnet's `privateIpGoogleAccess = true`.
+  privateClusterConfig = new cluster.PrivateClusterConfig {
+    enablePrivateNodes = true
+    enablePrivateEndpoint = false
+    masterIpv4CidrBlock = "172.16.0.0/28"
+  }
+
+  // GKE auto-enables masterAuthorizedNetworks with an EMPTY allowlist
+  // whenever privateClusterConfig.enablePrivateNodes = true, which blocks
+  // ALL external traffic to the apiserver — even though the endpoint is
+  // public. Disable authorized-networks enforcement entirely so local
+  // `kubectl` and the K8S plugin's apply requests can reach the control
+  // plane from any IP. Tighten in production by setting enabled = true
+  // and listing specific CIDRs in cidrBlocks.
+  masterAuthorizedNetworksConfig = new cluster.MasterAuthorizedNetworksConfig {
+    enabled = false
+  }
+
+  resourceLabels = new Mapping {
+    ["managed-by"] = "formae"
+    ["environment"] = "demo"
+  }
+}
