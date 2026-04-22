@@ -1,0 +1,85 @@
+// AKS end-to-end example
+//
+// Provisions an AKS cluster on Azure (resource group, VNet, subnet, managed
+// cluster), then deploys the bookstore webapp using provider-agnostic auth
+// with Azure AD token refresh via WrapTransport.
+//
+// Prerequisites:
+//   - `az login` (Azure CLI authenticated)
+//   - formae-plugin-azure and formae-plugin-k8s installed
+//   - Set AZURE_SUBSCRIPTION_ID env var, or pass --prop subscription-id=<id>
+//
+// Deploy:
+//   formae apply --mode reconcile --yes --watch examples/aks/aks.pkl
+//
+// Access (after deploy, via port-forward):
+//   az aks get-credentials --resource-group aks-fullstack-rg --name aks-fullstack-aks
+//   kubectl -n bookstore port-forward svc/bookstore-frontend 8080:80
+//   open http://localhost:8080
+//
+// Teardown:
+//   formae destroy --yes examples/aks/aks.pkl
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "./infrastructure/vars.pkl"
+import "./infrastructure/network.pkl"
+import "./infrastructure/aks.pkl" as aks
+
+import "@azure/authorization/roleassignment.pkl"
+
+import "@apps/bookstore.pkl" as bookstore
+import "@k8s/k8s.pkl" as k8s
+
+local _k8sTarget = new formae.Target {
+  label = "k8s-target"
+  config = new k8s.Config {
+    auth = new k8s.AKSAuth {
+      endpoint = _aksCluster.res.fqdn
+      certificateAuthority = _aksCluster.res.certificateAuthority
+      resourceGroup = network.resourceGroup.res.name
+      clusterName = _aksCluster.res.name
+    }
+  }
+}
+
+properties = vars.props
+
+local _aksCluster = aks.aksCluster(properties)
+
+local _rbacAdmin = new roleassignment.RoleAssignment {
+  label = "aks-rbac-admin"
+  scope = _aksCluster.res.id
+  principalId = properties.principalId.value
+  roleDefinitionId = "/subscriptions/\(properties.subscriptionId.value)/providers/Microsoft.Authorization/roleDefinitions/b1ff04bb-8a4e-4dc4-8eb5-8693973ce19b"
+  principalType = "User"
+}
+
+description {
+  text = """
+    AKS full-stack bookstore demo
+
+    Prerequisites:
+      - az login
+      - formae-plugin-azure and formae-plugin-k8s installed
+      - AZURE_SUBSCRIPTION_ID env var (or --prop subscription-id=<id>)
+    """
+  confirm = true
+}
+
+forma {
+  vars.stack
+  vars.target
+
+  network.resourceGroup
+  network.virtualNetwork
+  network.aksSubnet
+
+  _aksCluster
+  _rbacAdmin
+
+  _k8sTarget
+
+  for (r in bookstore.allResources(_k8sTarget)) { r }
+}
