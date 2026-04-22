@@ -28,26 +28,33 @@ function datasourcesConfig(k8sTarget: formae.Target, appNs: ns.Namespace, nsName
       labels = grafanaLabels
     }
     data = new Mapping {
-      ["datasources-yaml"] = new Listing {
-        "apiVersion: 1"
-        "datasources:"
-        "  - name: Loki"
-        "    type: loki"
-        "    uid: loki"
-        "    url: http://loki-read.\(nsName).svc.cluster.local:3100"
-        "    access: proxy"
-        "  - name: Tempo"
-        "    type: tempo"
-        "    uid: tempo"
-        "    url: http://tempo-read.\(nsName).svc.cluster.local:3200"
-        "    access: proxy"
-        "  - name: Mimir"
-        "    type: prometheus"
-        "    uid: mimir"
-        "    url: http://mimir-read.\(nsName).svc.cluster.local:8080/prometheus"
-        "    access: proxy"
-        "    isDefault: true"
-      }.join("\n")
+      ["datasources-yaml"] = (new YamlRenderer {}).renderValue(new Dynamic {
+        apiVersion = 1
+        datasources = new Listing {
+          new Dynamic {
+            name = "Loki"
+            type = "loki"
+            uid = "loki"
+            url = "http://loki-read.\(nsName).svc.cluster.local:3100"
+            access = "proxy"
+          }
+          new Dynamic {
+            name = "Tempo"
+            type = "tempo"
+            uid = "tempo"
+            url = "http://tempo-read.\(nsName).svc.cluster.local:3200"
+            access = "proxy"
+          }
+          new Dynamic {
+            name = "Mimir"
+            type = "prometheus"
+            uid = "mimir"
+            url = "http://mimir-read.\(nsName).svc.cluster.local:8080/prometheus"
+            access = "proxy"
+            isDefault = true
+          }
+        }
+      })
     }
   }
 
@@ -61,19 +68,23 @@ function dashboardProviderConfig(k8sTarget: formae.Target, appNs: ns.Namespace):
       labels = grafanaLabels
     }
     data = new Mapping {
-      ["dashboards-yaml"] = new Listing {
-        "apiVersion: 1"
-        "providers:"
-        "  - name: 'default'"
-        "    orgId: 1"
-        "    folder: ''"
-        "    type: file"
-        "    disableDeletion: false"
-        "    updateIntervalSeconds: 30"
-        "    allowUiUpdates: true"
-        "    options:"
-        "      path: /var/lib/grafana/dashboards"
-      }.join("\n")
+      ["dashboards-yaml"] = (new YamlRenderer {}).renderValue(new Dynamic {
+        apiVersion = 1
+        providers = new Listing {
+          new Dynamic {
+            name = "default"
+            orgId = 1
+            folder = ""
+            type = "file"
+            disableDeletion = false
+            updateIntervalSeconds = 30
+            allowUiUpdates = true
+            options {
+              path = "/var/lib/grafana/dashboards"
+            }
+          }
+        }
+      })
     }
   }
 

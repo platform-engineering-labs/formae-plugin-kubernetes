@@ -39,49 +39,62 @@ function lokiConfig(
       labels = commonLabels
     }
     data = new Mapping {
-      ["config-yaml"] = new Listing {
-        "auth_enabled: false"
-        "server:"
-        "  http_listen_port: \(httpPort)"
-        "  grpc_listen_port: \(grpcPort)"
-        "common:"
-        "  path_prefix: /var/loki"
-        "  replication_factor: 1"
-        "  compactor_address: http://loki-backend.\(nsName).svc.cluster.local:\(httpPort)"
-        "  compactor_grpc_address: loki-backend.\(nsName).svc.cluster.local:\(grpcPort)"
-        "  ring:"
-        "    kvstore:"
-        "      store: memberlist"
-        "memberlist:"
-        "  join_members:"
-        "    - \(memberlistName).\(nsName).svc.cluster.local:\(memberlistPort)"
-        "schema_config:"
-        "  configs:"
-        "    - from: 2024-01-01"
-        "      store: tsdb"
-        "      object_store: s3"
-        "      schema: v13"
-        "      index:"
-        "        prefix: loki_index_"
-        "        period: 24h"
-        "storage_config:"
-        "  tsdb_shipper:"
-        "    active_index_directory: /var/loki/index"
-        "    cache_location: /var/loki/index_cache"
-        "  aws:"
-        "    s3: http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@\(minioEndpoint)/\(bucketName)"
-        "    s3forcepathstyle: true"
-        "compactor:"
-        "  working_directory: /var/loki/compactor"
-        "  compaction_interval: 10m"
-        "ruler:"
-        "  storage:"
-        "    type: local"
-        "    local:"
-        "      directory: /var/loki/rules"
-        "limits_config:"
-        "  allow_structured_metadata: true"
-      }.join("\n")
+      ["config-yaml"] = (new YamlRenderer {}).renderValue(new Dynamic {
+        auth_enabled = false
+        server {
+          http_listen_port = httpPort
+          grpc_listen_port = grpcPort
+        }
+        common {
+          path_prefix = "/var/loki"
+          replication_factor = 1
+          compactor_address = "http://loki-backend.\(nsName).svc.cluster.local:\(httpPort)"
+          compactor_grpc_address = "loki-backend.\(nsName).svc.cluster.local:\(grpcPort)"
+          ring {
+            kvstore { store = "memberlist" }
+          }
+        }
+        memberlist {
+          join_members = new Listing { "\(memberlistName).\(nsName).svc.cluster.local:\(memberlistPort)" }
+        }
+        schema_config {
+          configs = new Listing {
+            new Dynamic {
+              from = "2024-01-01"
+              store = "tsdb"
+              object_store = "s3"
+              schema = "v13"
+              index {
+                prefix = "loki_index_"
+                period = "24h"
+              }
+            }
+          }
+        }
+        storage_config {
+          tsdb_shipper {
+            active_index_directory = "/var/loki/index"
+            cache_location = "/var/loki/index_cache"
+          }
+          aws {
+            s3 = "http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@\(minioEndpoint)/\(bucketName)"
+            s3forcepathstyle = true
+          }
+        }
+        compactor {
+          working_directory = "/var/loki/compactor"
+          compaction_interval = "10m"
+        }
+        ruler {
+          storage {
+            type = "local"
+            ["local"] { directory = "/var/loki/rules" }
+          }
+        }
+        limits_config {
+          allow_structured_metadata = true
+        }
+      })
     }
   }
 

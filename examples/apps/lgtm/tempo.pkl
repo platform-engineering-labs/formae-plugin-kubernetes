@@ -44,47 +44,55 @@ function tempoConfig(
       labels = commonLabels
     }
     data = new Mapping {
-      ["config-yaml"] = new Listing {
-        "server:"
-        "  http_listen_port: \(httpPort)"
-        "  grpc_listen_port: \(grpcPort)"
-        "distributor:"
-        "  receivers:"
-        "    otlp:"
-        "      protocols:"
-        "        http:"
-        "          endpoint: 0.0.0.0:\(otlpHttpPort)"
-        "        grpc:"
-        "          endpoint: 0.0.0.0:\(otlpGrpcPort)"
-        "ingester:"
-        "  lifecycler:"
-        "    ring:"
-        "      kvstore:"
-        "        store: memberlist"
-        "memberlist:"
-        "  join_members:"
-        "    - \(memberlistName).\(nsName).svc.cluster.local:\(memberlistPort)"
-        "querier:"
-        "  frontend_worker:"
-        "    frontend_address: tempo-read.\(nsName).svc.cluster.local:\(grpcPort)"
-        "storage:"
-        "  trace:"
-        "    backend: s3"
-        "    s3:"
-        "      bucket: \(bucketName)"
-        "      endpoint: \(minioEndpoint)"
-        "      access_key: ${MINIO_ROOT_USER}"
-        "      secret_key: ${MINIO_ROOT_PASSWORD}"
-        "      insecure: true"
-        "      forcepathstyle: true"
-        "    wal:"
-        "      path: /var/tempo/wal"
-        "    local:"
-        "      path: /var/tempo/blocks"
-        "compactor:"
-        "  compaction:"
-        "    block_retention: 24h"
-      }.join("\n")
+      ["config-yaml"] = (new YamlRenderer {}).renderValue(new Dynamic {
+        server {
+          http_listen_port = httpPort
+          grpc_listen_port = grpcPort
+        }
+        distributor {
+          receivers {
+            otlp {
+              protocols {
+                http { endpoint = "0.0.0.0:\(otlpHttpPort)" }
+                grpc { endpoint = "0.0.0.0:\(otlpGrpcPort)" }
+              }
+            }
+          }
+        }
+        ingester {
+          lifecycler {
+            ring {
+              kvstore { store = "memberlist" }
+            }
+          }
+        }
+        memberlist {
+          join_members = new Listing { "\(memberlistName).\(nsName).svc.cluster.local:\(memberlistPort)" }
+        }
+        querier {
+          frontend_worker {
+            frontend_address = "tempo-read.\(nsName).svc.cluster.local:\(grpcPort)"
+          }
+        }
+        storage {
+          ["trace"] {
+            backend = "s3"
+            s3 {
+              bucket = bucketName
+              endpoint = minioEndpoint
+              access_key = "${MINIO_ROOT_USER}"
+              secret_key = "${MINIO_ROOT_PASSWORD}"
+              insecure = true
+              forcepathstyle = true
+            }
+            wal { path = "/var/tempo/wal" }
+            ["local"] { path = "/var/tempo/blocks" }
+          }
+        }
+        compactor {
+          compaction { block_retention = "24h" }
+        }
+      })
     }
   }
 

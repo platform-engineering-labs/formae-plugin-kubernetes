@@ -41,41 +41,55 @@ function gatewayConfig(k8sTarget: formae.Target, appNs: ns.Namespace, nsName: St
       labels = gatewayLabels
     }
     data = new Mapping {
-      ["config-yaml"] = new Listing {
-        "receivers:"
-        "  otlp:"
-        "    protocols:"
-        "      grpc: { endpoint: 0.0.0.0:4317 }"
-        "      http: { endpoint: 0.0.0.0:4318 }"
-        "processors:"
-        "  batch: {}"
-        "  memory_limiter:"
-        "    check_interval: 5s"
-        "    limit_percentage: 80"
-        "    spike_limit_percentage: 25"
-        "exporters:"
-        "  otlphttp/loki:"
-        "    endpoint: http://loki-write.\(nsName).svc.cluster.local:3100/otlp"
-        "  otlp/tempo:"
-        "    endpoint: tempo-write.\(nsName).svc.cluster.local:4317"
-        "    tls: { insecure: true }"
-        "  otlphttp/mimir:"
-        "    endpoint: http://mimir-write.\(nsName).svc.cluster.local:8080/otlp"
-        "service:"
-        "  pipelines:"
-        "    logs:"
-        "      receivers: [otlp]"
-        "      processors: [memory_limiter, batch]"
-        "      exporters: [otlphttp/loki]"
-        "    traces:"
-        "      receivers: [otlp]"
-        "      processors: [memory_limiter, batch]"
-        "      exporters: [otlp/tempo]"
-        "    metrics:"
-        "      receivers: [otlp]"
-        "      processors: [memory_limiter, batch]"
-        "      exporters: [otlphttp/mimir]"
-      }.join("\n")
+      ["config-yaml"] = (new YamlRenderer {}).renderValue(new Dynamic {
+        receivers {
+          otlp {
+            protocols {
+              grpc { endpoint = "0.0.0.0:4317" }
+              http { endpoint = "0.0.0.0:4318" }
+            }
+          }
+        }
+        processors {
+          batch {}
+          memory_limiter {
+            check_interval = "5s"
+            limit_percentage = 80
+            spike_limit_percentage = 25
+          }
+        }
+        exporters {
+          ["otlphttp/loki"] {
+            endpoint = "http://loki-write.\(nsName).svc.cluster.local:3100/otlp"
+          }
+          ["otlp/tempo"] {
+            endpoint = "tempo-write.\(nsName).svc.cluster.local:4317"
+            tls { insecure = true }
+          }
+          ["otlphttp/mimir"] {
+            endpoint = "http://mimir-write.\(nsName).svc.cluster.local:8080/otlp"
+          }
+        }
+        service {
+          pipelines {
+            logs {
+              receivers = new Listing { "otlp" }
+              processors = new Listing { "memory_limiter"; "batch" }
+              exporters = new Listing { "otlphttp/loki" }
+            }
+            traces {
+              receivers = new Listing { "otlp" }
+              processors = new Listing { "memory_limiter"; "batch" }
+              exporters = new Listing { "otlp/tempo" }
+            }
+            metrics {
+              receivers = new Listing { "otlp" }
+              processors = new Listing { "memory_limiter"; "batch" }
+              exporters = new Listing { "otlphttp/mimir" }
+            }
+          }
+        }
+      })
     }
   }
 
@@ -191,34 +205,44 @@ function agentConfig(k8sTarget: formae.Target, appNs: ns.Namespace, nsName: Stri
       labels = agentLabels
     }
     data = new Mapping {
-      ["config-yaml"] = new Listing {
-        "receivers:"
-        "  kubeletstats:"
-        "    collection_interval: 30s"
-        "    auth_type: serviceAccount"
-        "    endpoint: https://${env:K8S_NODE_NAME}:10250"
-        "    insecure_skip_verify: true"
-        "  filelog:"
-        "    include: [/var/log/pods/*/*/*.log]"
-        "    start_at: end"
-        "    include_file_path: true"
-        "processors:"
-        "  batch: {}"
-        "exporters:"
-        "  otlp:"
-        "    endpoint: \(gatewayName).\(nsName).svc.cluster.local:4317"
-        "    tls: { insecure: true }"
-        "service:"
-        "  pipelines:"
-        "    metrics:"
-        "      receivers: [kubeletstats]"
-        "      processors: [batch]"
-        "      exporters: [otlp]"
-        "    logs:"
-        "      receivers: [filelog]"
-        "      processors: [batch]"
-        "      exporters: [otlp]"
-      }.join("\n")
+      ["config-yaml"] = (new YamlRenderer {}).renderValue(new Dynamic {
+        receivers {
+          kubeletstats {
+            collection_interval = "30s"
+            auth_type = "serviceAccount"
+            endpoint = "https://${env:K8S_NODE_NAME}:10250"
+            insecure_skip_verify = true
+          }
+          filelog {
+            include = new Listing { "/var/log/pods/*/*/*.log" }
+            start_at = "end"
+            include_file_path = true
+          }
+        }
+        processors {
+          batch {}
+        }
+        exporters {
+          otlp {
+            endpoint = "\(gatewayName).\(nsName).svc.cluster.local:4317"
+            tls { insecure = true }
+          }
+        }
+        service {
+          pipelines {
+            metrics {
+              receivers = new Listing { "kubeletstats" }
+              processors = new Listing { "batch" }
+              exporters = new Listing { "otlp" }
+            }
+            logs {
+              receivers = new Listing { "filelog" }
+              processors = new Listing { "batch" }
+              exporters = new Listing { "otlp" }
+            }
+          }
+        }
+      })
     }
   }
 

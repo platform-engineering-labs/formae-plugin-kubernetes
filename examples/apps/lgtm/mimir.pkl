@@ -39,33 +39,35 @@ function mimirConfig(
       labels = commonLabels
     }
     data = new Mapping {
-      ["config-yaml"] = new Listing {
-        "multitenancy_enabled: false"
-        "server:"
-        "  http_listen_port: \(httpPort)"
-        "  grpc_listen_port: \(grpcPort)"
-        "common:"
-        "  storage:"
-        "    backend: s3"
-        "    s3:"
-        "      endpoint: \(minioEndpoint)"
-        "      bucket_name: \(bucketName)"
-        "      access_key_id: ${MINIO_ROOT_USER}"
-        "      secret_access_key: ${MINIO_ROOT_PASSWORD}"
-        "      insecure: true"
-        "memberlist:"
-        "  join_members:"
-        "    - \(memberlistName).\(nsName).svc.cluster.local:\(memberlistPort)"
-        "blocks_storage:"
-        "  storage_prefix: blocks"
-        "ruler_storage:"
-        "  storage_prefix: ruler"
-        "alertmanager_storage:"
-        "  storage_prefix: alertmanager"
-        "limits:"
-        "  ingestion_rate: 100000"
-        "  max_global_series_per_user: 1000000"
-      }.join("\n")
+      ["config-yaml"] = (new YamlRenderer {}).renderValue(new Dynamic {
+        multitenancy_enabled = false
+        server {
+          http_listen_port = httpPort
+          grpc_listen_port = grpcPort
+        }
+        common {
+          storage {
+            backend = "s3"
+            s3 {
+              endpoint = minioEndpoint
+              bucket_name = bucketName
+              access_key_id = "${MINIO_ROOT_USER}"
+              secret_access_key = "${MINIO_ROOT_PASSWORD}"
+              insecure = true
+            }
+          }
+        }
+        memberlist {
+          join_members = new Listing { "\(memberlistName).\(nsName).svc.cluster.local:\(memberlistPort)" }
+        }
+        blocks_storage { storage_prefix = "blocks" }
+        ruler_storage { storage_prefix = "ruler" }
+        alertmanager_storage { storage_prefix = "alertmanager" }
+        limits {
+          ingestion_rate = 100000
+          max_global_series_per_user = 1000000
+        }
+      })
     }
   }
 
