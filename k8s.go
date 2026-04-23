@@ -192,11 +192,24 @@ func (p *Plugin) DiscoveryFilters() []model.MatchFilter {
 }
 
 // LabelConfig returns the configuration for extracting human-readable labels
-// from discovered resources. K8S resources use metadata.name.
+// from discovered resources.
+//
+// We intentionally return an empty LabelConfig so the formae labeler falls
+// through to its final branch and uses the NativeID the plugin returned.
+// For K8S that NativeID is produced by prov.NativeID and is:
+//
+//   - Namespaced resources → "<namespace>/<name>"  (e.g. "default/web")
+//   - Cluster-scoped       → "<name>"              (e.g. "prod")
+//
+// Using the NativeID directly avoids the collision that a bare
+// "$.metadata.name" query creates when two resources share a name across
+// namespaces — the labeler would otherwise label both "web" and append a
+// non-deterministic "-N" suffix to whichever was discovered second.
+//
+// If a resource type ever needs a different label source, add a
+// ResourceOverrides entry below.
 func (p *Plugin) LabelConfig() model.LabelConfig {
-	return model.LabelConfig{
-		DefaultQuery: "$.metadata.name",
-	}
+	return model.LabelConfig{}
 }
 
 // =============================================================================
