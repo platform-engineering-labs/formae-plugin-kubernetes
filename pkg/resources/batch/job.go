@@ -60,6 +60,7 @@ func (j *Job) Create(ctx context.Context, request *resource.CreateRequest) (*res
 
 	result, err := j.Client.BatchV1().Jobs(namespace).Apply(ctx, job, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply job: %w", err)

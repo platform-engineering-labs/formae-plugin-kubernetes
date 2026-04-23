@@ -59,6 +59,7 @@ func (n *NetworkPolicy) Create(ctx context.Context, request *resource.CreateRequ
 
 	result, err := n.Client.NetworkingV1().NetworkPolicies(namespace).Apply(ctx, np, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply networkpolicy: %w", err)

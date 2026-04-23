@@ -54,6 +54,7 @@ func (ic *IngressClass) Create(ctx context.Context, request *resource.CreateRequ
 
 	result, err := ic.Client.NetworkingV1().IngressClasses().Apply(ctx, ingressClass, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply ingressclass: %w", err)

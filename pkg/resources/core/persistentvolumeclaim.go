@@ -60,6 +60,7 @@ func (p *PersistentVolumeClaim) Create(ctx context.Context, request *resource.Cr
 
 	result, err := p.Client.CoreV1().PersistentVolumeClaims(namespace).Apply(ctx, pvc, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply persistentvolumeclaim: %w", err)

@@ -60,6 +60,7 @@ func (r *ReplicaSet) Create(ctx context.Context, request *resource.CreateRequest
 
 	result, err := r.Client.AppsV1().ReplicaSets(namespace).Apply(ctx, rs, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply replicaset: %w", err)

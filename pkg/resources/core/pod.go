@@ -60,6 +60,7 @@ func (p *Pod) Create(ctx context.Context, request *resource.CreateRequest) (*res
 
 	result, err := p.Client.CoreV1().Pods(namespace).Apply(ctx, pod, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply pod: %w", err)

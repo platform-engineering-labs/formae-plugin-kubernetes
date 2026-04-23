@@ -54,6 +54,7 @@ func (m *MutatingWebhookConfiguration) Create(ctx context.Context, request *reso
 
 	result, err := m.Client.AdmissionregistrationV1().MutatingWebhookConfigurations().Apply(ctx, mwc, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply mutatingwebhookconfiguration: %w", err)

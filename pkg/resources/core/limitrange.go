@@ -59,6 +59,7 @@ func (l *LimitRange) Create(ctx context.Context, request *resource.CreateRequest
 
 	result, err := l.Client.CoreV1().LimitRanges(namespace).Apply(ctx, lr, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply limitrange: %w", err)

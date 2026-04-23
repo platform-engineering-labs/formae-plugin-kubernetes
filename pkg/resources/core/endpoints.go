@@ -59,6 +59,7 @@ func (e *Endpoints) Create(ctx context.Context, request *resource.CreateRequest)
 
 	result, err := e.Client.CoreV1().Endpoints(namespace).Apply(ctx, ep, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply endpoints: %w", err)

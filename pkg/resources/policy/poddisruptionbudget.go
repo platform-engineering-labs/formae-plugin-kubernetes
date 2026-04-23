@@ -59,6 +59,7 @@ func (p *PodDisruptionBudget) Create(ctx context.Context, request *resource.Crea
 
 	result, err := p.Client.PolicyV1().PodDisruptionBudgets(namespace).Apply(ctx, pdb, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply poddisruptionbudget: %w", err)

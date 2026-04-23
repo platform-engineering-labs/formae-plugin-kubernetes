@@ -55,6 +55,7 @@ func (c *ClusterRole) Create(ctx context.Context, request *resource.CreateReques
 
 	result, err := c.Client.RbacV1().ClusterRoles().Apply(ctx, cr, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply clusterrole: %w", err)

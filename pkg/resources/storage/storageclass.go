@@ -54,6 +54,7 @@ func (s *StorageClass) Create(ctx context.Context, request *resource.CreateReque
 
 	result, err := s.Client.StorageV1().StorageClasses().Apply(ctx, sc, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply storageclass: %w", err)

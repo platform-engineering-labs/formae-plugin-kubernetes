@@ -60,6 +60,7 @@ func (ss *StatefulSet) Create(ctx context.Context, request *resource.CreateReque
 
 	result, err := ss.Client.AppsV1().StatefulSets(namespace).Apply(ctx, sts, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply statefulset: %w", err)

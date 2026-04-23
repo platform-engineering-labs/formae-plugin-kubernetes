@@ -59,6 +59,7 @@ func (cj *CronJob) Create(ctx context.Context, request *resource.CreateRequest) 
 
 	result, err := cj.Client.BatchV1().CronJobs(namespace).Apply(ctx, cronjob, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply cronjob: %w", err)

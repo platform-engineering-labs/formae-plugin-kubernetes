@@ -63,6 +63,7 @@ func (n *Namespace) Create(ctx context.Context, request *resource.CreateRequest)
 
 	result, err := n.Client.CoreV1().Namespaces().Apply(ctx, ns, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply namespace: %w", err)

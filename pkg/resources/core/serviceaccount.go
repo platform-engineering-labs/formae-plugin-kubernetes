@@ -59,6 +59,7 @@ func (sa *ServiceAccount) Create(ctx context.Context, request *resource.CreateRe
 
 	result, err := sa.Client.CoreV1().ServiceAccounts(namespace).Apply(ctx, svcAcct, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply serviceaccount: %w", err)

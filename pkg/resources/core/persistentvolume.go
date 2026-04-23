@@ -55,6 +55,7 @@ func (p *PersistentVolume) Create(ctx context.Context, request *resource.CreateR
 
 	result, err := p.Client.CoreV1().PersistentVolumes().Apply(ctx, pv, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply persistentvolume: %w", err)

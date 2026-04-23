@@ -60,6 +60,7 @@ func (ing *Ingress) Create(ctx context.Context, request *resource.CreateRequest)
 
 	result, err := ing.Client.NetworkingV1().Ingresses(namespace).Apply(ctx, ingress, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply ingress: %w", err)

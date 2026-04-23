@@ -60,6 +60,7 @@ func (svc *Service) Create(ctx context.Context, request *resource.CreateRequest)
 
 	result, err := svc.Client.CoreV1().Services(namespace).Apply(ctx, s, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply service: %w", err)

@@ -59,6 +59,7 @@ func (c *ConfigMap) Create(ctx context.Context, request *resource.CreateRequest)
 
 	result, err := c.Client.CoreV1().ConfigMaps(namespace).Apply(ctx, cm, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply configmap: %w", err)

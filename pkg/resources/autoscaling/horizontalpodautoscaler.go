@@ -60,6 +60,7 @@ func (h *HorizontalPodAutoscaler) Create(ctx context.Context, request *resource.
 
 	result, err := h.Client.AutoscalingV2().HorizontalPodAutoscalers(namespace).Apply(ctx, hpa, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply horizontalpodautoscaler: %w", err)

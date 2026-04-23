@@ -54,6 +54,7 @@ func (c *CSIDriver) Create(ctx context.Context, request *resource.CreateRequest)
 
 	result, err := c.Client.StorageV1().CSIDrivers().Apply(ctx, cd, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply csidriver: %w", err)

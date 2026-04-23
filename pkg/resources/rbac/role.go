@@ -59,6 +59,7 @@ func (r *Role) Create(ctx context.Context, request *resource.CreateRequest) (*re
 
 	result, err := r.Client.RbacV1().Roles(namespace).Apply(ctx, role, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply role: %w", err)

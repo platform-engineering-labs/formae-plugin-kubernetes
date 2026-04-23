@@ -54,6 +54,7 @@ func (p *PriorityLevelConfiguration) Create(ctx context.Context, request *resour
 
 	result, err := p.Client.FlowcontrolV1().PriorityLevelConfigurations().Apply(ctx, plc, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply prioritylevelconfiguration: %w", err)

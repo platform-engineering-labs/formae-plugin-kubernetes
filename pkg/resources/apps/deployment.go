@@ -60,6 +60,7 @@ func (d *Deployment) Create(ctx context.Context, request *resource.CreateRequest
 
 	result, err := d.Client.AppsV1().Deployments(namespace).Apply(ctx, deploy, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply deployment: %w", err)

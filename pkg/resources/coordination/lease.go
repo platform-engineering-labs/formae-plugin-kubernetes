@@ -59,6 +59,7 @@ func (l *Lease) Create(ctx context.Context, request *resource.CreateRequest) (*r
 
 	result, err := l.Client.CoordinationV1().Leases(namespace).Apply(ctx, lease, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply lease: %w", err)

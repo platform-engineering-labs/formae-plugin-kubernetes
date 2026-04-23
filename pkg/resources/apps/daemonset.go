@@ -60,6 +60,7 @@ func (ds *DaemonSet) Create(ctx context.Context, request *resource.CreateRequest
 
 	result, err := ds.Client.AppsV1().DaemonSets(namespace).Apply(ctx, daemonset, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply daemonset: %w", err)

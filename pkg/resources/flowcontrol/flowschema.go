@@ -54,6 +54,7 @@ func (f *FlowSchema) Create(ctx context.Context, request *resource.CreateRequest
 
 	result, err := f.Client.FlowcontrolV1().FlowSchemas().Apply(ctx, fs, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply flowschema: %w", err)

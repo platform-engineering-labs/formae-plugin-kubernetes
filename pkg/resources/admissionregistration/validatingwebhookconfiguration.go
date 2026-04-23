@@ -54,6 +54,7 @@ func (v *ValidatingWebhookConfiguration) Create(ctx context.Context, request *re
 
 	result, err := v.Client.AdmissionregistrationV1().ValidatingWebhookConfigurations().Apply(ctx, vwc, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply validatingwebhookconfiguration: %w", err)

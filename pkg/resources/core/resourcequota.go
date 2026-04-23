@@ -59,6 +59,7 @@ func (r *ResourceQuota) Create(ctx context.Context, request *resource.CreateRequ
 
 	result, err := r.Client.CoreV1().ResourceQuotas(namespace).Apply(ctx, rq, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply resourcequota: %w", err)

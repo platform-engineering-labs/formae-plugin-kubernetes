@@ -54,6 +54,7 @@ func (r *RuntimeClass) Create(ctx context.Context, request *resource.CreateReque
 
 	result, err := r.Client.NodeV1().RuntimeClasses().Apply(ctx, rc, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply runtimeclass: %w", err)

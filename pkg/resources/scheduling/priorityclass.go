@@ -54,6 +54,7 @@ func (pc *PriorityClass) Create(ctx context.Context, request *resource.CreateReq
 
 	result, err := pc.Client.SchedulingV1().PriorityClasses().Apply(ctx, priorityClass, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply priorityclass: %w", err)

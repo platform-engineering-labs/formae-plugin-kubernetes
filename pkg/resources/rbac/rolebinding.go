@@ -59,6 +59,7 @@ func (rb *RoleBinding) Create(ctx context.Context, request *resource.CreateReque
 
 	result, err := rb.Client.RbacV1().RoleBindings(namespace).Apply(ctx, binding, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply rolebinding: %w", err)

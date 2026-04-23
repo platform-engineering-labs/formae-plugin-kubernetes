@@ -55,6 +55,7 @@ func (c *ClusterRoleBinding) Create(ctx context.Context, request *resource.Creat
 
 	result, err := c.Client.RbacV1().ClusterRoleBindings().Apply(ctx, crb, metav1.ApplyOptions{
 		FieldManager: prov.FieldManager,
+		Force:        true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply clusterrolebinding: %w", err)
