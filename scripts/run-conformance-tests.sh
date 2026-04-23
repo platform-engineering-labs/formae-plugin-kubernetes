@@ -169,7 +169,12 @@ update_pkl_project_version() {
     local file="$1"
     local new_version="$2"
     local current
-    current=$(grep -oP 'formae/formae@\K[0-9]+\.[0-9]+\.[0-9]+' "$file" 2>/dev/null | head -1)
+    if [[ "$(uname)" == "Darwin" ]]; then
+        # BSD grep on macOS doesn't support -P/\K — use sed.
+        current=$(sed -nE 's|.*formae/formae@([0-9]+\.[0-9]+\.[0-9]+).*|\1|p' "$file" 2>/dev/null | head -n 1)
+    else
+        current=$(grep -oP 'formae/formae@\K[0-9]+\.[0-9]+\.[0-9]+' "$file" 2>/dev/null | head -n 1)
+    fi
     if [[ -z "$current" ]]; then
         echo "  No formae version found in $file, setting to ${new_version}"
         sed_inplace "s|formae/formae@[0-9][^\"]*\"|formae/formae@${new_version}\"|g" "$file"
