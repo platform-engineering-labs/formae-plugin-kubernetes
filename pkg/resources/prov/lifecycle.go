@@ -36,16 +36,7 @@ func Wrap(p Provisioner) Provisioner {
 }
 
 func (l *LifecycleAware) Create(ctx context.Context, req *resource.CreateRequest) (*resource.CreateResult, error) {
-	result, err := l.Inner.Create(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if result.ProgressResult != nil && len(result.ProgressResult.ResourceProperties) > 0 {
-		result.ProgressResult.ResourceProperties = json.RawMessage(
-			restoreEmptyObjects(string(result.ProgressResult.ResourceProperties), string(req.Properties)),
-		)
-	}
-	return result, nil
+	return l.Inner.Create(ctx, req)
 }
 
 func (l *LifecycleAware) Read(ctx context.Context, req *resource.ReadRequest) (*resource.ReadResult, error) {
@@ -67,16 +58,7 @@ func (l *LifecycleAware) Read(ctx context.Context, req *resource.ReadRequest) (*
 }
 
 func (l *LifecycleAware) Update(ctx context.Context, req *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	result, err := l.Inner.Update(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if result.ProgressResult != nil && len(result.ProgressResult.ResourceProperties) > 0 {
-		result.ProgressResult.ResourceProperties = json.RawMessage(
-			restoreEmptyObjects(string(result.ProgressResult.ResourceProperties), string(req.DesiredProperties)),
-		)
-	}
-	return result, nil
+	return l.Inner.Update(ctx, req)
 }
 
 func (l *LifecycleAware) Delete(ctx context.Context, req *resource.DeleteRequest) (*resource.DeleteResult, error) {
@@ -147,59 +129,6 @@ func (l *LifecycleAware) Status(ctx context.Context, req *resource.StatusRequest
 
 func (l *LifecycleAware) List(ctx context.Context, req *resource.ListRequest) (*resource.ListResult, error) {
 	return l.Inner.List(ctx, req)
-}
-
-// restoreEmptyObjects patches the result properties with empty objects ({}) that
-// were present in the desired properties but stripped by SSA Extract. SSA treats
-// empty objects as "no owned sub-fields" and omits them, but K8s semantics give
-// meaning to empty objects (e.g. podSelector: {} means "select all pods").
-func restoreEmptyObjects(result, desired string) string {
-	if result == "" || desired == "" {
-		return result
-	}
-	var resultMap, desiredMap map[string]any
-	if err := json.Unmarshal([]byte(result), &resultMap); err != nil {
-		return result
-	}
-	if err := json.Unmarshal([]byte(desired), &desiredMap); err != nil {
-		return result
-	}
-	if injectEmptyObjects(resultMap, desiredMap) {
-		patched, err := json.Marshal(resultMap)
-		if err != nil {
-			return result
-		}
-		return string(patched)
-	}
-	return result
-}
-
-// injectEmptyObjects recursively walks desired and injects empty objects into
-// result where desired has {} but result is missing the key. Returns true if
-// any injection occurred.
-func injectEmptyObjects(result, desired map[string]any) bool {
-	changed := false
-	for key, desiredVal := range desired {
-		desiredMap, isMap := desiredVal.(map[string]any)
-		if !isMap {
-			continue
-		}
-		resultVal, exists := result[key]
-		if !exists {
-			if len(desiredMap) == 0 {
-				result[key] = map[string]any{}
-				changed = true
-			}
-			continue
-		}
-		resultMap, isResultMap := resultVal.(map[string]any)
-		if isResultMap {
-			if injectEmptyObjects(resultMap, desiredMap) {
-				changed = true
-			}
-		}
-	}
-	return changed
 }
 
 // isTerminating checks if the JSON properties contain metadata.deletionTimestamp.

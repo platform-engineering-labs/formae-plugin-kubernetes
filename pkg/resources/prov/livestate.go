@@ -173,12 +173,14 @@ func stripServerDefaults(v interface{}) {
 		// Strip auto-injected service account volumeMounts
 		stripServiceAccountVolumeMounts(val)
 
-		// Recurse into children, then remove keys with strippable empty object values
-		for k, child := range val {
+		// Empty-object handling intentionally omitted: apply-config +
+		// encoding/json's omitempty normalizes optional maps consistently on
+		// both sides, and semantic empties (podSelector:{}, namespaceSelector:{},
+		// etc.) survive because their apply-config fields are non-omitempty
+		// pointers. Stripping here was redundant and, paired with a restore on
+		// Create/Update, caused false sync drift on fields like ConfigMap.binaryData.
+		for _, child := range val {
 			stripServerDefaults(child)
-			if isStrippableEmptyObject(k, child) {
-				delete(val, k)
-			}
 		}
 
 	case []interface{}:
@@ -270,33 +272,6 @@ func stripServerManagedAnnotations(meta map[string]interface{}) {
 	if len(annotations) == 0 {
 		delete(meta, "annotations")
 	}
-}
-
-// semanticEmptyFields are K8s fields where an empty object {} has meaning
-// distinct from the field being absent. For example, podSelector: {} means
-// "select all pods" while a missing podSelector is invalid.
-var semanticEmptyFields = map[string]bool{
-	"podSelector":       true,
-	"namespaceSelector": true,
-	"matchLabels":       true,
-	"nodeSelector":      true,
-	"selector":          true,
-}
-
-// isEmptyObject returns true if v is a map with no entries.
-func isEmptyObject(v interface{}) bool {
-	m, ok := v.(map[string]interface{})
-	return ok && len(m) == 0
-}
-
-// isStrippableEmptyObject returns true if the field with the given key is an
-// empty object that can safely be removed. Semantically meaningful empty
-// objects (like podSelector: {}) are preserved.
-func isStrippableEmptyObject(key string, v interface{}) bool {
-	if !isEmptyObject(v) {
-		return false
-	}
-	return !semanticEmptyFields[key]
 }
 
 // stripControllerInjectedFields removes fields injected by K8S controllers

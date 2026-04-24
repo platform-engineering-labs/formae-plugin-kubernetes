@@ -33,6 +33,8 @@ forma {
             ["test-run"] = v.testRunID
           }
         }
+        // K8s defaults to {} (matches all); declared for live-state parity.
+        objectSelector = new k8s.LabelSelector {}
         rules = new Listing {
           new k8s.RuleWithOperations {
             operations = new Listing { "CREATE" }

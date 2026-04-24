@@ -238,6 +238,8 @@ jobs:
     needs: [conformance-tests, chart-conformance-tests]
     runs-on: ubuntu-latest
     if: success()
+    permissions:
+      actions: read
     steps:
       - name: Check if previous run failed
         id: check_previous
