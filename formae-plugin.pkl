@@ -7,7 +7,9 @@
 name = "k8s"
 version = "0.1.1"
 namespace = "K8S"
+summary = "Kubernetes resource plugin"
 description = "Kubernetes resource plugin for Formae"
+category = "containers"
 license = "Apache-2.0"
 minFormaeVersion = "0.84.0"
 
