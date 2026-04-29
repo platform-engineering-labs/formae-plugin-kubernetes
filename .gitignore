@@ -28,3 +28,6 @@ Thumbs.db
 # Worktrees
 .worktrees/
 PklProject.deps.json
+
+# Generated at build time from formae-plugin.pkl
+schema/pkl/VERSION
