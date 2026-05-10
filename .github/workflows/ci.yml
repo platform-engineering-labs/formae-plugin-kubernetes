@@ -114,7 +114,7 @@ jobs:
         with:
           pkl-version: 0.30.0
 
-      # `make verify` regenerates helm/v*/ from helm/main/ and fails if
+      # `make verify` regenerates helm/v*/ from helm/shared/ and fails if
       # the diff isn't empty — catches stale committed trees in PRs.
       - name: Verify formae-helm generated trees
         working-directory: helm

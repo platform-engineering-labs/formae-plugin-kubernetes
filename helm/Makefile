@@ -4,9 +4,9 @@
 #
 # formae-helm — per-K8s-version PKL wrappers around pkl-readers/helm.
 #
-# `main/` is the source of truth (hand-edited). `generated/v<X.Y>/` is
+# `shared/` is the source of truth (hand-edited). `generated/v<X.Y>/` is
 # emitted by `make generate` for every supported K8s minor: each tree
-# is a string-rewrite of `main/` with `@k8s/<group>/<Kind>.pkl` →
+# is a string-rewrite of `shared/` with `@k8s/<group>/<Kind>.pkl` →
 # `@k8s/v<X.Y>/<group>/<Kind>.pkl`, with mappers omitted when the
 # matching K8s schema doesn't ship them. Users import the per-version
 # subtree:
@@ -30,38 +30,36 @@ generate:
 	@echo "Generated: $$(ls -d v[0-9]*.[0-9]*/ 2>/dev/null | xargs -n1 basename | tr '\n' ' ')"
 
 ## package: Build the formae-helm Pkl package zip for hub publication.
-## Runs generate first; the zip ships generated/ alongside main/ so
+## Runs generate first; the zip ships generated/ alongside shared/ so
 ## consumers don't need to run codegen themselves.
 package: generate
 	@echo "Packaging formae-helm Pkl package..."
 	@pkl project package .
 
-## test: Smoke-analyze imports for every generated module. HelmChart and
-## friends declare required-without-default fields (chart, releaseName,
+## test: Smoke-analyze imports for HelmChart in every generated module.
+## HelmChart declares required-without-default fields (chart, releaseName,
 ## ...), so `pkl eval` against the bare module fails on user-input
 ## fields. `pkl analyze imports` parses + resolves but doesn't render,
 ## so it catches every broken import without needing fixture inputs.
 ## Full conformance lives in formae-plugin-k8s.
 test: generate
 	@for v in $$(ls -d v[0-9]*.[0-9]*/ 2>/dev/null | xargs -n1 basename); do \
-	  for mod in HelmChart Generator StaticGenerator; do \
-	    f="$$v/$$mod.pkl"; \
-	    [ -f "$$f" ] || continue; \
-	    pkl analyze imports --project-dir . "$$f" >/dev/null \
-	      || (echo "FAIL: $$f" && exit 1); \
-	  done; \
+	  f="$$v/HelmChart.pkl"; \
+	  [ -f "$$f" ] || continue; \
+	  pkl analyze imports --project-dir . "$$f" >/dev/null \
+	    || (echo "FAIL: $$f" && exit 1); \
 	  echo "OK: $$v"; \
 	done
 	@echo "All generated trees resolve cleanly."
 
 ## verify: Fail if helm/v*/ doesn't match what the codegen would emit
-## from helm/main/. Wired into CI so PRs that touch main/ or
+## from helm/shared/. Wired into CI so PRs that touch shared/ or
 ## tools/gen-versioned-helm/ without re-running codegen surface the
 ## stale trees in the diff.
 verify: generate
 	@if ! git diff --exit-code -- 'v[0-9]*.[0-9]*' >/dev/null 2>&1; then \
 	  echo ""; \
-	  echo "ERROR: helm/v*/ is stale relative to helm/main/."; \
+	  echo "ERROR: helm/v*/ is stale relative to helm/shared/."; \
 	  echo "Run 'cd helm && make generate' and commit the diff."; \
 	  echo ""; \
 	  git diff --stat -- 'v[0-9]*.[0-9]*'; \

@@ -4,7 +4,7 @@
 
 // Command gen-versioned-helm produces per-K8s-version copies of the
 // formae-helm wrappers under generated/v<X.Y>/. Source of truth is
-// main/; this tool's only job is to rewrite imports and drop mappers
+// shared/; this tool's only job is to rewrite imports and drop mappers
 // that reference K8s resource modules absent in a given minor.
 //
 // Pipeline:
@@ -16,7 +16,7 @@
 //  2. For every `v<X.Y>/` subdir in the k8s package, generate a
 //     parallel `generated/v<X.Y>/` tree:
 //
-//     - Copy each file from main/ recursively.
+//     - Copy each file from shared/ recursively.
 //     - Rewrite `@k8s/<group>/<Kind>.pkl` → `@k8s/v<X.Y>/<group>/<Kind>.pkl`.
 //       (`@k8s/k8s.pkl` stays unchanged — that module lives at the
 //       package root, not under a version subtree.)
@@ -41,8 +41,12 @@ import (
 )
 
 const (
-	mainDir  = "main"
-	depsJSON = "PklProject.deps.json"
+	// sharedDir is the hand-edited source of truth. The codegen reads it
+	// and emits per-K8s-version copies under v<X.Y>/. Was named "shared"
+	// historically — renamed to make "this is shared, the v*/ trees are
+	// generated" obvious from the directory listing.
+	sharedDir = "shared"
+	depsJSON  = "PklProject.deps.json"
 )
 
 // k8sImportRE matches `@k8s/<group>/<Kind>.pkl` references — the only
@@ -75,7 +79,7 @@ func main() {
 
 	// Drop any prior v*/ trees so a removed K8s minor (or rerun against
 	// an updated k8s package) leaves no orphan output. Other top-level
-	// dirs (main/, tools/, .git/, etc.) are untouched.
+	// dirs (shared/, tools/, .git/, etc.) are untouched.
 	if existing, err := os.ReadDir("."); err == nil {
 		for _, e := range existing {
 			if e.IsDir() && strings.HasPrefix(e.Name(), "v") {
@@ -93,7 +97,7 @@ func main() {
 }
 
 // chdirToProjectRoot walks up from CWD until it finds a PklProject
-// alongside a `main/` directory — that's the formae-helm package root.
+// alongside a `shared/` directory — that's the formae-helm package root.
 // Lets `go run ./tools/gen-versioned-helm` work from any subdir.
 func chdirToProjectRoot() error {
 	dir, err := os.Getwd()
@@ -102,13 +106,13 @@ func chdirToProjectRoot() error {
 	}
 	for {
 		_, errPkl := os.Stat(filepath.Join(dir, "PklProject"))
-		_, errMain := os.Stat(filepath.Join(dir, mainDir))
+		_, errMain := os.Stat(filepath.Join(dir, sharedDir))
 		if errPkl == nil && errMain == nil {
 			return os.Chdir(dir)
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return fmt.Errorf("no PklProject + main/ found above %s", dir)
+			return fmt.Errorf("no PklProject + shared/ found above %s", dir)
 		}
 		dir = parent
 	}
@@ -192,18 +196,18 @@ func listK8sVersions(k8sPkgDir string) ([]string, error) {
 }
 
 // generateVersion materialises generated/<ver>/ as a per-K8s-version
-// copy of main/. Imports are rewritten to point at @k8s/<ver>/, and
+// copy of shared/. Imports are rewritten to point at @k8s/<ver>/, and
 // mappers whose K8s types are absent from this minor are dropped.
 func generateVersion(ver, k8sPkgDir string) error {
 	dstRoot := ver // v<X.Y>/ at the package root so `@formae-helm/v<X.Y>/HelmChart.pkl` resolves.
 
 	// Phase 1: copy + rewrite, decide which mappers to drop.
 	dropped := map[string]string{} // mapper basename → dropped-because reason
-	err := filepath.Walk(mainDir, func(srcPath string, info os.FileInfo, err error) error {
+	err := filepath.Walk(sharedDir, func(srcPath string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		rel, err := filepath.Rel(mainDir, srcPath)
+		rel, err := filepath.Rel(sharedDir, srcPath)
 		if err != nil {
 			return err
 		}
@@ -237,7 +241,7 @@ func generateVersion(ver, k8sPkgDir string) error {
 	}
 
 	// Phase 2: patch dispatch.pkl to drop imports + branches for
-	// dropped mappers. dispatch.pkl is itself in main/mappers/, so
+	// dropped mappers. dispatch.pkl is itself in shared/mappers/, so
 	// it was rewritten + (if it had missing imports) potentially
 	// dropped above. We read it from generated/, mutate, write back.
 	if len(dropped) > 0 {
@@ -290,7 +294,7 @@ func missingK8sImports(body, ver, k8sPkgDir string) []string {
 //  3. `kind == "Xxx"` literals in isSupported (no mapper symbol —
 //     pruned by Kind name extracted from the mapper's `mapXxx` fns).
 //
-// The patcher reads each dropped mapper from main/, extracts every
+// The patcher reads each dropped mapper from shared/, extracts every
 // `function mapXxx(` name, then walks dispatch.pkl line-by-line
 // dropping anything that references the basename or one of those
 // Kind names. Standalone `// <group>` comment lines that immediately
@@ -312,7 +316,7 @@ func patchDispatch(dstRoot string, dropped map[string]string, ver, k8sPkgDir str
 	for name := range dropped {
 		base := strings.TrimSuffix(name, ".pkl")
 		dropBasenames[base] = true
-		kinds, err := mapperKinds(filepath.Join(mainDir, "mappers", name))
+		kinds, err := mapperKinds(filepath.Join(sharedDir, "mappers", name))
 		if err != nil {
 			return fmt.Errorf("read kinds from %s: %w", name, err)
 		}

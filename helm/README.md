@@ -31,33 +31,27 @@ forma {
 
 `HelmChart.resources` returns a `Listing<formae.Resource>` typed against the K8s schema for that exact minor. Resources whose Kinds don't exist in your minor (e.g. `flowcontrol.apiserver.k8s.io/v1.FlowSchema` before 1.29) are silently skipped — set `skipUnsupported = false` to throw instead.
 
-Three top-level wrappers ship under each `v<X.Y>/`:
+Only one top-level wrapper ships under each `v<X.Y>/`:
 
 | Module | Purpose |
 |---|---|
 | `HelmChart.pkl` | Class — render a chart at evaluation time, expose `resources` for spread into a `forma {}` block. |
-| `Generator.pkl` | Higher-level helper — bundles stack/target with the chart in one object. |
-| `StaticGenerator.pkl` | Renders Helm output to **self-contained PKL source** (no `pkl-reader-helm` needed at deploy time). |
 
 ## Layout
 
 ```
 .
 ├── PklProject               package = formae-helm; depends on @k8s, @formae, @helm
-├── main/                    SOURCE OF TRUTH — hand-edited
+├── shared/                  SOURCE OF TRUTH — hand-edited
 │   ├── HelmChart.pkl
-│   ├── Generator.pkl
-│   ├── StaticGenerator.pkl
-│   ├── mappers/             one per K8s API group (apps.pkl, batch.pkl, ...)
-│   └── codegen/             plumbing for StaticGenerator (no K8s imports)
-├── generated/               WRITTEN BY make generate — gitignored
-│   ├── v1.21/ ...           per-K8s-minor copy with imports rewritten
-│   └── v1.34/
+│   └── mappers/             one per K8s API group (apps.pkl, batch.pkl, ...)
+├── v1.21/ ...               GENERATED — per-K8s-minor copy with imports rewritten
+├── v1.34/
 ├── tools/gen-versioned-helm Go codegen (~300 LoC)
 └── Makefile                 generate / package / test / clean
 ```
 
-`generated/` is materialised by `make generate`. Each per-version tree is a string-rewrite of `main/` with `@k8s/<group>/<Kind>.pkl` → `@k8s/v<X.Y>/<group>/<Kind>.pkl`, plus mappers dropped when their K8s types don't exist in the target minor (and `dispatch.pkl` patched accordingly).
+Per-version trees are committed. They're emitted by `make generate` as a string-rewrite of `shared/` with `@k8s/<group>/<Kind>.pkl` → `@k8s/v<X.Y>/<group>/<Kind>.pkl`, plus mappers dropped when their K8s types don't exist in the target minor (and `dispatch.pkl` patched accordingly).
 
 ## Development
 
@@ -67,7 +61,7 @@ Prereqs: `pkl` (0.30+), `go` (1.23+), `make`.
 # 1. Resolve dependencies (writes PklProject.deps.json).
 pkl project resolve .
 
-# 2. Regenerate generated/ from main/.
+# 2. Regenerate v*/ from shared/.
 make generate
 
 # 3. Smoke-check that every generated tree resolves all imports.
@@ -76,9 +70,10 @@ make test
 
 Editing workflow:
 
-- Hand-edit files under `main/`.
-- Run `make generate` to refresh `generated/`.
+- Hand-edit files under `shared/`.
+- Run `make generate` to refresh `v*/`.
 - Run `make test` to catch broken imports immediately.
+- Commit the diff under `v*/` together with the `shared/` change — `make verify` fails CI on stale trees.
 
 The `k8s` Pkl dependency in `PklProject` points at the local `formae-plugin-k8s` checkout for development; release builds resolve it against the published `package://hub.platform.engineering/.../k8s@<min>` URI.
 
@@ -87,10 +82,10 @@ The `k8s` Pkl dependency in `PklProject` points at the local `formae-plugin-k8s`
 Tag a version, push — CI publishes the package zip to the hub:
 
 ```bash
-git tag v0.3.0 && git push --tags
+git tag v0.4.0 && git push --tags
 ```
 
-The published zip ships both `main/` and `generated/` so consumers don't need to run codegen themselves; they just declare a dep on `formae-helm@<ver>` and import `@formae-helm/v<X.Y>/HelmChart.pkl`.
+The published zip ships `shared/` plus every `v<X.Y>/` so consumers don't need to run codegen themselves; they just declare a dep on `formae-helm@<ver>` and import `@formae-helm/v<X.Y>/HelmChart.pkl`.
 
 ## Why a separate repo
 
