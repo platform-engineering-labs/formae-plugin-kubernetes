@@ -1,16 +1,52 @@
 # formae-helm
 
-Per-K8s-version PKL wrappers around [`pkl-readers/helm`](https://github.com/apple/pkl-pantry/tree/main/packages/helm) that map Helm chart output to formae K8s plugin resources.
+Per-K8s-version PKL wrappers around [`pkl-readers/helm`](https://github.com/apple/pkl-pantry/tree/main/packages/helm) that render Helm charts at Pkl-eval time and map the output to typed K8s plugin resources.
+
+The result: Helm releases manageable through the same forma → reconcile → drift loop as hand-written K8s resources, with field-level type safety provided by the `@k8s/v<X.Y>/...` schemas.
+
+## How it fits together
+
+```
+   Forma (.pkl)
+       │
+       │ imports
+       ▼
+   HelmChart wrapper  ──►  pkl-reader-helm  ──►  helm template  ──►  rendered YAML
+       │                     (binary on PATH)
+       │
+       │ dispatch.pkl routes each rendered Kind to a typed mapper
+       ▼
+   Listing<formae.Resource>           one per Kind, typed against @k8s/v<X.Y>/...
+       │
+       │ for-loop spreads into forma { ... }
+       ▼
+   formae apply  ──►  K8s plugin  ──►  Server-Side Apply
+```
+
+`HelmChart.resources` returns a `Listing<formae.Resource>` typed against the K8s schema for that exact minor. Resources whose Kinds don't exist in your minor (e.g. `flowcontrol.apiserver.k8s.io/v1.FlowSchema` before 1.29) are silently skipped — set `skipUnsupported = false` to throw instead.
+
+## Prerequisites
+
+- `pkl` 0.30+
+- `pkl-reader-helm` on `PATH` (an external Pkl reader that shells out to `helm template`)
+- `helm` 3+ with the chart repos you reference, e.g.:
+  ```bash
+  helm repo add bitnami https://charts.bitnami.com/bitnami
+  helm repo update
+  ```
+- The matching `@formae-helm/v<X.Y>` import — must line up with the `kubernetesVersion` on the Target and the `@k8s/v<X.Y>` schema imports in the rest of the forma.
 
 ## Usage
 
-In a Forma file, pick the K8s minor your target cluster runs:
-
 ```pkl
 amends "@formae/forma.pkl"
-import "@formae-helm/v1.27/HelmChart.pkl"
 
-local nginx = new HelmChart {
+import "@formae/formae.pkl"
+import "@k8s/k8s.pkl" as k8s
+import "@k8s/v1.31/core/Namespace.pkl" as ns
+import "@formae-helm/v1.31/HelmChart.pkl"
+
+local chart = new HelmChart {
   chart       = "bitnami/nginx"
   version     = "22.4.7"
   releaseName = "my-nginx"
@@ -22,20 +58,60 @@ local nginx = new HelmChart {
 }
 
 forma {
-  // stack, target...
-  for (resource in nginx.resources) {
+  new formae.Stack { label = "helm-nginx" }
+  new formae.Target {
+    label = "k8s-local"
+    namespace = "K8S"
+    config = new k8s.Config {
+      kubernetesVersion = "1.31"
+      defaultNamespace  = "demo"
+      auth = new k8s.KubeconfigAuth {}
+    }
+  }
+  new ns.Namespace {
+    label = "demo-namespace"
+    metadata = new ns.NamespaceMetadata { name = "demo" }
+  }
+  for (resource in chart.resources) {
     resource
   }
 }
 ```
 
-`HelmChart.resources` returns a `Listing<formae.Resource>` typed against the K8s schema for that exact minor. Resources whose Kinds don't exist in your minor (e.g. `flowcontrol.apiserver.k8s.io/v1.FlowSchema` before 1.29) are silently skipped — set `skipUnsupported = false` to throw instead.
+Apply / destroy:
 
-Only one top-level wrapper ships under each `v<X.Y>/`:
+```bash
+formae apply <forma>.pkl --mode reconcile --yes --watch
+formae destroy <forma>.pkl --yes --watch
+```
+
+`HelmChart` fields:
+
+| Field | Type | Default | Purpose |
+|---|---|---|---|
+| `chart` | `String` | _(required)_ | Helm chart reference (`<repo>/<chart>` or OCI URL). |
+| `version` | `String` | _(required)_ | Chart version. |
+| `releaseName` | `String` | _(required)_ | Helm release name. Used as label prefix. |
+| `namespace` | `String` | `"default"` | Target namespace for namespaced resources. |
+| `values` | `Dynamic?` | `null` | Helm values overrides. Use `new Dynamic { ... }`. |
+| `labelPrefix` | `String` | `releaseName` | Prefix used on Formae resource labels. |
+| `skipUnsupported` | `Boolean` | `true` | Skip resource Kinds the K8s minor doesn't ship. Set `false` to throw. |
+
+## Version coupling
+
+`@formae-helm/v<X.Y>` ↔ `@k8s/v<X.Y>` ↔ `Config.kubernetesVersion = "<X.Y>"`. All three must agree. The wrappers enforce this implicitly: the per-version mapper imports types from `@k8s/v<X.Y>/<group>/<Kind>.pkl`, so a mismatch fails at `pkl eval` rather than at apply time.
+
+To deploy the same chart against multiple K8s minors, write one forma per minor (or parameterise the file via Pkl `properties`). Currently shipped: **v1.21 → v1.34** (14 minors).
+
+## Module surface
+
+Only one module is published per minor:
 
 | Module | Purpose |
 |---|---|
 | `HelmChart.pkl` | Class — render a chart at evaluation time, expose `resources` for spread into a `forma {}` block. |
+
+`Generator.pkl` and `StaticGenerator.pkl` (a static-PKL emitter) shipped in earlier versions but are dropped — out of scope for the current focus on the typed-`HelmChart` flow.
 
 ## Layout
 
@@ -48,17 +124,25 @@ Only one top-level wrapper ships under each `v<X.Y>/`:
 ├── v1.21/ ...               GENERATED — per-K8s-minor copy with imports rewritten
 ├── v1.34/
 ├── tools/gen-versioned-helm Go codegen (~300 LoC)
-└── Makefile                 generate / package / test / clean
+└── Makefile                 generate / package / test / verify / clean
 ```
 
-Per-version trees are committed. They're emitted by `make generate` as a string-rewrite of `shared/` with `@k8s/<group>/<Kind>.pkl` → `@k8s/v<X.Y>/<group>/<Kind>.pkl`, plus mappers dropped when their K8s types don't exist in the target minor (and `dispatch.pkl` patched accordingly).
+Per-version trees are committed (so `pkl analyze imports` and `pkl eval` work against a checkout without re-running codegen). They're emitted by `make generate` as a string-rewrite of `shared/`:
+
+- `@k8s/<group>/<Kind>.pkl` → `@k8s/v<X.Y>/<group>/<Kind>.pkl` in every file.
+- Mappers whose K8s types don't exist in a given minor are dropped (e.g. `flowcontrol.pkl` is omitted under v1.21..v1.28).
+- `dispatch.pkl` is patched to remove the imports + branches that pointed at dropped mappers.
+
+### Why per-version trees instead of one parameterised module
+
+Pkl's typed imports are static. A mapper that constructs `new dep.Deployment { ... }` MUST literally `import "@k8s/v<X.Y>/apps/Deployment.pkl" as dep` — you can't parameterise the path or pass types as values. The 14 trees are the price of strong typing on chart output. The codegen does the minimum string-rewrite.
 
 ## Development
 
 Prereqs: `pkl` (0.30+), `go` (1.23+), `make`.
 
 ```bash
-# 1. Resolve dependencies (writes PklProject.deps.json).
+# 1. Resolve Pkl dependencies (writes PklProject.deps.json).
 pkl project resolve .
 
 # 2. Regenerate v*/ from shared/.
@@ -75,7 +159,7 @@ Editing workflow:
 - Run `make test` to catch broken imports immediately.
 - Commit the diff under `v*/` together with the `shared/` change — `make verify` fails CI on stale trees.
 
-The `k8s` Pkl dependency in `PklProject` points at the local `formae-plugin-k8s` checkout for development; release builds resolve it against the published `package://hub.platform.engineering/.../k8s@<min>` URI.
+The `k8s` Pkl dependency in `PklProject` points at the local `formae-plugin-k8s` checkout for development. Release builds resolve it against the published `package://hub.platform.engineering/.../k8s@<min>` URI.
 
 ## Releasing
 
@@ -85,13 +169,13 @@ Tag a version, push — CI publishes the package zip to the hub:
 git tag v0.4.0 && git push --tags
 ```
 
-The published zip ships `shared/` plus every `v<X.Y>/` so consumers don't need to run codegen themselves; they just declare a dep on `formae-helm@<ver>` and import `@formae-helm/v<X.Y>/HelmChart.pkl`.
+The published zip ships `shared/` plus every `v<X.Y>/` so consumers don't need to run codegen themselves. They declare a dep on `formae-helm@<ver>` and import `@formae-helm/v<X.Y>/HelmChart.pkl` directly.
 
-## Why a separate repo
+## Why a separate Pkl package
 
-- Helm wrappers don't run inside the K8s plugin binary — they are pure PKL evaluated by user Forma files. Bundling them in the K8s plugin install would couple their release cadence unnecessarily.
-- A bug fix in the helm dispatch shouldn't require a new K8s plugin release.
-- Same dependency model as `pkl-readers/helm` itself (an external Pkl package the K8s plugin doesn't ship).
+- The wrappers don't run inside the K8s plugin binary — they're pure PKL evaluated at forma-eval time. Shipping them with the plugin install would couple release cadences unnecessarily.
+- A bug fix in helm dispatch shouldn't force a new K8s plugin release.
+- Same dependency model as `pkl-readers/helm` itself — an external Pkl package the K8s plugin doesn't ship.
 
 ## License
 

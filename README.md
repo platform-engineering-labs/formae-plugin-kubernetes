@@ -23,13 +23,45 @@ Older versions only run after the next-newer version has passed on `main`.
 [![K8s 1.21](https://github.com/platform-engineering-labs/formae-plugin-k8s/actions/workflows/conformance-v1-21.yml/badge.svg?branch=main)](https://github.com/platform-engineering-labs/formae-plugin-k8s/actions/workflows/conformance-v1-21.yml)
 
 Kubernetes resource plugin for
-[formae](https://github.com/platform-engineering-labs/formae). This plugin
-enables formae to manage Kubernetes resources using
-[Server-Side Apply](https://kubernetes.io/docs/reference/using-api/server-side-apply/).
+[formae](https://github.com/platform-engineering-labs/formae). Manages
+Kubernetes resources via
+[Server-Side Apply](https://kubernetes.io/docs/reference/using-api/server-side-apply/),
+with strongly-typed Pkl schemas pinned to your cluster's exact K8s minor.
 
-## Supported Resources
+## Supported K8s versions
 
-This plugin supports **35 Kubernetes resource types** across 13 API groups:
+The plugin ships one Pkl schema tree per supported K8s minor. Pick the
+matching one for your cluster — fields that don't exist in that minor are
+absent from the schema, so misconfigurations surface at `pkl eval` time
+instead of failing at apply.
+
+Currently shipped: **v1.21 → v1.34** (14 minors). Each one has its own
+conformance suite that runs on every push to `main` (badges above).
+
+If you don't set `kubernetesVersion` on the Target, the plugin assumes the
+most recent supported minor (currently `1.34`). Set it explicitly for
+older clusters.
+
+In a forma file, declare the minor on the Target and import the matching
+schema subtree:
+
+```pkl
+import "@k8s/k8s.pkl" as k8s
+import "@k8s/v1.31/core/Namespace.pkl" as ns
+
+new formae.Target {
+  label = "k8s-local"
+  config = new k8s.Config {
+    kubernetesVersion = "1.31"           // must match the imports above
+    defaultNamespace = "demo"
+    auth = new k8s.KubeconfigAuth {}     // or InCluster, etc.
+  }
+}
+```
+
+## Supported resources
+
+35 resource types across 13 API groups:
 
 | API Group | Resources | Examples |
 |-----------|-----------|----------|
@@ -47,62 +79,134 @@ This plugin supports **35 Kubernetes resource types** across 13 API groups:
 | Flow Control | 2 | FlowSchema, PriorityLevelConfiguration |
 | Node | 1 | RuntimeClass |
 
-See [`schema/pkl/`](schema/pkl/) for the complete list of supported resource
-types.
+Plus `K8S::Apiextensions::CustomResourceDefinition` and a generic
+`K8S::Generic::CustomResource` escape hatch for CRDs not modelled
+explicitly. See [`schema/pkl/`](schema/pkl/) for the full list.
 
-## Configuration
-
-### Target Configuration
-
-Configure a Kubernetes target in your forma file:
+## Target configuration
 
 ```pkl
 import "@formae/formae.pkl"
-import "@k8s/k8s.pkl"
+import "@k8s/k8s.pkl" as k8s
 
-target: formae.Target = new formae.Target {
+new formae.Target {
   label = "k8s-target"
+  namespace = "K8S"
   config = new k8s.Config {
-    context = "my-cluster"
-    namespace = "my-namespace"
-    // Optional: specify kubeconfig path
-    // kubeconfig = "/path/to/kubeconfig"
+    kubernetesVersion = "1.31"           // K8s minor — matches @k8s/v1.31/* imports
+    defaultNamespace = "my-namespace"    // ns used when a resource omits one
+    auth = new k8s.KubeconfigAuth {}     // see Authentication below
   }
 }
 ```
 
-### Credentials
+`Config` fields:
 
-The plugin uses the standard Kubernetes credential chain. Configure access using
-one of:
+| Field | Type | Purpose |
+|---|---|---|
+| `kubernetesVersion` | `String` | K8s minor (e.g. `"1.31"`). Selects the schema subtree the plugin uses to validate the resource. **If omitted, the plugin assumes the most recent supported minor** (currently `1.34`). Set it explicitly for older clusters so field-level mismatches surface at `pkl eval`. |
+| `defaultNamespace` | `String?` | Namespace assumed for namespaced resources that don't set `metadata.namespace`. |
+| `auth` | `Auth` | One of `KubeconfigAuth` or `InClusterAuth`. |
 
-**Kubeconfig (default):**
+### Authentication
 
-```bash
-# Uses ~/.kube/config or $KUBECONFIG by default
-export KUBECONFIG="/path/to/kubeconfig"
+**Kubeconfig** (default for local development):
+
+```pkl
+auth = new k8s.KubeconfigAuth {
+  // Optional — defaults to current-context in $KUBECONFIG or ~/.kube/config
+  context = "kind-formae-test"
+  // Optional override for the kubeconfig path
+  kubeconfig = "/path/to/kubeconfig"
+}
 ```
 
-**Context Selection:**
+**In-cluster** (when formae itself runs as a pod):
 
-```bash
-# Use a specific context from kubeconfig
-kubectl config use-context my-cluster
+```pkl
+auth = new k8s.InClusterAuth {}
 ```
 
-**In-Cluster:** When running inside a Kubernetes cluster, credentials are
-automatically retrieved from the service account token.
+The pod's ServiceAccount token at
+`/var/run/secrets/kubernetes.io/serviceaccount/` is used automatically.
+
+## Helm charts via formae-helm
+
+The companion `formae-helm` Pkl package ([helm/](helm/)) renders Helm charts
+at Pkl-eval time and maps the output to typed K8s resources, so you can
+manage Helm releases through the same forma → reconcile → drift loop as
+hand-written resources.
+
+```pkl
+amends "@formae/forma.pkl"
+
+import "@formae/formae.pkl"
+import "@k8s/k8s.pkl" as k8s
+import "@k8s/v1.31/core/Namespace.pkl" as ns
+import "@formae-helm/v1.31/HelmChart.pkl"
+
+local chart = new HelmChart {
+  chart = "bitnami/nginx"
+  version = "22.4.7"
+  releaseName = "my-nginx"
+  namespace = "demo"
+  values = new Dynamic {
+    replicaCount = 2
+    service { type = "ClusterIP" }
+  }
+}
+
+forma {
+  new formae.Stack { label = "helm-nginx" }
+  new formae.Target {
+    label = "k8s-local"
+    namespace = "K8S"
+    config = new k8s.Config {
+      kubernetesVersion = "1.31"
+      defaultNamespace = "demo"
+      auth = new k8s.KubeconfigAuth {}
+    }
+  }
+  new ns.Namespace {
+    label = "demo-namespace"
+    metadata = new ns.NamespaceMetadata { name = "demo" }
+  }
+  for (resource in chart.resources) {
+    resource
+  }
+}
+```
+
+Requires `pkl-reader-helm` on `PATH` (a Pkl reader that shells out to `helm
+template`). `chart.resources` is a `Listing<formae.Resource>` typed against
+the same `@k8s/v<X.Y>/...` schema you'd use for hand-written resources —
+mismatched fields fail at eval, not at apply.
+
+The wrapper version must match the `kubernetesVersion` on the Target —
+`@formae-helm/v1.31` ↔ `@k8s/v1.31` ↔ `kubernetesVersion = "1.31"`. See
+[helm/README.md](helm/README.md) for layout and codegen details.
 
 ## Examples
 
-See the [examples/](examples/) directory for usage examples.
+The [examples/](examples/) directory has runnable forma files. The most
+focused subset is [examples/helm/](examples/helm/):
+
+| File | What it deploys |
+|---|---|
+| `nginx-v1.31.pkl` | bitnami/nginx, 2 replicas, ClusterIP service |
+| `nginx-v1.34.pkl` | same, pinned to the latest supported minor |
+| `memcached-v1.31.pkl` | bitnami/memcached standalone |
+| `postgresql-v1.31.pkl` | bitnami/postgresql primary-only |
 
 ```bash
-# Evaluate an example
-formae eval examples/webapp.pkl
+# Evaluate
+pkl eval examples/helm/nginx-v1.31.pkl --project-dir examples/helm/
 
-# Apply resources
-formae apply --mode reconcile --watch examples/webapp.pkl
+# Apply
+formae apply examples/helm/nginx-v1.31.pkl --mode reconcile --yes --watch
+
+# Destroy
+formae destroy examples/helm/nginx-v1.31.pkl --yes --watch
 ```
 
 ## License
