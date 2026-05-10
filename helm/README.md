@@ -1,6 +1,6 @@
 # formae-helm
 
-Per-K8s-version PKL wrappers around [`pkl-readers/helm`](https://github.com/apple/pkl-pantry/tree/main/packages/helm) that map Helm chart output to Formae K8s plugin resources.
+Per-K8s-version PKL wrappers around [`pkl-readers/helm`](https://github.com/apple/pkl-pantry/tree/main/packages/helm) that map Helm chart output to formae K8s plugin resources.
 
 ## Usage
 

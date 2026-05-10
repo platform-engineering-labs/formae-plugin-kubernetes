@@ -1,6 +1,6 @@
 # Examples
 
-End-to-end examples deploying real workloads to Kubernetes using Formae and
+End-to-end examples deploying real workloads to Kubernetes using formae and
 the K8S plugin. Examples are organized by cloud provider, with shared
 reusable app modules in `apps/`.
 
