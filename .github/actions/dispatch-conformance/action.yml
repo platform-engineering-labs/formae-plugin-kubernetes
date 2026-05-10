@@ -1,0 +1,52 @@
+name: Dispatch + watch conformance workflow
+description: |
+  Triggers a per-K8s-version conformance workflow via workflow_dispatch and
+  blocks until it completes. Used by conformance-main.yml so the per-version
+  files (conformance-v1-XX.yml) populate their own badge URLs while the chain
+  ordering is still enforced via job-level `needs:`.
+
+  We dispatch instead of using `workflow_run` because GitHub silently caps
+  chained workflow_run events past ~4 hops. workflow_dispatch has no such cap.
+
+inputs:
+  workflow:
+    description: "Filename of the per-version workflow (e.g. conformance-v1-34.yml)"
+    required: true
+  github-token:
+    description: "Token with `actions: write` to dispatch + read run status"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Dispatch and wait
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        WORKFLOW: ${{ inputs.workflow }}
+      run: |
+        set -euo pipefail
+        before=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+        echo "Dispatching $WORKFLOW on main..."
+        gh workflow run "$WORKFLOW" --ref main
+        # The dispatched run takes a few seconds to appear in the API. Poll
+        # until we find one created after the dispatch timestamp.
+        run_id=""
+        for _ in $(seq 1 30); do
+          sleep 2
+          run_id=$(gh run list \
+            --workflow="$WORKFLOW" \
+            --branch main \
+            --event workflow_dispatch \
+            --created ">$before" \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId // ""')
+          [ -n "$run_id" ] && break
+        done
+        if [ -z "$run_id" ]; then
+          echo "Failed to find dispatched run for $WORKFLOW" >&2
+          exit 1
+        fi
+        echo "Watching $WORKFLOW run $run_id"
+        gh run watch "$run_id" --exit-status
