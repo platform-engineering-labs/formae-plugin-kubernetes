@@ -163,12 +163,10 @@ jobs:
           node_image: ${{ inputs.kind_image }}
 
       - name: Install plugin (multi-version schema layout)
-        # install-versioned cps schema/pkl/generated/ wholesale (PklProject +
-        # all v*/ subtrees) so the runtime version dispatch can pick the
-        # right schema based on each target's ApiVersion. The legacy `install`
-        # target only copies one v*/ subtree without the top-level PklProject
-        # and breaks here.
-        run: make install-versioned
+        # `install` cps schema/pkl/generated/ wholesale (PklProject + all v*/
+        # subtrees) so the runtime version dispatch can pick the right schema
+        # based on each target's ApiVersion.
+        run: make install
 
       - name: Run conformance tests (${{ matrix.test-case }})
         env:

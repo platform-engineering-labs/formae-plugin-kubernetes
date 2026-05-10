@@ -27,7 +27,7 @@ FORMAE_BINARY ?= $(shell realpath $(firstword $(wildcard $(CURDIR)/../../formae/
 PLUGIN_BASE_DIR := $(HOME)/.pel/formae/plugins
 INSTALL_DIR := $(PLUGIN_BASE_DIR)/$(PLUGIN_NAME)/v$(PLUGIN_VERSION)
 
-.PHONY: all build test test-unit test-integration lint verify-schema clean install install-versioned help setup-credentials clean-environment conformance-test conformance-test-crud conformance-test-discovery conformance-test-crud-run conformance-test-discovery-run conformance-test-resources conformance-test-charts generate-schema chart-test drift-test
+.PHONY: all build test test-unit test-integration lint verify-schema clean install help setup-credentials clean-environment conformance-test conformance-test-crud conformance-test-discovery conformance-test-crud-run conformance-test-discovery-run conformance-test-resources conformance-test-charts generate-schema chart-test drift-test
 
 all: build
 
@@ -143,62 +143,13 @@ package-versioned-schemas: generate-versioned-schemas
 clean:
 	rm -rf bin/ dist/
 
-## install: Build and install plugin locally (binary + schema + manifest)
-## Installs to ~/.pel/formae/plugins/<name>/v<version>/
-## Removes any existing versions of the plugin first to ensure clean state.
-## INSTALL_K8S_VERSION: the generated K8s schema version installed at the top
-## level of $(INSTALL_DIR)/schema/pkl/. Defaults to the highest version in
-## tools/gen-versioned-reflect/versions.pkl. Override at the command line
-## (e.g., `make install INSTALL_K8S_VERSION=1.32`) or via the matrix CI step
-## to install a specific version's PKL schema.
-INSTALL_K8S_VERSION ?= $(lastword $(K8S_VERSIONS))
-
+## install: Build and install plugin locally (binary + multi-version schema + manifest)
+## Installs to ~/.pel/formae/plugins/<name>/v<version>/.
+## Ships schema/pkl/generated/ wholesale (top-level PklProject + every v*/
+## subtree). Formae's runtime version dispatch picks the right schema based
+## on each target's ApiVersion — no install-time pin needed.
 install: build
-	@echo "Installing $(PLUGIN_NAME) v$(PLUGIN_VERSION) (namespace: $(PLUGIN_NAMESPACE))..."
-	@if [ ! -d schema/pkl/generated/v$(INSTALL_K8S_VERSION) ]; then \
-		echo "Generating versioned schemas (need v$(INSTALL_K8S_VERSION))..."; \
-		$(MAKE) generate-versioned-pkl-schemas; \
-	fi
-	@rm -rf $(PLUGIN_BASE_DIR)/$(PLUGIN_NAME)
-	@mkdir -p $(INSTALL_DIR)/schema/pkl
-	@cp bin/$(BINARY) $(INSTALL_DIR)/$(BINARY)
-	@# Install schema/pkl/generated/v<INSTALL_K8S_VERSION>/. at the top level so
-	@# formae's extract sees a clean schema (no @K8sVersion annotations).
-	@# We deliberately do NOT install schema/pkl/generated/ alongside —
-	@# formae's extract walks the entire schema dir to resolve type modules,
-	@# and a second copy of k8s.pkl under generated/v<X.Y>/ produces an
-	@# import alias like 'v1.34_k8s' which has a '.' that breaks Pkl
-	@# identifier rules. Per-version generated trees are for external
-	@# consumers (Pkl package registry), not runtime install.
-	@cp -r schema/pkl/generated/v$(INSTALL_K8S_VERSION)/. $(INSTALL_DIR)/schema/pkl/
-	@# The installed PklProject must use package name "k8s" (matching the
-	@# plugin namespace) so formae's extract resolves type modules under
-	@# the canonical name. The versioned name "k8s-v<X-Y>" is for external
-	@# consumers (Pkl package registry); inside the install dir it would
-	@# break extract's name → identifier resolution.
-	@if [ "$$(uname)" = "Darwin" ]; then \
-		sed -i '' 's/name = "k8s-v[0-9]*-[0-9]*"/name = "k8s"/' $(INSTALL_DIR)/schema/pkl/PklProject; \
-	else \
-		sed -i 's/name = "k8s-v[0-9]*-[0-9]*"/name = "k8s"/' $(INSTALL_DIR)/schema/pkl/PklProject; \
-	fi
-	@# Re-resolve deps after the rewrite so PklProject.deps.json reflects
-	@# the canonical package name.
-	@pkl project resolve $(INSTALL_DIR)/schema/pkl >/dev/null
-	@if [ -f schema/Config.pkl ]; then cp schema/Config.pkl $(INSTALL_DIR)/schema/; fi
-	@cp formae-plugin.pkl $(INSTALL_DIR)/
-	@echo "Installed to $(INSTALL_DIR) (K8s schema: v$(INSTALL_K8S_VERSION))"
-	@echo "  - Binary: $(INSTALL_DIR)/$(BINARY)"
-	@echo "  - Schema: $(INSTALL_DIR)/schema/"
-	@echo "  - Manifest: $(INSTALL_DIR)/formae-plugin.pkl"
-
-## install-versioned: Install plugin with all-versions schema layout under
-## a single PklProject. Replaces the per-install pinning of `install`.
-## Generator emits the install layout directly; this target is a thin
-## `cp -R` of schema/pkl/generated/ into the install dir. Available
-## schema versions are inferred at runtime by formae from the v*/
-## subdirectory layout — no manifest file needed.
-install-versioned: build
-	@echo "Installing $(PLUGIN_NAME) v$(PLUGIN_VERSION) (versioned schema layout)..."
+	@echo "Installing $(PLUGIN_NAME) v$(PLUGIN_VERSION) (multi-version schema)..."
 	@if [ ! -d schema/pkl/generated ]; then \
 		echo "Generating versioned schemas..."; \
 		$(MAKE) generate-versioned-pkl-schemas; \
