@@ -1,0 +1,63 @@
+/*
+ * Conformance Test: DaemonSet (Update)
+ * Changes: minReadySeconds 0 -> 5 (mutable), added annotation
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.32/core/Namespace.pkl" as ns
+import "@k8s/v1.32/apps/DaemonSet.pkl" as ds
+import "@k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local ns = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  ns
+
+  new ds.DaemonSet {
+    label = "test-daemonset"
+    metadata = new k8s.ObjectMeta {
+      name = "test-ds-\(v.testRunID)"
+      namespace = ns.res.name
+      annotations = new Mapping {
+        ["updated"] = "true"
+      }
+    }
+    spec = new ds.DaemonSetSpec {
+      minReadySeconds = 5
+      selector = new k8s.LabelSelector {
+        matchLabels = new Mapping {
+          ["app"] = "test-ds"
+        }
+      }
+      template = new k8s.PodTemplateSpec {
+        metadata = new k8s.ObjectMeta {
+          name = "test-ds-\(v.testRunID)"
+          labels = new Mapping {
+            ["app"] = "test-ds"
+          }
+        }
+        spec = new k8s.PodSpec {
+          containers = new Listing {
+            new k8s.Container {
+              name = "nginx"
+              image = "nginx:alpine"
+            }
+          }
+        }
+      }
+    }
+  }
+}

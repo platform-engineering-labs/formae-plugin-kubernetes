@@ -1,0 +1,168 @@
+/// Mappers for admissionregistration.k8s.io/v1 K8S resource types.
+module admissionregistration
+
+import "@k8s/k8s.pkl" as k8s
+import "@k8s/v1.26/admissionregistration/ValidatingWebhookConfiguration.pkl" as vwc
+import "@k8s/v1.26/admissionregistration/MutatingWebhookConfiguration.pkl" as mwc
+
+import "common.pkl"
+
+// =============================================================================
+// Shared helpers
+// =============================================================================
+
+function mapWebhookClientConfig(src: Any): k8s.WebhookClientConfig =
+  new k8s.WebhookClientConfig {
+    when (src.url != null) {
+      url = src.url
+    }
+    when (src.caBundle != null) {
+      caBundle = src.caBundle
+    }
+    when (src.service != null) {
+      service = new k8s.ServiceReference {
+        name = src.service.name
+        namespace = src.service.namespace
+        when (src.service.path != null) {
+          path = src.service.path
+        }
+        when (src.service.port != null) {
+          port = src.service.port
+        }
+      }
+    }
+  }
+
+function mapRuleWithOperations(src: Any): k8s.RuleWithOperations =
+  new k8s.RuleWithOperations {
+    resources = common.mapStringListing(src.resources)
+    when (src.operations != null) {
+      operations = common.mapStringListing(src.operations)
+    }
+    when (src.apiGroups != null) {
+      apiGroups = common.mapStringListing(src.apiGroups)
+    }
+    when (src.apiVersions != null) {
+      apiVersions = common.mapStringListing(src.apiVersions)
+    }
+    when (src.scope != null) {
+      scope = src.scope
+    }
+  }
+
+function mapMatchCondition(src: Any): k8s.MatchCondition =
+  new k8s.MatchCondition {
+    name = src.name
+    expression = src.expression
+  }
+
+// =============================================================================
+// ValidatingWebhookConfiguration (cluster-scoped)
+// =============================================================================
+
+function mapValidatingWebhookConfiguration(src: Any, prefix: String, _namespace: String): vwc.ValidatingWebhookConfiguration =
+  new vwc.ValidatingWebhookConfiguration {
+    label = common.makeLabel(prefix, "validatingwebhookconfiguration", src.metadata.name)
+    metadata = common.mapClusterMeta(src.metadata)
+    when (src.webhooks != null) {
+      webhooks = new Listing {
+        for (_wh in src.webhooks) {
+          mapValidatingWebhook(_wh)
+        }
+      }
+    }
+  }
+
+function mapValidatingWebhook(src: Any): vwc.ValidatingWebhook =
+  new vwc.ValidatingWebhook {
+    name = src.name
+    admissionReviewVersions = common.mapStringListing(src.admissionReviewVersions)
+    sideEffects = src.sideEffects
+    clientConfig = mapWebhookClientConfig(src.clientConfig)
+    when (src.failurePolicy != null) {
+      failurePolicy = src.failurePolicy
+    }
+    when (src.matchPolicy != null) {
+      matchPolicy = src.matchPolicy
+    }
+    when (src.timeoutSeconds != null) {
+      timeoutSeconds = src.timeoutSeconds
+    }
+    when (src.namespaceSelector != null) {
+      namespaceSelector = common.mapK8sLabelSelector(src.namespaceSelector)
+    }
+    when (src.objectSelector != null) {
+      objectSelector = common.mapK8sLabelSelector(src.objectSelector)
+    }
+    when (src.rules != null) {
+      rules = new Listing {
+        for (_r in src.rules) {
+          mapRuleWithOperations(_r)
+        }
+      }
+    }
+    when (src.matchConditions != null) {
+      matchConditions = new Listing {
+        for (_mc in src.matchConditions) {
+          mapMatchCondition(_mc)
+        }
+      }
+    }
+  }
+
+// =============================================================================
+// MutatingWebhookConfiguration (cluster-scoped)
+// =============================================================================
+
+function mapMutatingWebhookConfiguration(src: Any, prefix: String, _namespace: String): mwc.MutatingWebhookConfiguration =
+  new mwc.MutatingWebhookConfiguration {
+    label = common.makeLabel(prefix, "mutatingwebhookconfiguration", src.metadata.name)
+    metadata = common.mapClusterMeta(src.metadata)
+    when (src.webhooks != null) {
+      webhooks = new Listing {
+        for (_wh in src.webhooks) {
+          mapMutatingWebhook(_wh)
+        }
+      }
+    }
+  }
+
+function mapMutatingWebhook(src: Any): mwc.MutatingWebhook =
+  new mwc.MutatingWebhook {
+    name = src.name
+    admissionReviewVersions = common.mapStringListing(src.admissionReviewVersions)
+    sideEffects = src.sideEffects
+    clientConfig = mapWebhookClientConfig(src.clientConfig)
+    when (src.failurePolicy != null) {
+      failurePolicy = src.failurePolicy
+    }
+    when (src.matchPolicy != null) {
+      matchPolicy = src.matchPolicy
+    }
+    when (src.reinvocationPolicy != null) {
+      reinvocationPolicy = src.reinvocationPolicy
+    }
+    when (src.timeoutSeconds != null) {
+      timeoutSeconds = src.timeoutSeconds
+    }
+    when (src.namespaceSelector != null) {
+      namespaceSelector = common.mapK8sLabelSelector(src.namespaceSelector)
+    }
+    when (src.objectSelector != null) {
+      objectSelector = common.mapK8sLabelSelector(src.objectSelector)
+    }
+    when (src.rules != null) {
+      rules = new Listing {
+        for (_r in src.rules) {
+          mapRuleWithOperations(_r)
+        }
+      }
+    }
+    when (src.matchConditions != null) {
+      matchConditions = new Listing {
+        for (_mc in src.matchConditions) {
+          mapMatchCondition(_mc)
+        }
+      }
+    }
+  }

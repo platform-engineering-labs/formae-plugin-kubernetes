@@ -1,0 +1,1684 @@
+/// Static PKL code generator for Formae Helm resources.
+///
+/// Takes raw K8S manifests from helm template and generates typed PKL source
+/// that uses k8s types — no pkl-reader-helm needed at deploy time.
+module render
+
+import "writer.pkl" as w
+
+// ── Label helper ─────────────────────────────────────────────────────────────
+
+function makeLabel(prefix: String, kind: String, name: String): String =
+  prefix + "-" + kind.toLowerCase() + "-" + name
+
+// ── Annotation filter ────────────────────────────────────────────────────────
+
+function filterAnnotations(meta: Any?): Mapping<String, String>? =
+  if (meta == null) null
+  else if (meta.annotations == null) null
+  else
+    let (filtered = new Mapping {
+      for (_k, _v in meta.annotations) {
+        when (_v != null && "\(_v)" != "") {
+          ["\(_k)"] = "\(_v)"
+        }
+      }
+    })
+    if (filtered.isEmpty) null
+    else filtered
+
+// ── Import tracking ──────────────────────────────────────────────────────────
+//
+// Each resource type needs specific imports.  We collect the set of import
+// lines required by all resources in the forma.
+
+/// Import line for k8s.pkl (ObjectMeta).
+const k8sImport: String = "import \"@k8s/k8s.pkl\""
+
+/// Import line for ReplicaSet.pkl (LabelSelector, PodTemplateSpec).
+const rsImport: String = "import \"@k8s/v1.30/apps/ReplicaSet.pkl\" as rs"
+
+/// Import line for Pod.pkl (PodSpec, Container).
+const podImport: String = "import \"@k8s/v1.30/core/Pod.pkl\" as pod"
+
+/// Returns the set of import lines needed for a given type.
+function importsForType(apiVersion: String, kind: String): Listing<String> =
+  // core/v1
+  if (apiVersion == "v1" && kind == "Namespace")
+    new Listing { "import \"@k8s/v1.30/core/Namespace.pkl\" as ns" }
+  else if (apiVersion == "v1" && kind == "Pod")
+    new Listing { k8sImport; podImport }
+  else if (apiVersion == "v1" && kind == "ConfigMap")
+    new Listing { k8sImport; "import \"@k8s/v1.30/core/ConfigMap.pkl\" as cm" }
+  else if (apiVersion == "v1" && kind == "Secret")
+    new Listing { k8sImport; "import \"@k8s/v1.30/core/Secret.pkl\" as secret" }
+  else if (apiVersion == "v1" && kind == "ServiceAccount")
+    new Listing { k8sImport; "import \"@k8s/v1.30/core/ServiceAccount.pkl\" as sa" }
+  else if (apiVersion == "v1" && kind == "Service")
+    new Listing { k8sImport; "import \"@k8s/v1.30/core/Service.pkl\" as svc" }
+  else if (apiVersion == "v1" && kind == "Endpoints")
+    new Listing { k8sImport; "import \"@k8s/v1.30/core/Endpoints.pkl\" as ep" }
+  else if (apiVersion == "v1" && kind == "LimitRange")
+    new Listing { k8sImport; "import \"@k8s/v1.30/core/LimitRange.pkl\" as lr" }
+  else if (apiVersion == "v1" && kind == "PersistentVolume")
+    new Listing { k8sImport; "import \"@k8s/v1.30/core/PersistentVolume.pkl\" as pv" }
+  else if (apiVersion == "v1" && kind == "PersistentVolumeClaim")
+    new Listing { k8sImport; "import \"@k8s/v1.30/core/PersistentVolumeClaim.pkl\" as pvc" }
+  else if (apiVersion == "v1" && kind == "ResourceQuota")
+    new Listing { k8sImport; "import \"@k8s/v1.30/core/ResourceQuota.pkl\" as rq" }
+  // apps/v1
+  else if (apiVersion == "apps/v1" && kind == "Deployment")
+    new Listing { k8sImport; rsImport; podImport; "import \"@k8s/v1.30/apps/Deployment.pkl\" as dep" }
+  else if (apiVersion == "apps/v1" && kind == "ReplicaSet")
+    new Listing { k8sImport; rsImport; podImport }
+  else if (apiVersion == "apps/v1" && kind == "StatefulSet")
+    new Listing { k8sImport; rsImport; podImport; "import \"@k8s/v1.30/apps/StatefulSet.pkl\" as sts" }
+  else if (apiVersion == "apps/v1" && kind == "DaemonSet")
+    new Listing { k8sImport; rsImport; podImport; "import \"@k8s/v1.30/apps/DaemonSet.pkl\" as ds" }
+  // batch/v1
+  else if (apiVersion == "batch/v1" && kind == "Job")
+    new Listing { k8sImport; rsImport; podImport; "import \"@k8s/v1.30/batch/Job.pkl\" as job" }
+  else if (apiVersion == "batch/v1" && kind == "CronJob")
+    new Listing { k8sImport; rsImport; podImport; "import \"@k8s/v1.30/batch/CronJob.pkl\" as cj" }
+  // networking
+  else if (apiVersion == "networking.k8s.io/v1" && kind == "Ingress")
+    new Listing { k8sImport; "import \"@k8s/v1.30/networking/Ingress.pkl\" as ing" }
+  else if (apiVersion == "networking.k8s.io/v1" && kind == "IngressClass")
+    new Listing { k8sImport; "import \"@k8s/v1.30/networking/IngressClass.pkl\" as ic" }
+  else if (apiVersion == "networking.k8s.io/v1" && kind == "NetworkPolicy")
+    new Listing { k8sImport; rsImport; "import \"@k8s/v1.30/networking/NetworkPolicy.pkl\" as np" }
+  // rbac
+  else if (apiVersion == "rbac.authorization.k8s.io/v1" && kind == "Role")
+    new Listing { k8sImport; "import \"@k8s/v1.30/rbac/Role.pkl\" as role" }
+  else if (apiVersion == "rbac.authorization.k8s.io/v1" && kind == "RoleBinding")
+    new Listing { k8sImport; "import \"@k8s/v1.30/rbac/RoleBinding.pkl\" as rb" }
+  else if (apiVersion == "rbac.authorization.k8s.io/v1" && kind == "ClusterRole")
+    new Listing { k8sImport; "import \"@k8s/v1.30/rbac/ClusterRole.pkl\" as cr" }
+  else if (apiVersion == "rbac.authorization.k8s.io/v1" && kind == "ClusterRoleBinding")
+    new Listing { k8sImport; "import \"@k8s/v1.30/rbac/ClusterRoleBinding.pkl\" as crb" }
+  // policy
+  else if (apiVersion == "policy/v1" && kind == "PodDisruptionBudget")
+    new Listing { k8sImport; rsImport; "import \"@k8s/v1.30/policy/PodDisruptionBudget.pkl\" as pdb" }
+  // storage
+  else if (apiVersion == "storage.k8s.io/v1" && kind == "StorageClass")
+    new Listing { k8sImport; "import \"@k8s/v1.30/storage/StorageClass.pkl\" as sc" }
+  else if (apiVersion == "storage.k8s.io/v1" && kind == "CSIDriver")
+    new Listing { k8sImport; "import \"@k8s/v1.30/storage/CSIDriver.pkl\" as csi" }
+  // scheduling
+  else if (apiVersion == "scheduling.k8s.io/v1" && kind == "PriorityClass")
+    new Listing { k8sImport; "import \"@k8s/v1.30/scheduling/PriorityClass.pkl\" as pc" }
+  // autoscaling
+  else if (apiVersion == "autoscaling/v2" && kind == "HorizontalPodAutoscaler")
+    new Listing { k8sImport; "import \"@k8s/v1.30/autoscaling/HorizontalPodAutoscaler.pkl\" as hpa" }
+  // coordination
+  else if (apiVersion == "coordination.k8s.io/v1" && kind == "Lease")
+    new Listing { k8sImport; "import \"@k8s/v1.30/coordination/Lease.pkl\" as lease" }
+  // node
+  else if (apiVersion == "node.k8s.io/v1" && kind == "RuntimeClass")
+    new Listing { k8sImport; "import \"@k8s/v1.30/node/RuntimeClass.pkl\" as rc" }
+  // admissionregistration
+  else if (apiVersion == "admissionregistration.k8s.io/v1" && kind == "ValidatingWebhookConfiguration")
+    new Listing { k8sImport; "import \"@k8s/v1.30/admissionregistration/ValidatingWebhookConfiguration.pkl\" as vwc" }
+  else if (apiVersion == "admissionregistration.k8s.io/v1" && kind == "MutatingWebhookConfiguration")
+    new Listing { k8sImport; "import \"@k8s/v1.30/admissionregistration/MutatingWebhookConfiguration.pkl\" as mwc" }
+  // flowcontrol
+  else if (apiVersion == "flowcontrol.apiserver.k8s.io/v1" && kind == "FlowSchema")
+    new Listing { k8sImport; "import \"@k8s/v1.30/flowcontrol/FlowSchema.pkl\" as fs" }
+  else if (apiVersion == "flowcontrol.apiserver.k8s.io/v1" && kind == "PriorityLevelConfiguration")
+    new Listing { k8sImport; "import \"@k8s/v1.30/flowcontrol/PriorityLevelConfiguration.pkl\" as plc" }
+  else new Listing {}
+
+function isSupported(apiVersion: String, kind: String): Boolean =
+  !importsForType(apiVersion, kind).toList().isEmpty
+
+// ── Shared renderers ─────────────────────────────────────────────────────────
+
+/// Render k8s.ObjectMeta for namespaced resources.
+function renderObjectMeta(meta: Any, ns: String, ind: String): String =
+  let (annots = filterAnnotations(meta))
+  w.joinNonEmpty(new Listing {
+    ind + "metadata = new k8s.ObjectMeta {"
+    w.strProp(ind + "  ", "name", meta.name)
+    w.strProp(ind + "  ", "namespace", ns)
+    w.mappingBlock(meta.labels, ind + "  ", "labels")
+    when (annots != null) { w.mappingBlock(annots, ind + "  ", "annotations") }
+    ind + "}"
+  }.toList())
+
+/// Render k8s.ObjectMeta for cluster-scoped resources (no namespace).
+function renderClusterMeta(meta: Any, ind: String): String =
+  let (annots = filterAnnotations(meta))
+  w.joinNonEmpty(new Listing {
+    ind + "metadata = new k8s.ObjectMeta {"
+    w.strProp(ind + "  ", "name", meta.name)
+    w.mappingBlock(meta.labels, ind + "  ", "labels")
+    when (annots != null) { w.mappingBlock(annots, ind + "  ", "annotations") }
+    ind + "}"
+  }.toList())
+
+/// Render ns.NamespaceMetadata (cluster-scoped, purpose-built for Namespace).
+function renderNamespaceMetadata(meta: Any, ind: String): String =
+  let (annots = filterAnnotations(meta))
+  w.joinNonEmpty(new Listing {
+    ind + "metadata = new ns.NamespaceMetadata {"
+    w.strProp(ind + "  ", "name", meta.name)
+    w.mappingBlock(meta.labels, ind + "  ", "labels")
+    when (annots != null) { w.mappingBlock(annots, ind + "  ", "annotations") }
+    ind + "}"
+  }.toList())
+
+/// Render rs.LabelSelector.
+function renderLabelSelectorAs(sel: Any?, alias: String, ind: String, propName: String): String =
+  if (sel == null) ""
+  else w.joinNonEmpty(new Listing {
+    ind + propName + " = new " + alias + ".LabelSelector {"
+    w.mappingBlock(sel.matchLabels, ind + "  ", "matchLabels")
+    when (sel.matchExpressions != null) {
+      ind + "  matchExpressions {"
+      for (_expr in sel.matchExpressions) {
+        w.joinNonEmpty(new Listing {
+          ind + "    new {"
+          w.strProp(ind + "      ", "key", _expr.key)
+          w.strProp(ind + "      ", "operator", _expr.operator)
+          w.stringListBlock(_expr.values, ind + "      ", "values")
+          ind + "    }"
+        }.toList())
+      }
+      ind + "  }"
+    }
+    ind + "}"
+  }.toList())
+
+function renderLabelSelector(sel: Any?, alias: String, ind: String): String =
+  if (sel == null) ""
+  else w.joinNonEmpty(new Listing {
+    ind + "selector = new " + alias + ".LabelSelector {"
+    w.mappingBlock(sel.matchLabels, ind + "  ", "matchLabels")
+    when (sel.matchExpressions != null) {
+      ind + "  matchExpressions {"
+      for (_expr in sel.matchExpressions) {
+        w.joinNonEmpty(new Listing {
+          ind + "    new {"
+          w.strProp(ind + "      ", "key", _expr.key)
+          w.strProp(ind + "      ", "operator", _expr.operator)
+          w.stringListBlock(_expr.values, ind + "      ", "values")
+          ind + "    }"
+        }.toList())
+      }
+      ind + "  }"
+    }
+    ind + "}"
+  }.toList())
+
+/// Render rs.PodTemplateMetadata.
+function renderPodTemplateMeta(meta: Any?, ind: String): String =
+  if (meta == null) ""
+  else
+    let (annots = filterAnnotations(meta))
+    w.joinNonEmpty(new Listing {
+      ind + "metadata = new rs.PodTemplateMetadata {"
+      w.mappingBlock(meta.labels, ind + "  ", "labels")
+      when (annots != null) { w.mappingBlock(annots, ind + "  ", "annotations") }
+      ind + "}"
+    }.toList())
+
+/// Render pod.PodSpec.
+/// Schema fields: containers, restartPolicy, nodeSelector, serviceAccountName
+function renderPodSpec(spec: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "spec = new pod.PodSpec {"
+    when (spec.containers != null) {
+      ind + "  containers {"
+      for (_c in spec.containers) {
+        renderContainer(_c, ind + "    ")
+      }
+      ind + "  }"
+    }
+    w.strProp(ind + "  ", "restartPolicy", spec.restartPolicy)
+    w.strProp(ind + "  ", "serviceAccountName", spec.serviceAccountName)
+    w.mappingBlock(spec.nodeSelector, ind + "  ", "nodeSelector")
+    ind + "}"
+  }.toList())
+
+/// Render a single container (anonymous new inside typed Listing).
+/// Schema fields: name, image, command, args, env, ports, resources
+function renderContainer(c: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "new {"
+    w.strProp(ind + "  ", "name", c.name)
+    w.strProp(ind + "  ", "image", c.image)
+    w.stringListBlock(c.command, ind + "  ", "command")
+    w.stringListBlock(c.args, ind + "  ", "args")
+    when (c.ports != null) {
+      ind + "  ports {"
+      for (_p in c.ports) {
+        renderContainerPort(_p, ind + "    ")
+      }
+      ind + "  }"
+    }
+    when (c.env != null) {
+      ind + "  env {"
+      for (_e in c.env) {
+        renderEnvVar(_e, ind + "    ")
+      }
+      ind + "  }"
+    }
+    when (c.resources != null) {
+      renderResourceReqs(c.resources, ind + "  ")
+    }
+    ind + "}"
+  }.toList())
+
+/// Render a container port (anonymous new).
+function renderContainerPort(p: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "new {"
+    w.strProp(ind + "  ", "name", p.name)
+    w.intProp(ind + "  ", "containerPort", p.containerPort)
+    w.strProp(ind + "  ", "protocol", p.protocol)
+    ind + "}"
+  }.toList())
+
+/// Render an env var (anonymous new).
+function renderEnvVar(e: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "new {"
+    w.strProp(ind + "  ", "name", e.name)
+    w.strProp(ind + "  ", "value", e.value)
+    ind + "}"
+  }.toList())
+
+/// Render resource requirements.
+function renderResourceReqs(r: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "resources = new pod.ResourceRequirements {"
+    w.qtyMappingBlock(r.limits, ind + "  ", "limits")
+    w.qtyMappingBlock(r.requests, ind + "  ", "requests")
+    ind + "}"
+  }.toList())
+
+/// Render rs.PodTemplateSpec.
+function renderPodTemplateSpec(tpl: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "template = new rs.PodTemplateSpec {"
+    renderPodTemplateMeta(tpl.metadata, ind + "  ")
+    renderPodSpec(tpl.spec, ind + "  ")
+    ind + "}"
+  }.toList())
+
+// ── Per-type renderers ───────────────────────────────────────────────────────
+
+// ── Core/v1 ──────────────────────────────────────────────────────────────────
+
+function renderNamespace(src: Any, prefix: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new ns.Namespace {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "namespace", src.metadata.name))
+    renderNamespaceMetadata(src.metadata, ind + "  ")
+    ind + "}"
+  }.toList())
+
+function renderPod(src: Any, prefix: String, ns: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new pod.Pod {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "pod", src.metadata.name))
+    renderObjectMeta(src.metadata, ns, ind + "  ")
+    renderPodSpec(src.spec, ind + "  ")
+    ind + "}"
+  }.toList())
+
+function renderConfigMap(src: Any, prefix: String, ns: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new cm.ConfigMap {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "configmap", src.metadata.name))
+    renderObjectMeta(src.metadata, ns, ind + "  ")
+    w.mappingBlock(src.data, ind + "  ", "data")
+    w.mappingBlock(src.binaryData, ind + "  ", "binaryData")
+    w.boolProp(ind + "  ", "immutable", src.immutable)
+    ind + "}"
+  }.toList())
+
+function renderSecret(src: Any, prefix: String, ns: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new secret.Secret {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "secret", src.metadata.name))
+    renderObjectMeta(src.metadata, ns, ind + "  ")
+    w.strProp(ind + "  ", "type", src.type)
+    w.mappingBlock(src.data, ind + "  ", "data")
+    w.mappingBlock(src.stringData, ind + "  ", "stringData")
+    w.boolProp(ind + "  ", "immutable", src.immutable)
+    ind + "}"
+  }.toList())
+
+function renderServiceAccount(src: Any, prefix: String, ns: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new sa.ServiceAccount {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "serviceaccount", src.metadata.name))
+    renderObjectMeta(src.metadata, ns, ind + "  ")
+    w.boolProp(ind + "  ", "automountServiceAccountToken", src.automountServiceAccountToken)
+    ind + "}"
+  }.toList())
+
+function renderService(src: Any, prefix: String, ns: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new svc.Service {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "service", src.metadata.name))
+    renderObjectMeta(src.metadata, ns, ind + "  ")
+    when (src.spec != null) { renderServiceSpec(src.spec, ind + "  ") }
+    ind + "}"
+  }.toList())
+
+function renderServiceSpec(spec: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "spec = new svc.ServiceSpec {"
+    w.strProp(ind + "  ", "type", spec.type)
+    w.strProp(ind + "  ", "clusterIP", spec.clusterIP)
+    w.strProp(ind + "  ", "externalTrafficPolicy", spec.externalTrafficPolicy)
+    w.strProp(ind + "  ", "sessionAffinity", spec.sessionAffinity)
+    w.mappingBlock(spec.selector, ind + "  ", "selector")
+    when (spec.ports != null) {
+      ind + "  ports {"
+      for (_p in spec.ports) {
+        renderServicePort(_p, ind + "    ")
+      }
+      ind + "  }"
+    }
+    ind + "}"
+  }.toList())
+
+function renderServicePort(p: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "new {"
+    w.strProp(ind + "  ", "name", p.name)
+    w.intProp(ind + "  ", "port", p.port)
+    w.strProp(ind + "  ", "targetPort", if (p.targetPort != null) "\(p.targetPort)" else null)
+    w.strProp(ind + "  ", "protocol", p.protocol)
+    w.intProp(ind + "  ", "nodePort", p.nodePort)
+    ind + "}"
+  }.toList())
+
+function renderEndpoints(src: Any, prefix: String, ns: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new ep.Endpoints {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "endpoints", src.metadata.name))
+    renderObjectMeta(src.metadata, ns, ind + "  ")
+    when (src.subsets != null) {
+      ind + "  subsets {"
+      for (_sub in src.subsets) {
+        w.joinNonEmpty(new Listing {
+          ind + "    new {"
+          when (_sub.addresses != null) {
+            ind + "      addresses {"
+            for (_addr in _sub.addresses) {
+              ind + "        new { ip = " + w.q(_addr.ip) + " }"
+            }
+            ind + "      }"
+          }
+          when (_sub.ports != null) {
+            ind + "      ports {"
+            for (_p in _sub.ports) {
+              w.joinNonEmpty(new Listing {
+                ind + "        new {"
+                w.intProp(ind + "          ", "port", _p.port)
+                w.strProp(ind + "          ", "protocol", _p.protocol)
+                w.strProp(ind + "          ", "name", _p.name)
+                ind + "        }"
+              }.toList())
+            }
+            ind + "      }"
+          }
+          ind + "    }"
+        }.toList())
+      }
+      ind + "  }"
+    }
+    ind + "}"
+  }.toList())
+
+function renderLimitRange(src: Any, prefix: String, ns: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new lr.LimitRange {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "limitrange", src.metadata.name))
+    renderObjectMeta(src.metadata, ns, ind + "  ")
+    when (src.spec != null && src.spec.limits != null) {
+      ind + "  limits {"
+      for (_item in src.spec.limits) {
+        w.joinNonEmpty(new Listing {
+          ind + "    new {"
+          w.strProp(ind + "      ", "type", _item.type)
+          w.qtyMappingBlock(_item.max, ind + "      ", "max")
+          w.qtyMappingBlock(_item.min, ind + "      ", "min")
+          w.qtyMappingBlock(_item.default, ind + "      ", "default")
+          w.qtyMappingBlock(_item.defaultRequest, ind + "      ", "defaultRequest")
+          ind + "    }"
+        }.toList())
+      }
+      ind + "  }"
+    }
+    ind + "}"
+  }.toList())
+
+function renderPersistentVolume(src: Any, prefix: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new pv.PersistentVolume {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "persistentvolume", src.metadata.name))
+    renderClusterMeta(src.metadata, ind + "  ")
+    when (src.spec != null) {
+      w.qtyMappingBlock(src.spec.capacity, ind + "  ", "capacity")
+      w.stringListBlock(src.spec.accessModes, ind + "  ", "accessModes")
+      w.strProp(ind + "  ", "persistentVolumeReclaimPolicy", src.spec.persistentVolumeReclaimPolicy)
+      w.strProp(ind + "  ", "storageClassName", src.spec.storageClassName)
+      w.strProp(ind + "  ", "volumeMode", src.spec.volumeMode)
+    }
+    ind + "}"
+  }.toList())
+
+function renderPersistentVolumeClaim(src: Any, prefix: String, ns: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new pvc.PersistentVolumeClaim {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "persistentvolumeclaim", src.metadata.name))
+    renderObjectMeta(src.metadata, ns, ind + "  ")
+    when (src.spec != null) {
+      w.joinNonEmpty(new Listing {
+        ind + "  spec = new pvc.PersistentVolumeClaimSpec {"
+        w.stringListBlock(src.spec.accessModes, ind + "    ", "accessModes")
+        w.strProp(ind + "    ", "storageClassName", src.spec.storageClassName)
+        w.strProp(ind + "    ", "volumeName", src.spec.volumeName)
+        w.strProp(ind + "    ", "volumeMode", src.spec.volumeMode)
+        when (src.spec.resources != null) {
+          w.joinNonEmpty(new Listing {
+            ind + "    resources {"
+            w.qtyMappingBlock(src.spec.resources.requests, ind + "      ", "requests")
+            ind + "    }"
+          }.toList())
+        }
+        ind + "  }"
+      }.toList())
+    }
+    ind + "}"
+  }.toList())
+
+function renderResourceQuota(src: Any, prefix: String, ns: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new rq.ResourceQuota {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "resourcequota", src.metadata.name))
+    renderObjectMeta(src.metadata, ns, ind + "  ")
+    when (src.spec != null) {
+      w.qtyMappingBlock(src.spec.hard, ind + "  ", "hard")
+      w.stringListBlock(src.spec.scopes, ind + "  ", "scopes")
+    }
+    ind + "}"
+  }.toList())
+
+// ── Apps/v1 ──────────────────────────────────────────────────────────────────
+
+function renderDeployment(src: Any, prefix: String, ns: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new dep.Deployment {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "deployment", src.metadata.name))
+    renderObjectMeta(src.metadata, ns, ind + "  ")
+    when (src.spec != null) { renderDeploymentSpec(src.spec, ind + "  ") }
+    ind + "}"
+  }.toList())
+
+function renderDeploymentSpec(spec: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "spec = new dep.DeploymentSpec {"
+    w.intProp(ind + "  ", "replicas", spec.replicas)
+    w.intProp(ind + "  ", "minReadySeconds", spec.minReadySeconds)
+    w.intProp(ind + "  ", "progressDeadlineSeconds", spec.progressDeadlineSeconds)
+    w.intProp(ind + "  ", "revisionHistoryLimit", spec.revisionHistoryLimit)
+    w.boolProp(ind + "  ", "paused", spec.paused)
+    renderLabelSelector(spec.selector, "rs", ind + "  ")
+    when (spec.strategy != null) { renderDeploymentStrategy(spec.strategy, ind + "  ") }
+    when (spec.template != null) { renderPodTemplateSpec(spec.template, ind + "  ") }
+    ind + "}"
+  }.toList())
+
+function renderDeploymentStrategy(strat: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "strategy = new dep.DeploymentStrategy {"
+    w.strProp(ind + "  ", "type", strat.type)
+    when (strat.rollingUpdate != null) {
+      w.joinNonEmpty(new Listing {
+        ind + "  rollingUpdate = new dep.RollingUpdateDeployment {"
+        w.strProp(ind + "    ", "maxUnavailable", if (strat.rollingUpdate.maxUnavailable != null) "\(strat.rollingUpdate.maxUnavailable)" else null)
+        w.strProp(ind + "    ", "maxSurge", if (strat.rollingUpdate.maxSurge != null) "\(strat.rollingUpdate.maxSurge)" else null)
+        ind + "  }"
+      }.toList())
+    }
+    ind + "}"
+  }.toList())
+
+function renderReplicaSet(src: Any, prefix: String, ns: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new rs.ReplicaSet {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "replicaset", src.metadata.name))
+    renderObjectMeta(src.metadata, ns, ind + "  ")
+    when (src.spec != null) {
+      w.joinNonEmpty(new Listing {
+        ind + "  spec = new rs.ReplicaSetSpec {"
+        w.intProp(ind + "    ", "replicas", src.spec.replicas)
+        w.intProp(ind + "    ", "minReadySeconds", src.spec.minReadySeconds)
+        renderLabelSelector(src.spec.selector, "rs", ind + "    ")
+        when (src.spec.template != null) { renderPodTemplateSpec(src.spec.template, ind + "    ") }
+        ind + "  }"
+      }.toList())
+    }
+    ind + "}"
+  }.toList())
+
+function renderStatefulSet(src: Any, prefix: String, ns: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new sts.StatefulSet {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "statefulset", src.metadata.name))
+    renderObjectMeta(src.metadata, ns, ind + "  ")
+    when (src.spec != null) { renderStatefulSetSpec(src.spec, ind + "  ") }
+    ind + "}"
+  }.toList())
+
+function renderStatefulSetSpec(spec: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "spec = new sts.StatefulSetSpec {"
+    w.intProp(ind + "  ", "replicas", spec.replicas)
+    w.strProp(ind + "  ", "serviceName", spec.serviceName)
+    w.strProp(ind + "  ", "podManagementPolicy", spec.podManagementPolicy)
+    w.intProp(ind + "  ", "revisionHistoryLimit", spec.revisionHistoryLimit)
+    w.intProp(ind + "  ", "minReadySeconds", spec.minReadySeconds)
+    renderLabelSelector(spec.selector, "rs", ind + "  ")
+    when (spec.template != null) { renderPodTemplateSpec(spec.template, ind + "  ") }
+    when (spec.volumeClaimTemplates != null) {
+      ind + "  volumeClaimTemplates {"
+      for (_vct in spec.volumeClaimTemplates) {
+        renderPVCTemplate(_vct, ind + "    ")
+      }
+      ind + "  }"
+    }
+    when (spec.updateStrategy != null) {
+      w.joinNonEmpty(new Listing {
+        ind + "  updateStrategy {"
+        w.strProp(ind + "    ", "type", spec.updateStrategy.type)
+        when (spec.updateStrategy.rollingUpdate != null) {
+          w.joinNonEmpty(new Listing {
+            ind + "    rollingUpdate {"
+            w.intProp(ind + "      ", "partition", spec.updateStrategy.rollingUpdate.partition)
+            w.strProp(ind + "      ", "maxUnavailable", if (spec.updateStrategy.rollingUpdate.maxUnavailable != null) "\(spec.updateStrategy.rollingUpdate.maxUnavailable)" else null)
+            ind + "    }"
+          }.toList())
+        }
+        ind + "  }"
+      }.toList())
+    }
+    ind + "}"
+  }.toList())
+
+function renderPVCTemplate(vct: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "new {"
+    renderPodTemplateMeta(vct.metadata, ind + "  ")
+    when (vct.spec != null) {
+      w.joinNonEmpty(new Listing {
+        ind + "  spec {"
+        w.stringListBlock(vct.spec.accessModes, ind + "    ", "accessModes")
+        w.strProp(ind + "    ", "storageClassName", vct.spec.storageClassName)
+        w.strProp(ind + "    ", "volumeMode", vct.spec.volumeMode)
+        when (vct.spec.resources != null) {
+          w.joinNonEmpty(new Listing {
+            ind + "    resources {"
+            w.qtyMappingBlock(vct.spec.resources.requests, ind + "      ", "requests")
+            w.qtyMappingBlock(vct.spec.resources.limits, ind + "      ", "limits")
+            ind + "    }"
+          }.toList())
+        }
+        ind + "  }"
+      }.toList())
+    }
+    ind + "}"
+  }.toList())
+
+function renderDaemonSet(src: Any, prefix: String, ns: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new ds.DaemonSet {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "daemonset", src.metadata.name))
+    renderObjectMeta(src.metadata, ns, ind + "  ")
+    when (src.spec != null) { renderDaemonSetSpec(src.spec, ind + "  ") }
+    ind + "}"
+  }.toList())
+
+function renderDaemonSetSpec(spec: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "spec = new ds.DaemonSetSpec {"
+    w.intProp(ind + "  ", "minReadySeconds", spec.minReadySeconds)
+    w.intProp(ind + "  ", "revisionHistoryLimit", spec.revisionHistoryLimit)
+    renderLabelSelector(spec.selector, "rs", ind + "  ")
+    when (spec.template != null) { renderPodTemplateSpec(spec.template, ind + "  ") }
+    when (spec.updateStrategy != null) {
+      w.joinNonEmpty(new Listing {
+        ind + "  updateStrategy {"
+        w.strProp(ind + "    ", "type", spec.updateStrategy.type)
+        when (spec.updateStrategy.rollingUpdate != null) {
+          w.joinNonEmpty(new Listing {
+            ind + "    rollingUpdate {"
+            w.strProp(ind + "      ", "maxUnavailable", if (spec.updateStrategy.rollingUpdate.maxUnavailable != null) "\(spec.updateStrategy.rollingUpdate.maxUnavailable)" else null)
+            w.strProp(ind + "      ", "maxSurge", if (spec.updateStrategy.rollingUpdate.maxSurge != null) "\(spec.updateStrategy.rollingUpdate.maxSurge)" else null)
+            ind + "    }"
+          }.toList())
+        }
+        ind + "  }"
+      }.toList())
+    }
+    ind + "}"
+  }.toList())
+
+// ── Batch/v1 ─────────────────────────────────────────────────────────────────
+
+function renderJob(src: Any, prefix: String, ns: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new job.Job {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "job", src.metadata.name))
+    renderObjectMeta(src.metadata, ns, ind + "  ")
+    when (src.spec != null) { renderJobSpec(src.spec, ind + "  ") }
+    ind + "}"
+  }.toList())
+
+function renderJobSpec(spec: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "spec = new job.JobSpec {"
+    w.intProp(ind + "  ", "completions", spec.completions)
+    w.intProp(ind + "  ", "parallelism", spec.parallelism)
+    w.intProp(ind + "  ", "backoffLimit", spec.backoffLimit)
+    w.intProp(ind + "  ", "activeDeadlineSeconds", spec.activeDeadlineSeconds)
+    w.intProp(ind + "  ", "ttlSecondsAfterFinished", spec.ttlSecondsAfterFinished)
+    w.boolProp(ind + "  ", "suspend", spec.suspend)
+    w.strProp(ind + "  ", "completionMode", spec.completionMode)
+    when (spec.template != null) { renderPodTemplateSpec(spec.template, ind + "  ") }
+    ind + "}"
+  }.toList())
+
+function renderCronJob(src: Any, prefix: String, ns: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new cj.CronJob {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "cronjob", src.metadata.name))
+    renderObjectMeta(src.metadata, ns, ind + "  ")
+    when (src.spec != null) { renderCronJobSpec(src.spec, ind + "  ") }
+    ind + "}"
+  }.toList())
+
+function renderCronJobSpec(spec: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "spec = new cj.CronJobSpec {"
+    w.strProp(ind + "  ", "schedule", spec.schedule)
+    w.strProp(ind + "  ", "timeZone", spec.timeZone)
+    w.strProp(ind + "  ", "concurrencyPolicy", spec.concurrencyPolicy)
+    w.intProp(ind + "  ", "startingDeadlineSeconds", spec.startingDeadlineSeconds)
+    w.intProp(ind + "  ", "successfulJobsHistoryLimit", spec.successfulJobsHistoryLimit)
+    w.intProp(ind + "  ", "failedJobsHistoryLimit", spec.failedJobsHistoryLimit)
+    w.boolProp(ind + "  ", "suspend", spec.suspend)
+    when (spec.jobTemplate != null) {
+      w.joinNonEmpty(new Listing {
+        ind + "  jobTemplate = new cj.JobTemplate {"
+        when (spec.jobTemplate.metadata != null) {
+          renderPodTemplateMeta(spec.jobTemplate.metadata, ind + "    ")
+        }
+        when (spec.jobTemplate.spec != null) {
+          renderJobSpec(spec.jobTemplate.spec, ind + "    ")
+        }
+        ind + "  }"
+      }.toList())
+    }
+    ind + "}"
+  }.toList())
+
+// ── Networking ───────────────────────────────────────────────────────────────
+
+function renderIngress(src: Any, prefix: String, ns: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new ing.Ingress {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "ingress", src.metadata.name))
+    renderObjectMeta(src.metadata, ns, ind + "  ")
+    when (src.spec != null) { renderIngressSpec(src.spec, ind + "  ") }
+    ind + "}"
+  }.toList())
+
+function renderIngressSpec(spec: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "spec = new ing.IngressSpec {"
+    w.strProp(ind + "  ", "ingressClassName", spec.ingressClassName)
+    when (spec.defaultBackend != null) {
+      renderIngressBackend(spec.defaultBackend, ind + "  ", "defaultBackend")
+    }
+    when (spec.tls != null) {
+      ind + "  tls {"
+      for (_t in spec.tls) {
+        w.joinNonEmpty(new Listing {
+          ind + "    new {"
+          w.stringListBlock(_t.hosts, ind + "      ", "hosts")
+          w.strProp(ind + "      ", "secretName", _t.secretName)
+          ind + "    }"
+        }.toList())
+      }
+      ind + "  }"
+    }
+    when (spec.rules != null) {
+      ind + "  rules {"
+      for (_rule in spec.rules) {
+        renderIngressRule(_rule, ind + "    ")
+      }
+      ind + "  }"
+    }
+    ind + "}"
+  }.toList())
+
+function renderIngressRule(rule: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "new {"
+    w.strProp(ind + "  ", "host", rule.host)
+    when (rule.http != null && rule.http.paths != null) {
+      ind + "  http {"
+      ind + "    paths {"
+      for (_path in rule.http.paths) {
+        w.joinNonEmpty(new Listing {
+          ind + "      new {"
+          w.strProp(ind + "        ", "path", _path.path)
+          w.strProp(ind + "        ", "pathType", _path.pathType)
+          when (_path.backend != null) {
+            renderIngressBackend(_path.backend, ind + "        ", "backend")
+          }
+          ind + "      }"
+        }.toList())
+      }
+      ind + "    }"
+      ind + "  }"
+    }
+    ind + "}"
+  }.toList())
+
+function renderIngressBackend(backend: Any, ind: String, prop: String): String =
+  if (backend.service == null) ""
+  else w.joinNonEmpty(new Listing {
+    ind + prop + " = new ing.IngressBackend {"
+    w.joinNonEmpty(new Listing {
+      ind + "  service {"
+      w.strProp(ind + "    ", "name", backend.service.name)
+      when (backend.service.port != null) {
+        w.joinNonEmpty(new Listing {
+          ind + "    port {"
+          w.strProp(ind + "      ", "name", backend.service.port.name)
+          w.intProp(ind + "      ", "number", backend.service.port.number)
+          ind + "    }"
+        }.toList())
+      }
+      ind + "  }"
+    }.toList())
+    ind + "}"
+  }.toList())
+
+function renderIngressClass(src: Any, prefix: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new ic.IngressClass {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "ingressclass", src.metadata.name))
+    renderClusterMeta(src.metadata, ind + "  ")
+    when (src.spec != null) {
+      w.joinNonEmpty(new Listing {
+        ind + "  spec = new ic.IngressClassSpec {"
+        w.strProp(ind + "    ", "controller", src.spec.controller)
+        when (src.spec.parameters != null) {
+          w.joinNonEmpty(new Listing {
+            ind + "    parameters = new ic.IngressClassParameters {"
+            w.strProp(ind + "      ", "kind", src.spec.parameters.kind)
+            w.strProp(ind + "      ", "name", src.spec.parameters.name)
+            w.strProp(ind + "      ", "apiGroup", src.spec.parameters.apiGroup)
+            w.strProp(ind + "      ", "namespace", src.spec.parameters.namespace)
+            w.strProp(ind + "      ", "scope", src.spec.parameters.scope)
+            ind + "    }"
+          }.toList())
+        }
+        ind + "  }"
+      }.toList())
+    }
+    ind + "}"
+  }.toList())
+
+function renderNetworkPolicy(src: Any, prefix: String, ns: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new np.NetworkPolicy {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "networkpolicy", src.metadata.name))
+    renderObjectMeta(src.metadata, ns, ind + "  ")
+    when (src.spec != null) {
+      w.joinNonEmpty(new Listing {
+        ind + "  spec = new np.NetworkPolicySpec {"
+        renderLabelSelectorAs(src.spec.podSelector, "rs", ind + "    ", "podSelector")
+        w.stringListBlock(src.spec.policyTypes, ind + "    ", "policyTypes")
+        when (src.spec.ingress != null) {
+          ind + "    ingress {"
+          for (_rule in src.spec.ingress) {
+            renderNetworkPolicyRule(_rule, ind + "      ", "from")
+          }
+          ind + "    }"
+        }
+        when (src.spec.egress != null) {
+          ind + "    egress {"
+          for (_rule in src.spec.egress) {
+            renderNetworkPolicyRule(_rule, ind + "      ", "to")
+          }
+          ind + "    }"
+        }
+        ind + "  }"
+      }.toList())
+    }
+    ind + "}"
+  }.toList())
+
+function renderNetworkPolicyRule(rule: Any, ind: String, peerProp: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "new {"
+    when (rule.getPropertyOrNull(peerProp) != null) {
+      ind + "  " + peerProp + " {"
+      for (_peer in rule.getPropertyOrNull(peerProp)) {
+        w.joinNonEmpty(new Listing {
+          ind + "    new {"
+          when (_peer.podSelector != null) { renderLabelSelectorAs(_peer.podSelector, "rs", ind + "      ", "podSelector") }
+          when (_peer.namespaceSelector != null) {
+            let (nsSel = _peer.namespaceSelector)
+            w.joinNonEmpty(new Listing {
+              ind + "      namespaceSelector = new rs.LabelSelector {"
+              w.mappingBlock(nsSel.matchLabels, ind + "        ", "matchLabels")
+              ind + "      }"
+            }.toList())
+          }
+          when (_peer.ipBlock != null) {
+            w.joinNonEmpty(new Listing {
+              ind + "      ipBlock {"
+              w.strProp(ind + "        ", "cidr", _peer.ipBlock.cidr)
+              w.stringListBlock(_peer.ipBlock.except, ind + "        ", "except")
+              ind + "      }"
+            }.toList())
+          }
+          ind + "    }"
+        }.toList())
+      }
+      ind + "  }"
+    }
+    when (rule.ports != null) {
+      ind + "  ports {"
+      for (_p in rule.ports) {
+        w.joinNonEmpty(new Listing {
+          ind + "    new {"
+          w.strProp(ind + "      ", "port", if (_p.port != null) "\(_p.port)" else null)
+          w.strProp(ind + "      ", "protocol", _p.protocol)
+          ind + "    }"
+        }.toList())
+      }
+      ind + "  }"
+    }
+    ind + "}"
+  }.toList())
+
+// ── RBAC ─────────────────────────────────────────────────────────────────────
+
+function renderPolicyRule(rule: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "new {"
+    w.stringListBlock(rule.apiGroups, ind + "  ", "apiGroups")
+    w.stringListBlock(rule.resources, ind + "  ", "resources")
+    w.stringListBlock(rule.verbs, ind + "  ", "verbs")
+    w.stringListBlock(rule.resourceNames, ind + "  ", "resourceNames")
+    ind + "}"
+  }.toList())
+
+function renderRoleRef(ref: Any, alias: String, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "roleRef = new " + alias + ".RoleRef {"
+    w.strProp(ind + "  ", "apiGroup", if (ref.apiGroup != null) "\(ref.apiGroup)" else "rbac.authorization.k8s.io")
+    w.strProp(ind + "  ", "kind", ref.kind)
+    w.strProp(ind + "  ", "name", ref.name)
+    ind + "}"
+  }.toList())
+
+function renderSubjects(subjects: Any?, alias: String, ind: String): String =
+  if (subjects == null) ""
+  else w.joinNonEmpty(new Listing {
+    ind + "subjects {"
+    for (_s in subjects) {
+      w.joinNonEmpty(new Listing {
+        ind + "  new {"
+        w.strProp(ind + "    ", "kind", _s.kind)
+        w.strProp(ind + "    ", "name", _s.name)
+        w.strProp(ind + "    ", "namespace", _s.namespace)
+        w.strProp(ind + "    ", "apiGroup", _s.apiGroup)
+        ind + "  }"
+      }.toList())
+    }
+    ind + "}"
+  }.toList())
+
+function renderRole(src: Any, prefix: String, ns: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new role.Role {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "role", src.metadata.name))
+    renderObjectMeta(src.metadata, ns, ind + "  ")
+    when (src.rules != null) {
+      ind + "  rules {"
+      for (_r in src.rules) { renderPolicyRule(_r, ind + "    ") }
+      ind + "  }"
+    }
+    ind + "}"
+  }.toList())
+
+function renderRoleBinding(src: Any, prefix: String, ns: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new rb.RoleBinding {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "rolebinding", src.metadata.name))
+    renderObjectMeta(src.metadata, ns, ind + "  ")
+    when (src.roleRef != null) { renderRoleRef(src.roleRef, "rb", ind + "  ") }
+    renderSubjects(src.subjects, "rb", ind + "  ")
+    ind + "}"
+  }.toList())
+
+function renderClusterRole(src: Any, prefix: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new cr.ClusterRole {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "clusterrole", src.metadata.name))
+    renderClusterMeta(src.metadata, ind + "  ")
+    when (src.rules != null) {
+      ind + "  rules {"
+      for (_r in src.rules) { renderPolicyRule(_r, ind + "    ") }
+      ind + "  }"
+    }
+    ind + "}"
+  }.toList())
+
+function renderClusterRoleBinding(src: Any, prefix: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new crb.ClusterRoleBinding {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "clusterrolebinding", src.metadata.name))
+    renderClusterMeta(src.metadata, ind + "  ")
+    when (src.roleRef != null) { renderRoleRef(src.roleRef, "crb", ind + "  ") }
+    renderSubjects(src.subjects, "crb", ind + "  ")
+    ind + "}"
+  }.toList())
+
+// ── Policy ───────────────────────────────────────────────────────────────────
+
+function renderPodDisruptionBudget(src: Any, prefix: String, ns: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new pdb.PodDisruptionBudget {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "poddisruptionbudget", src.metadata.name))
+    renderObjectMeta(src.metadata, ns, ind + "  ")
+    when (src.spec != null) {
+      w.joinNonEmpty(new Listing {
+        ind + "  spec = new pdb.PodDisruptionBudgetSpec {"
+        w.strProp(ind + "    ", "minAvailable", if (src.spec.minAvailable != null) "\(src.spec.minAvailable)" else null)
+        w.strProp(ind + "    ", "maxUnavailable", if (src.spec.maxUnavailable != null) "\(src.spec.maxUnavailable)" else null)
+        renderLabelSelector(src.spec.selector, "rs", ind + "    ")
+        ind + "  }"
+      }.toList())
+    }
+    ind + "}"
+  }.toList())
+
+// ── Storage ──────────────────────────────────────────────────────────────────
+
+function renderStorageClass(src: Any, prefix: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new sc.StorageClass {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "storageclass", src.metadata.name))
+    renderClusterMeta(src.metadata, ind + "  ")
+    w.strProp(ind + "  ", "provisioner", src.provisioner)
+    w.mappingBlock(src.parameters, ind + "  ", "parameters")
+    w.strProp(ind + "  ", "reclaimPolicy", src.reclaimPolicy)
+    w.strProp(ind + "  ", "volumeBindingMode", src.volumeBindingMode)
+    w.boolProp(ind + "  ", "allowVolumeExpansion", src.allowVolumeExpansion)
+    ind + "}"
+  }.toList())
+
+function renderCSIDriver(src: Any, prefix: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new csi.CSIDriver {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "csidriver", src.metadata.name))
+    renderClusterMeta(src.metadata, ind + "  ")
+    when (src.spec != null) { renderCSIDriverSpec(src.spec, ind + "  ") }
+    ind + "}"
+  }.toList())
+
+function renderCSIDriverSpec(spec: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "spec = new csi.CSIDriverSpec {"
+    w.boolProp(ind + "  ", "attachRequired", spec.attachRequired)
+    w.boolProp(ind + "  ", "podInfoOnMount", spec.podInfoOnMount)
+    w.strProp(ind + "  ", "fsGroupPolicy", spec.fsGroupPolicy)
+    w.boolProp(ind + "  ", "requiresRepublish", spec.requiresRepublish)
+    w.boolProp(ind + "  ", "storageCapacity", spec.storageCapacity)
+    w.boolProp(ind + "  ", "seLinuxMount", spec.seLinuxMount)
+    w.stringListBlock(spec.volumeLifecycleModes, ind + "  ", "volumeLifecycleModes")
+    when (spec.tokenRequests != null) {
+      ind + "  tokenRequests {"
+      for (_tr in spec.tokenRequests) {
+        w.joinNonEmpty(new Listing {
+          ind + "    new {"
+          w.strProp(ind + "      ", "audience", _tr.audience)
+          w.intProp(ind + "      ", "expirationSeconds", _tr.expirationSeconds)
+          ind + "    }"
+        }.toList())
+      }
+      ind + "  }"
+    }
+    ind + "}"
+  }.toList())
+
+// ── Scheduling ───────────────────────────────────────────────────────────────
+
+function renderPriorityClass(src: Any, prefix: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new pc.PriorityClass {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "priorityclass", src.metadata.name))
+    renderClusterMeta(src.metadata, ind + "  ")
+    w.intProp(ind + "  ", "value", src.value)
+    w.boolProp(ind + "  ", "globalDefault", src.globalDefault)
+    w.strProp(ind + "  ", "description", src.description)
+    w.strProp(ind + "  ", "preemptionPolicy", src.preemptionPolicy)
+    ind + "}"
+  }.toList())
+
+// ── Autoscaling ──────────────────────────────────────────────────────────────
+
+function renderHPA(src: Any, prefix: String, ns: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new hpa.HorizontalPodAutoscaler {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "horizontalpodautoscaler", src.metadata.name))
+    renderObjectMeta(src.metadata, ns, ind + "  ")
+    when (src.spec != null) {
+      w.joinNonEmpty(new Listing {
+        ind + "  spec = new hpa.HorizontalPodAutoscalerSpec {"
+        when (src.spec.scaleTargetRef != null) {
+          w.joinNonEmpty(new Listing {
+            ind + "    scaleTargetRef = new hpa.CrossVersionObjectReference {"
+            w.strProp(ind + "      ", "apiVersion", src.spec.scaleTargetRef.apiVersion)
+            w.strProp(ind + "      ", "kind", src.spec.scaleTargetRef.kind)
+            w.strProp(ind + "      ", "name", src.spec.scaleTargetRef.name)
+            ind + "    }"
+          }.toList())
+        }
+        w.intProp(ind + "    ", "minReplicas", src.spec.minReplicas)
+        w.intProp(ind + "    ", "maxReplicas", src.spec.maxReplicas)
+        when (src.spec.metrics != null) {
+          ind + "    metrics {"
+          for (_m in src.spec.metrics) {
+            w.joinNonEmpty(new Listing {
+              ind + "      new {"
+              w.strProp(ind + "        ", "type", _m.type)
+              when (_m.resource != null) {
+                w.joinNonEmpty(new Listing {
+                  ind + "        resource {"
+                  w.strProp(ind + "          ", "name", _m.resource.name)
+                  when (_m.resource.target != null) {
+                    w.joinNonEmpty(new Listing {
+                      ind + "          target {"
+                      w.strProp(ind + "            ", "type", _m.resource.target.type)
+                      w.intProp(ind + "            ", "averageUtilization", _m.resource.target.averageUtilization)
+                      w.strProp(ind + "            ", "averageValue", if (_m.resource.target.averageValue != null) "\(_m.resource.target.averageValue)" else null)
+                      ind + "          }"
+                    }.toList())
+                  }
+                  ind + "        }"
+                }.toList())
+              }
+              ind + "      }"
+            }.toList())
+          }
+          ind + "    }"
+        }
+        ind + "  }"
+      }.toList())
+    }
+    ind + "}"
+  }.toList())
+
+// ── Coordination ─────────────────────────────────────────────────────────────
+
+function renderLease(src: Any, prefix: String, ns: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new lease.Lease {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "lease", src.metadata.name))
+    renderObjectMeta(src.metadata, ns, ind + "  ")
+    when (src.spec != null) {
+      w.joinNonEmpty(new Listing {
+        ind + "  spec = new lease.LeaseSpec {"
+        w.strProp(ind + "    ", "holderIdentity", src.spec.holderIdentity)
+        w.intProp(ind + "    ", "leaseDurationSeconds", src.spec.leaseDurationSeconds)
+        w.intProp(ind + "    ", "leaseTransitions", src.spec.leaseTransitions)
+        w.strProp(ind + "    ", "renewTime", src.spec.renewTime)
+        w.strProp(ind + "    ", "acquireTime", src.spec.acquireTime)
+        w.strProp(ind + "    ", "preferredHolder", src.spec.preferredHolder)
+        w.strProp(ind + "    ", "strategy", src.spec.strategy)
+        ind + "  }"
+      }.toList())
+    }
+    ind + "}"
+  }.toList())
+
+// ── Node ─────────────────────────────────────────────────────────────────────
+
+function renderRuntimeClass(src: Any, prefix: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new rc.RuntimeClass {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "runtimeclass", src.metadata.name))
+    renderClusterMeta(src.metadata, ind + "  ")
+    w.strProp(ind + "  ", "handler", src.handler)
+    when (src.overhead != null) {
+      w.joinNonEmpty(new Listing {
+        ind + "  overhead = new rc.Overhead {"
+        w.qtyMappingBlock(src.overhead.podFixed, ind + "    ", "podFixed")
+        ind + "  }"
+      }.toList())
+    }
+    when (src.scheduling != null) {
+      w.joinNonEmpty(new Listing {
+        ind + "  scheduling = new rc.Scheduling {"
+        w.mappingBlock(src.scheduling.nodeSelector, ind + "    ", "nodeSelector")
+        ind + "  }"
+      }.toList())
+    }
+    ind + "}"
+  }.toList())
+
+// ── Admissionregistration ────────────────────────────────────────────────────
+
+/// Render k8s.WebhookClientConfig (shared by VWC and MWC).
+function renderWebhookClientConfig(cc: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "clientConfig = new k8s.WebhookClientConfig {"
+    w.strProp(ind + "  ", "url", cc.url)
+    w.strProp(ind + "  ", "caBundle", cc.caBundle)
+    when (cc.service != null) {
+      w.joinNonEmpty(new Listing {
+        ind + "  service = new k8s.ServiceReference {"
+        w.strProp(ind + "    ", "name", cc.service.name)
+        w.strProp(ind + "    ", "namespace", cc.service.namespace)
+        w.strProp(ind + "    ", "path", cc.service.path)
+        w.intProp(ind + "    ", "port", cc.service.port)
+        ind + "  }"
+      }.toList())
+    }
+    ind + "}"
+  }.toList())
+
+/// Render k8s.RuleWithOperations (shared by VWC and MWC).
+function renderRuleWithOperations(rule: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "new {"
+    w.stringListBlock(rule.resources, ind + "  ", "resources")
+    w.stringListBlock(rule.operations, ind + "  ", "operations")
+    w.stringListBlock(rule.apiGroups, ind + "  ", "apiGroups")
+    w.stringListBlock(rule.apiVersions, ind + "  ", "apiVersions")
+    w.strProp(ind + "  ", "scope", rule.scope)
+    ind + "}"
+  }.toList())
+
+/// Render k8s.LabelSelector.
+function renderK8sLabelSelector(sel: Any?, ind: String, propName: String): String =
+  if (sel == null) ""
+  else w.joinNonEmpty(new Listing {
+    ind + propName + " = new k8s.LabelSelector {"
+    w.mappingBlock(sel.matchLabels, ind + "  ", "matchLabels")
+    when (sel.matchExpressions != null) {
+      ind + "  matchExpressions {"
+      for (_expr in sel.matchExpressions) {
+        w.joinNonEmpty(new Listing {
+          ind + "    new {"
+          w.strProp(ind + "      ", "key", _expr.key)
+          w.strProp(ind + "      ", "operator", _expr.operator)
+          w.stringListBlock(_expr.values, ind + "      ", "values")
+          ind + "    }"
+        }.toList())
+      }
+      ind + "  }"
+    }
+    ind + "}"
+  }.toList())
+
+function renderValidatingWebhookConfiguration(src: Any, prefix: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new vwc.ValidatingWebhookConfiguration {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "validatingwebhookconfiguration", src.metadata.name))
+    renderClusterMeta(src.metadata, ind + "  ")
+    when (src.webhooks != null) {
+      ind + "  webhooks {"
+      for (_wh in src.webhooks) {
+        renderValidatingWebhook(_wh, ind + "    ")
+      }
+      ind + "  }"
+    }
+    ind + "}"
+  }.toList())
+
+function renderValidatingWebhook(wh: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "new {"
+    w.strProp(ind + "  ", "name", wh.name)
+    w.strProp(ind + "  ", "sideEffects", wh.sideEffects)
+    w.strProp(ind + "  ", "failurePolicy", wh.failurePolicy)
+    w.strProp(ind + "  ", "matchPolicy", wh.matchPolicy)
+    w.intProp(ind + "  ", "timeoutSeconds", wh.timeoutSeconds)
+    w.stringListBlock(wh.admissionReviewVersions, ind + "  ", "admissionReviewVersions")
+    when (wh.clientConfig != null) { renderWebhookClientConfig(wh.clientConfig, ind + "  ") }
+    renderK8sLabelSelector(wh.namespaceSelector, ind + "  ", "namespaceSelector")
+    renderK8sLabelSelector(wh.objectSelector, ind + "  ", "objectSelector")
+    when (wh.rules != null) {
+      ind + "  rules {"
+      for (_r in wh.rules) {
+        renderRuleWithOperations(_r, ind + "    ")
+      }
+      ind + "  }"
+    }
+    when (wh.matchConditions != null) {
+      ind + "  matchConditions {"
+      for (_mc in wh.matchConditions) {
+        w.joinNonEmpty(new Listing {
+          ind + "    new {"
+          w.strProp(ind + "      ", "name", _mc.name)
+          w.strProp(ind + "      ", "expression", _mc.expression)
+          ind + "    }"
+        }.toList())
+      }
+      ind + "  }"
+    }
+    ind + "}"
+  }.toList())
+
+function renderMutatingWebhookConfiguration(src: Any, prefix: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new mwc.MutatingWebhookConfiguration {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "mutatingwebhookconfiguration", src.metadata.name))
+    renderClusterMeta(src.metadata, ind + "  ")
+    when (src.webhooks != null) {
+      ind + "  webhooks {"
+      for (_wh in src.webhooks) {
+        renderMutatingWebhook(_wh, ind + "    ")
+      }
+      ind + "  }"
+    }
+    ind + "}"
+  }.toList())
+
+function renderMutatingWebhook(wh: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "new {"
+    w.strProp(ind + "  ", "name", wh.name)
+    w.strProp(ind + "  ", "sideEffects", wh.sideEffects)
+    w.strProp(ind + "  ", "failurePolicy", wh.failurePolicy)
+    w.strProp(ind + "  ", "matchPolicy", wh.matchPolicy)
+    w.strProp(ind + "  ", "reinvocationPolicy", wh.reinvocationPolicy)
+    w.intProp(ind + "  ", "timeoutSeconds", wh.timeoutSeconds)
+    w.stringListBlock(wh.admissionReviewVersions, ind + "  ", "admissionReviewVersions")
+    when (wh.clientConfig != null) { renderWebhookClientConfig(wh.clientConfig, ind + "  ") }
+    renderK8sLabelSelector(wh.namespaceSelector, ind + "  ", "namespaceSelector")
+    renderK8sLabelSelector(wh.objectSelector, ind + "  ", "objectSelector")
+    when (wh.rules != null) {
+      ind + "  rules {"
+      for (_r in wh.rules) {
+        renderRuleWithOperations(_r, ind + "    ")
+      }
+      ind + "  }"
+    }
+    when (wh.matchConditions != null) {
+      ind + "  matchConditions {"
+      for (_mc in wh.matchConditions) {
+        w.joinNonEmpty(new Listing {
+          ind + "    new {"
+          w.strProp(ind + "      ", "name", _mc.name)
+          w.strProp(ind + "      ", "expression", _mc.expression)
+          ind + "    }"
+        }.toList())
+      }
+      ind + "  }"
+    }
+    ind + "}"
+  }.toList())
+
+// ── Flowcontrol ──────────────────────────────────────────────────────────────
+
+function renderFlowSchema(src: Any, prefix: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new fs.FlowSchema {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "flowschema", src.metadata.name))
+    renderClusterMeta(src.metadata, ind + "  ")
+    when (src.spec != null) { renderFlowSchemaSpec(src.spec, ind + "  ") }
+    ind + "}"
+  }.toList())
+
+function renderFlowSchemaSpec(spec: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "spec = new fs.FlowSchemaSpec {"
+    when (spec.priorityLevelConfiguration != null) {
+      w.joinNonEmpty(new Listing {
+        ind + "  priorityLevelConfiguration = new fs.PriorityLevelConfigurationReference {"
+        w.strProp(ind + "    ", "name", spec.priorityLevelConfiguration.name)
+        ind + "  }"
+      }.toList())
+    }
+    w.intProp(ind + "  ", "matchingPrecedence", spec.matchingPrecedence)
+    when (spec.distinguisherMethod != null) {
+      w.joinNonEmpty(new Listing {
+        ind + "  distinguisherMethod = new fs.FlowDistinguisherMethod {"
+        w.strProp(ind + "    ", "`type`", spec.distinguisherMethod.type)
+        ind + "  }"
+      }.toList())
+    }
+    when (spec.rules != null) {
+      ind + "  rules {"
+      for (_r in spec.rules) {
+        renderPolicyRulesWithSubjects(_r, ind + "    ")
+      }
+      ind + "  }"
+    }
+    ind + "}"
+  }.toList())
+
+function renderPolicyRulesWithSubjects(rule: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "new {"
+    when (rule.subjects != null) {
+      ind + "  subjects {"
+      for (_s in rule.subjects) {
+        renderFlowSchemaSubject(_s, ind + "    ")
+      }
+      ind + "  }"
+    }
+    when (rule.resourceRules != null) {
+      ind + "  resourceRules {"
+      for (_r in rule.resourceRules) {
+        renderResourcePolicyRule(_r, ind + "    ")
+      }
+      ind + "  }"
+    }
+    when (rule.nonResourceRules != null) {
+      ind + "  nonResourceRules {"
+      for (_r in rule.nonResourceRules) {
+        renderNonResourcePolicyRule(_r, ind + "    ")
+      }
+      ind + "  }"
+    }
+    ind + "}"
+  }.toList())
+
+function renderFlowSchemaSubject(subj: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "new {"
+    w.strProp(ind + "  ", "kind", subj.kind)
+    when (subj.serviceAccount != null) {
+      w.joinNonEmpty(new Listing {
+        ind + "  serviceAccount = new fs.ServiceAccountSubject {"
+        w.strProp(ind + "    ", "name", subj.serviceAccount.name)
+        w.strProp(ind + "    ", "namespace", subj.serviceAccount.namespace)
+        ind + "  }"
+      }.toList())
+    }
+    when (subj.user != null) {
+      w.joinNonEmpty(new Listing {
+        ind + "  user = new fs.UserSubject {"
+        w.strProp(ind + "    ", "name", subj.user.name)
+        ind + "  }"
+      }.toList())
+    }
+    when (subj.group != null) {
+      w.joinNonEmpty(new Listing {
+        ind + "  group = new fs.GroupSubject {"
+        w.strProp(ind + "    ", "name", subj.group.name)
+        ind + "  }"
+      }.toList())
+    }
+    ind + "}"
+  }.toList())
+
+function renderResourcePolicyRule(rule: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "new {"
+    w.stringListBlock(rule.apiGroups, ind + "  ", "apiGroups")
+    w.stringListBlock(rule.resources, ind + "  ", "resources")
+    w.stringListBlock(rule.verbs, ind + "  ", "verbs")
+    w.boolProp(ind + "  ", "clusterScope", rule.clusterScope)
+    w.stringListBlock(rule.namespaces, ind + "  ", "namespaces")
+    ind + "}"
+  }.toList())
+
+function renderNonResourcePolicyRule(rule: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "new {"
+    w.stringListBlock(rule.verbs, ind + "  ", "verbs")
+    w.stringListBlock(rule.nonResourceURLs, ind + "  ", "nonResourceURLs")
+    ind + "}"
+  }.toList())
+
+function renderPriorityLevelConfiguration(src: Any, prefix: String): String =
+  let (ind = "  ")
+  w.joinNonEmpty(new Listing {
+    ind + "new plc.PriorityLevelConfiguration {"
+    w.strProp(ind + "  ", "label", makeLabel(prefix, "prioritylevelconfiguration", src.metadata.name))
+    renderClusterMeta(src.metadata, ind + "  ")
+    when (src.spec != null) { renderPriorityLevelConfigurationSpec(src.spec, ind + "  ") }
+    ind + "}"
+  }.toList())
+
+function renderPriorityLevelConfigurationSpec(spec: Any, ind: String): String =
+  w.joinNonEmpty(new Listing {
+    ind + "spec = new plc.PriorityLevelConfigurationSpec {"
+    w.strProp(ind + "  ", "`type`", spec.type)
+    when (spec.limited != null) {
+      w.joinNonEmpty(new Listing {
+        ind + "  limited = new plc.LimitedPriorityLevelConfiguration {"
+        w.intProp(ind + "    ", "nominalConcurrencyShares", spec.limited.nominalConcurrencyShares)
+        w.intProp(ind + "    ", "lendablePercent", spec.limited.lendablePercent)
+        w.intProp(ind + "    ", "borrowingLimitPercent", spec.limited.borrowingLimitPercent)
+        when (spec.limited.limitResponse != null) {
+          w.joinNonEmpty(new Listing {
+            ind + "    limitResponse = new plc.LimitResponse {"
+            w.strProp(ind + "      ", "`type`", spec.limited.limitResponse.type)
+            when (spec.limited.limitResponse.queuing != null) {
+              w.joinNonEmpty(new Listing {
+                ind + "      queuing = new plc.QueuingConfiguration {"
+                w.intProp(ind + "        ", "queues", spec.limited.limitResponse.queuing.queues)
+                w.intProp(ind + "        ", "handSize", spec.limited.limitResponse.queuing.handSize)
+                w.intProp(ind + "        ", "queueLengthLimit", spec.limited.limitResponse.queuing.queueLengthLimit)
+                ind + "      }"
+              }.toList())
+            }
+            ind + "    }"
+          }.toList())
+        }
+        ind + "  }"
+      }.toList())
+    }
+    when (spec.exempt != null) {
+      w.joinNonEmpty(new Listing {
+        ind + "  exempt = new plc.ExemptPriorityLevelConfiguration {"
+        w.intProp(ind + "    ", "lendablePercent", spec.exempt.lendablePercent)
+        w.intProp(ind + "    ", "nominalConcurrencyShares", spec.exempt.nominalConcurrencyShares)
+        ind + "  }"
+      }.toList())
+    }
+    ind + "}"
+  }.toList())
+
+// ── Dispatch ─────────────────────────────────────────────────────────────────
+
+/// Generate PKL source for a single resource.
+function renderResource(src: Any, prefix: String, ns: String): String =
+  let (api = src.apiVersion)
+  let (kind = src.kind)
+  // core/v1
+  if (api == "v1" && kind == "Namespace") renderNamespace(src, prefix)
+  else if (api == "v1" && kind == "Pod") renderPod(src, prefix, ns)
+  else if (api == "v1" && kind == "ConfigMap") renderConfigMap(src, prefix, ns)
+  else if (api == "v1" && kind == "Secret") renderSecret(src, prefix, ns)
+  else if (api == "v1" && kind == "ServiceAccount") renderServiceAccount(src, prefix, ns)
+  else if (api == "v1" && kind == "Service") renderService(src, prefix, ns)
+  else if (api == "v1" && kind == "Endpoints") renderEndpoints(src, prefix, ns)
+  else if (api == "v1" && kind == "LimitRange") renderLimitRange(src, prefix, ns)
+  else if (api == "v1" && kind == "PersistentVolume") renderPersistentVolume(src, prefix)
+  else if (api == "v1" && kind == "PersistentVolumeClaim") renderPersistentVolumeClaim(src, prefix, ns)
+  else if (api == "v1" && kind == "ResourceQuota") renderResourceQuota(src, prefix, ns)
+  // apps/v1
+  else if (api == "apps/v1" && kind == "Deployment") renderDeployment(src, prefix, ns)
+  else if (api == "apps/v1" && kind == "ReplicaSet") renderReplicaSet(src, prefix, ns)
+  else if (api == "apps/v1" && kind == "StatefulSet") renderStatefulSet(src, prefix, ns)
+  else if (api == "apps/v1" && kind == "DaemonSet") renderDaemonSet(src, prefix, ns)
+  // batch/v1
+  else if (api == "batch/v1" && kind == "Job") renderJob(src, prefix, ns)
+  else if (api == "batch/v1" && kind == "CronJob") renderCronJob(src, prefix, ns)
+  // networking
+  else if (api == "networking.k8s.io/v1" && kind == "Ingress") renderIngress(src, prefix, ns)
+  else if (api == "networking.k8s.io/v1" && kind == "IngressClass") renderIngressClass(src, prefix)
+  else if (api == "networking.k8s.io/v1" && kind == "NetworkPolicy") renderNetworkPolicy(src, prefix, ns)
+  // rbac
+  else if (api == "rbac.authorization.k8s.io/v1" && kind == "Role") renderRole(src, prefix, ns)
+  else if (api == "rbac.authorization.k8s.io/v1" && kind == "RoleBinding") renderRoleBinding(src, prefix, ns)
+  else if (api == "rbac.authorization.k8s.io/v1" && kind == "ClusterRole") renderClusterRole(src, prefix)
+  else if (api == "rbac.authorization.k8s.io/v1" && kind == "ClusterRoleBinding") renderClusterRoleBinding(src, prefix)
+  // policy
+  else if (api == "policy/v1" && kind == "PodDisruptionBudget") renderPodDisruptionBudget(src, prefix, ns)
+  // storage
+  else if (api == "storage.k8s.io/v1" && kind == "StorageClass") renderStorageClass(src, prefix)
+  else if (api == "storage.k8s.io/v1" && kind == "CSIDriver") renderCSIDriver(src, prefix)
+  // scheduling
+  else if (api == "scheduling.k8s.io/v1" && kind == "PriorityClass") renderPriorityClass(src, prefix)
+  // autoscaling
+  else if (api == "autoscaling/v2" && kind == "HorizontalPodAutoscaler") renderHPA(src, prefix, ns)
+  // coordination
+  else if (api == "coordination.k8s.io/v1" && kind == "Lease") renderLease(src, prefix, ns)
+  // node
+  else if (api == "node.k8s.io/v1" && kind == "RuntimeClass") renderRuntimeClass(src, prefix)
+  // admissionregistration
+  else if (api == "admissionregistration.k8s.io/v1" && kind == "ValidatingWebhookConfiguration") renderValidatingWebhookConfiguration(src, prefix)
+  else if (api == "admissionregistration.k8s.io/v1" && kind == "MutatingWebhookConfiguration") renderMutatingWebhookConfiguration(src, prefix)
+  // flowcontrol
+  else if (api == "flowcontrol.apiserver.k8s.io/v1" && kind == "FlowSchema") renderFlowSchema(src, prefix)
+  else if (api == "flowcontrol.apiserver.k8s.io/v1" && kind == "PriorityLevelConfiguration") renderPriorityLevelConfiguration(src, prefix)
+  else "  // SKIPPED: unsupported resource \(api)/\(kind)"
+
+// ── Top-level forma renderer ─────────────────────────────────────────────────
+
+/// Generate a complete, self-contained forma PKL file from Helm chart config.
+///
+/// The output is valid PKL source that uses typed k8s resources
+/// and does NOT require pkl-reader-helm at deploy time.
+function renderForma(
+  stackLabel: String,
+  stackDescription: String,
+  targetLabel: String,
+  targetConfig: Mapping<String, String>,
+  namespace: String,
+  createNamespace: Boolean,
+  labelPrefix: String,
+  skipUnsupported: Boolean,
+  helmTemplate: Any
+): String =
+  // Collect resources and imports
+  let (resources = new Listing {
+    for (_key, _res in helmTemplate) {
+      when (isSupported(_res.apiVersion, _res.kind)) {
+        _res
+      }
+    }
+  })
+  let (allImports = new Listing {
+    for (_key, _res in helmTemplate) {
+      when (isSupported(_res.apiVersion, _res.kind)) {
+        for (_imp in importsForType(_res.apiVersion, _res.kind)) {
+          _imp
+        }
+      }
+    }
+  })
+  // Deduplicate imports
+  let (uniqueImports = allImports.toList().distinct.sort())
+  // Add namespace import if creating namespace
+  let (finalImports =
+    if (createNamespace)
+      (uniqueImports + List("import \"@k8s/v1.30/core/Namespace.pkl\" as ns")).distinct.sort()
+    else uniqueImports
+  )
+  // Build the module
+  let (header = new Listing {
+    "/// Auto-generated forma from Helm chart."
+    "/// Generated by formae-helm static generator. No pkl-reader-helm required."
+    "/// Edit freely — this file is self-contained."
+    "amends \"@formae/forma.pkl\""
+    ""
+    "import \"@formae/formae.pkl\""
+    for (_imp in finalImports) { _imp }
+    ""
+    "forma {"
+  }.toList().join("\n"))
+  let (stack =
+    "  new formae.Stack {\n" +
+    "    label = " + w.q(stackLabel) + "\n" +
+    "    description = " + w.q(stackDescription) + "\n" +
+    "  }")
+  let (target =
+    let (configLines = new Listing {
+      for (_k, _v in targetConfig) {
+        "      [" + w.q("\(_k)") + "] = " + w.q("\(_v)")
+      }
+    }.toList().join("\n"))
+    "  new formae.Target {\n" +
+    "    label = " + w.q(targetLabel) + "\n" +
+    "    namespace = \"K8S\"\n" +
+    "    config {\n" +
+    configLines + "\n" +
+    "    }\n" +
+    "  }")
+  let (nsBlock =
+    if (!createNamespace) ""
+    else
+      "  new ns.Namespace {\n" +
+      "    label = " + w.q(labelPrefix + "-namespace") + "\n" +
+      "    metadata = new ns.NamespaceMetadata {\n" +
+      "      name = " + w.q(namespace) + "\n" +
+      "    }\n" +
+      "  }")
+  let (resourceBlocks = new Listing {
+    for (_key, _res in helmTemplate) {
+      when (isSupported(_res.apiVersion, _res.kind)) {
+        renderResource(_res, labelPrefix, namespace)
+      }
+    }
+  }.toList())
+  let (body = w.joinNonEmpty(
+    List(stack, target, nsBlock) + resourceBlocks
+  ))
+  header + "\n" + body + "\n}\n"

@@ -53,6 +53,10 @@ func (j *Job) Create(ctx context.Context, request *resource.CreateRequest) (*res
 		return nil, fmt.Errorf("failed to unmarshal job properties: %w", err)
 	}
 
+	if err := prov.CheckPayloadGates(ctx, ResourceTypeJob, request.Properties, j.Client, j.Config); err != nil {
+		return nil, err
+	}
+
 	namespace := j.Config.EffectiveNamespace()
 	if job.Namespace != nil {
 		namespace = *job.Namespace

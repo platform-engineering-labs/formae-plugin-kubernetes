@@ -1,0 +1,23 @@
+/*
+ * Conformance Test: Namespace (Create)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.28/core/Namespace.pkl" as ns
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new ns.Namespace {
+    label = "test-namespace"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+}

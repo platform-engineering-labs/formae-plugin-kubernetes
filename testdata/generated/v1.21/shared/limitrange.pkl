@@ -1,0 +1,50 @@
+/*
+ * Conformance Test: LimitRange (Create)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.21/core/Namespace.pkl" as ns
+import "@k8s/v1.21/core/LimitRange.pkl" as lr
+import "@k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local ns = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  ns
+
+  new lr.LimitRange {
+    label = "test-limitrange"
+    metadata = new k8s.ObjectMeta {
+      name = "test-lr-\(v.testRunID)"
+      namespace = ns.res.name
+    }
+    spec = new lr.LimitRangeSpec {
+      limits = new Listing {
+        new lr.LimitRangeItem {
+          type = "Container"
+          default = new Mapping {
+            ["cpu"] = "500m"
+            ["memory"] = "256Mi"
+          }
+          defaultRequest = new Mapping {
+            ["cpu"] = "100m"
+            ["memory"] = "128Mi"
+          }
+        }
+      }
+    }
+  }
+}

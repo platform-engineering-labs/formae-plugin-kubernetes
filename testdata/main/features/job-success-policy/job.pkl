@@ -1,0 +1,66 @@
+/*
+ * Conformance Test: Indexed Job with successPolicy.
+ *
+ * Exercises spec.successPolicy.rules (KEP-3998). Job is considered
+ * complete when at least 3 of 5 indexes succeed, instead of requiring
+ * all completions.
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/core/Namespace.pkl" as ns
+import "@k8s/batch/Job.pkl" as job
+import "@k8s/k8s.pkl" as k8s
+import "../../shared/config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local ns = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  ns
+
+  new job.Job {
+    label = "test-job-sp"
+    metadata = new k8s.ObjectMeta {
+      name = "test-job-sp-\(v.testRunID)"
+      namespace = ns.res.name
+    }
+    spec = new k8s.JobSpec {
+      completions = 5
+      parallelism = 5
+      completionMode = "Indexed"
+      successPolicy = new k8s.SuccessPolicy {
+        rules = new Listing {
+          new k8s.SuccessPolicyRule {
+            succeededCount = 3
+          }
+        }
+      }
+      template = new k8s.PodTemplateSpec {
+        metadata = new k8s.ObjectMeta {
+          name = "test-job-sp-\(v.testRunID)"
+        }
+        spec = new k8s.PodSpec {
+          containers = new Listing {
+            new k8s.Container {
+              name = "worker"
+              image = "busybox:latest"
+              command = new Listing { "true" }
+            }
+          }
+          restartPolicy = "Never"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,68 @@
+/*
+ * Conformance Test: CronJob (Update)
+ * Changes: schedule changed (mutable), suspend set to true
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.22/core/Namespace.pkl" as ns
+import "@k8s/v1.22/batch/CronJob.pkl" as cj
+import "@k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local ns = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  ns
+
+  new cj.CronJob {
+    label = "test-cronjob"
+    metadata = new k8s.ObjectMeta {
+      name = "test-cj-\(v.testRunID)"
+      namespace = ns.res.name
+    }
+    spec = new cj.CronJobSpec {
+      schedule = "*/10 * * * *"
+      suspend = true
+      successfulJobsHistoryLimit = 1
+      failedJobsHistoryLimit = 1
+      jobTemplate = new cj.JobTemplateSpec {
+        metadata = new k8s.ObjectMeta {
+          name = "test-cj-\(v.testRunID)"
+        }
+        spec = new k8s.JobSpec {
+          backoffLimit = 1
+          template = new k8s.PodTemplateSpec {
+            metadata = new k8s.ObjectMeta {
+              name = "test-cj-\(v.testRunID)"
+              labels = new Mapping {
+                ["app"] = "test-cj"
+              }
+            }
+            spec = new k8s.PodSpec {
+              containers = new Listing {
+                new k8s.Container {
+                  name = "cron-worker"
+                  image = "busybox:latest"
+                  command = new Listing { "echo"; "tick" }
+                }
+              }
+              restartPolicy = "Never"
+            }
+          }
+        }
+      }
+    }
+  }
+}

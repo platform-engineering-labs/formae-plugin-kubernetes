@@ -1,0 +1,2 @@
+minK8sVersion = "1.33"
+description = "Indexed Job with maxFailedIndexes (KEP-3850). GA in 1.33. Lets users tolerate per-index failures up to a threshold instead of aborting on first failure."

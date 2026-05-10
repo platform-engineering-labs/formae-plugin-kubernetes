@@ -1,0 +1,52 @@
+/*
+ * Conformance Test: Service with traffic distribution.
+ *
+ * Exercises spec.trafficDistribution (KEP-4444). PreferClose tells
+ * kube-proxy to favor endpoints in the same zone where possible.
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/core/Namespace.pkl" as ns
+import "@k8s/core/Service.pkl" as svc
+import "@k8s/k8s.pkl" as k8s
+import "../../shared/config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local ns = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  ns
+
+  new svc.Service {
+    label = "test-svc-td"
+    metadata = new k8s.ObjectMeta {
+      name = "test-svc-td-\(v.testRunID)"
+      namespace = ns.res.name
+    }
+    spec = new svc.ServiceSpec {
+      type = "ClusterIP"
+      trafficDistribution = "PreferClose"
+      selector = new Mapping {
+        ["app"] = "test-svc-td"
+      }
+      ports = new Listing {
+        new svc.ServicePort {
+          port = 80
+          targetPort = 80
+          name = "http"
+        }
+      }
+    }
+  }
+}

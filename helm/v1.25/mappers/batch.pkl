@@ -1,0 +1,96 @@
+/// Mappers for batch/v1 K8S resource types.
+module batch
+
+import "@k8s/k8s.pkl" as k8s
+import "@k8s/v1.25/apps/ReplicaSet.pkl" as rs
+import "@k8s/v1.25/batch/Job.pkl" as job
+import "@k8s/v1.25/batch/CronJob.pkl" as cj
+
+import "common.pkl"
+
+// =============================================================================
+// Job
+// =============================================================================
+
+function mapJob(src: Any, prefix: String, namespace: String): job.Job =
+  new job.Job {
+    label = common.makeLabel(prefix, "job", src.metadata.name)
+    metadata = common.mapObjectMeta(src.metadata, namespace)
+    spec = mapJobSpec(src.spec, src.metadata.name)
+  }
+
+function mapJobSpec(src: Any, ownerName: String): job.JobSpec =
+  new job.JobSpec {
+    template = common.mapPodTemplateSpec(src.template, ownerName)
+    when (src.completions != null) {
+      completions = src.completions
+    }
+    when (src.parallelism != null) {
+      parallelism = src.parallelism
+    }
+    when (src.backoffLimit != null) {
+      backoffLimit = src.backoffLimit
+    }
+    when (src.activeDeadlineSeconds != null) {
+      activeDeadlineSeconds = src.activeDeadlineSeconds
+    }
+    when (src.ttlSecondsAfterFinished != null) {
+      ttlSecondsAfterFinished = src.ttlSecondsAfterFinished
+    }
+    when (src.suspend != null) {
+      suspend = src.suspend
+    }
+    when (src.completionMode != null) {
+      completionMode = src.completionMode
+    }
+    when (src.restartPolicy != null) {
+      restartPolicy = src.restartPolicy
+    }
+  }
+
+// =============================================================================
+// CronJob
+// =============================================================================
+
+function mapCronJob(src: Any, prefix: String, namespace: String): cj.CronJob =
+  new cj.CronJob {
+    label = common.makeLabel(prefix, "cronjob", src.metadata.name)
+    metadata = common.mapObjectMeta(src.metadata, namespace)
+    spec = mapCronJobSpec(src.spec, src.metadata.name)
+  }
+
+function mapCronJobSpec(src: Any, ownerName: String): cj.CronJobSpec =
+  new cj.CronJobSpec {
+    schedule = src.schedule
+    when (src.timeZone != null) {
+      timeZone = src.timeZone
+    }
+    jobTemplate = new cj.JobTemplateSpec {
+      when (src.jobTemplate.metadata != null) {
+        metadata = new cj.JobTemplateMetadata {
+          when (src.jobTemplate.metadata.labels != null) {
+            labels = common.mapStringMapping(src.jobTemplate.metadata.labels)
+          }
+          when (src.jobTemplate.metadata.annotations != null) {
+            annotations = common.filterAnnotations(src.jobTemplate.metadata.annotations)
+          }
+        }
+      }
+      spec = mapJobSpec(src.jobTemplate.spec, ownerName)
+    }
+    when (src.concurrencyPolicy != null) {
+      concurrencyPolicy = src.concurrencyPolicy
+    }
+    when (src.startingDeadlineSeconds != null) {
+      startingDeadlineSeconds = src.startingDeadlineSeconds
+    }
+    when (src.successfulJobsHistoryLimit != null) {
+      successfulJobsHistoryLimit = src.successfulJobsHistoryLimit
+    }
+    when (src.failedJobsHistoryLimit != null) {
+      failedJobsHistoryLimit = src.failedJobsHistoryLimit
+    }
+    when (src.suspend != null) {
+      suspend = src.suspend
+    }
+  }

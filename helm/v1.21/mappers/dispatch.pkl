@@ -1,0 +1,149 @@
+/// Resource dispatch: routes (apiVersion, kind) pairs to the appropriate mapper function.
+///
+/// PKL has no dynamic dispatch, so this uses an if/else chain keyed on apiVersion and kind.
+/// Each branch delegates to the per-group mapper module.
+module dispatch
+
+import "@formae/formae.pkl"
+
+import "admissionregistration.pkl"
+import "apps.pkl"
+import "batch.pkl"
+import "coordination.pkl"
+import "core.pkl"
+import "networking.pkl"
+import "node.pkl"
+import "policy.pkl"
+import "rbac.pkl"
+import "scheduling.pkl"
+import "storage.pkl"
+
+/// Check whether a K8S resource with the given apiVersion/kind is supported.
+function isSupported(apiVersion: String, kind: String): Boolean =
+  // core/v1
+  if (apiVersion == "v1" && kind == "Namespace") true
+  else if (apiVersion == "v1" && kind == "Pod") true
+  else if (apiVersion == "v1" && kind == "ConfigMap") true
+  else if (apiVersion == "v1" && kind == "Secret") true
+  else if (apiVersion == "v1" && kind == "ServiceAccount") true
+  else if (apiVersion == "v1" && kind == "Service") true
+  else if (apiVersion == "v1" && kind == "Endpoints") true
+  else if (apiVersion == "v1" && kind == "LimitRange") true
+  else if (apiVersion == "v1" && kind == "PersistentVolume") true
+  else if (apiVersion == "v1" && kind == "PersistentVolumeClaim") true
+  else if (apiVersion == "v1" && kind == "ResourceQuota") true
+  // apps/v1
+  else if (apiVersion == "apps/v1" && kind == "Deployment") true
+  else if (apiVersion == "apps/v1" && kind == "ReplicaSet") true
+  else if (apiVersion == "apps/v1" && kind == "StatefulSet") true
+  else if (apiVersion == "apps/v1" && kind == "DaemonSet") true
+  // batch/v1
+  else if (apiVersion == "batch/v1" && kind == "Job") true
+  else if (apiVersion == "batch/v1" && kind == "CronJob") true
+  // networking.k8s.io/v1
+  else if (apiVersion == "networking.k8s.io/v1" && kind == "Ingress") true
+  else if (apiVersion == "networking.k8s.io/v1" && kind == "IngressClass") true
+  else if (apiVersion == "networking.k8s.io/v1" && kind == "NetworkPolicy") true
+  // rbac.authorization.k8s.io/v1
+  else if (apiVersion == "rbac.authorization.k8s.io/v1" && kind == "Role") true
+  else if (apiVersion == "rbac.authorization.k8s.io/v1" && kind == "RoleBinding") true
+  else if (apiVersion == "rbac.authorization.k8s.io/v1" && kind == "ClusterRole") true
+  else if (apiVersion == "rbac.authorization.k8s.io/v1" && kind == "ClusterRoleBinding") true
+  // policy/v1
+  else if (apiVersion == "policy/v1" && kind == "PodDisruptionBudget") true
+  // storage.k8s.io/v1
+  else if (apiVersion == "storage.k8s.io/v1" && kind == "StorageClass") true
+  else if (apiVersion == "storage.k8s.io/v1" && kind == "CSIDriver") true
+  // scheduling.k8s.io/v1
+  else if (apiVersion == "scheduling.k8s.io/v1" && kind == "PriorityClass") true
+  // coordination.k8s.io/v1
+  else if (apiVersion == "coordination.k8s.io/v1" && kind == "Lease") true
+  // node.k8s.io/v1
+  else if (apiVersion == "node.k8s.io/v1" && kind == "RuntimeClass") true
+  // admissionregistration.k8s.io/v1
+  else if (apiVersion == "admissionregistration.k8s.io/v1" && kind == "ValidatingWebhookConfiguration") true
+  else if (apiVersion == "admissionregistration.k8s.io/v1" && kind == "MutatingWebhookConfiguration") true
+  else false
+
+/// Map a K8S resource to its k8s typed equivalent.
+/// The caller must verify isSupported() first; calling with unsupported types will throw.
+function mapResource(src: Any, prefix: String, namespace: String): formae.Resource =
+  let (apiVersion = src.apiVersion)
+  let (kind = src.kind)
+  // core/v1
+  if (apiVersion == "v1" && kind == "Namespace")
+    core.mapNamespace(src, prefix, namespace)
+  else if (apiVersion == "v1" && kind == "Pod")
+    core.mapPod(src, prefix, namespace)
+  else if (apiVersion == "v1" && kind == "ConfigMap")
+    core.mapConfigMap(src, prefix, namespace)
+  else if (apiVersion == "v1" && kind == "Secret")
+    core.mapSecret(src, prefix, namespace)
+  else if (apiVersion == "v1" && kind == "ServiceAccount")
+    core.mapServiceAccount(src, prefix, namespace)
+  else if (apiVersion == "v1" && kind == "Service")
+    core.mapService(src, prefix, namespace)
+  else if (apiVersion == "v1" && kind == "Endpoints")
+    core.mapEndpoints(src, prefix, namespace)
+  else if (apiVersion == "v1" && kind == "LimitRange")
+    core.mapLimitRange(src, prefix, namespace)
+  else if (apiVersion == "v1" && kind == "PersistentVolume")
+    core.mapPersistentVolume(src, prefix, namespace)
+  else if (apiVersion == "v1" && kind == "PersistentVolumeClaim")
+    core.mapPersistentVolumeClaim(src, prefix, namespace)
+  else if (apiVersion == "v1" && kind == "ResourceQuota")
+    core.mapResourceQuota(src, prefix, namespace)
+  // apps/v1
+  else if (apiVersion == "apps/v1" && kind == "Deployment")
+    apps.mapDeployment(src, prefix, namespace)
+  else if (apiVersion == "apps/v1" && kind == "ReplicaSet")
+    apps.mapReplicaSet(src, prefix, namespace)
+  else if (apiVersion == "apps/v1" && kind == "StatefulSet")
+    apps.mapStatefulSet(src, prefix, namespace)
+  else if (apiVersion == "apps/v1" && kind == "DaemonSet")
+    apps.mapDaemonSet(src, prefix, namespace)
+  // batch/v1
+  else if (apiVersion == "batch/v1" && kind == "Job")
+    batch.mapJob(src, prefix, namespace)
+  else if (apiVersion == "batch/v1" && kind == "CronJob")
+    batch.mapCronJob(src, prefix, namespace)
+  // networking.k8s.io/v1
+  else if (apiVersion == "networking.k8s.io/v1" && kind == "Ingress")
+    networking.mapIngress(src, prefix, namespace)
+  else if (apiVersion == "networking.k8s.io/v1" && kind == "IngressClass")
+    networking.mapIngressClass(src, prefix, namespace)
+  else if (apiVersion == "networking.k8s.io/v1" && kind == "NetworkPolicy")
+    networking.mapNetworkPolicy(src, prefix, namespace)
+  // rbac.authorization.k8s.io/v1
+  else if (apiVersion == "rbac.authorization.k8s.io/v1" && kind == "Role")
+    rbac.mapRole(src, prefix, namespace)
+  else if (apiVersion == "rbac.authorization.k8s.io/v1" && kind == "RoleBinding")
+    rbac.mapRoleBinding(src, prefix, namespace)
+  else if (apiVersion == "rbac.authorization.k8s.io/v1" && kind == "ClusterRole")
+    rbac.mapClusterRole(src, prefix, namespace)
+  else if (apiVersion == "rbac.authorization.k8s.io/v1" && kind == "ClusterRoleBinding")
+    rbac.mapClusterRoleBinding(src, prefix, namespace)
+  // policy/v1
+  else if (apiVersion == "policy/v1" && kind == "PodDisruptionBudget")
+    policy.mapPodDisruptionBudget(src, prefix, namespace)
+  // storage.k8s.io/v1
+  else if (apiVersion == "storage.k8s.io/v1" && kind == "StorageClass")
+    storage.mapStorageClass(src, prefix, namespace)
+  else if (apiVersion == "storage.k8s.io/v1" && kind == "CSIDriver")
+    storage.mapCSIDriver(src, prefix, namespace)
+  // scheduling.k8s.io/v1
+  else if (apiVersion == "scheduling.k8s.io/v1" && kind == "PriorityClass")
+    scheduling.mapPriorityClass(src, prefix, namespace)
+  // coordination.k8s.io/v1
+  else if (apiVersion == "coordination.k8s.io/v1" && kind == "Lease")
+    coordination.mapLease(src, prefix, namespace)
+  // node.k8s.io/v1
+  else if (apiVersion == "node.k8s.io/v1" && kind == "RuntimeClass")
+    node.mapRuntimeClass(src, prefix, namespace)
+  // admissionregistration.k8s.io/v1
+  else if (apiVersion == "admissionregistration.k8s.io/v1" && kind == "ValidatingWebhookConfiguration")
+    admissionregistration.mapValidatingWebhookConfiguration(src, prefix, namespace)
+  else if (apiVersion == "admissionregistration.k8s.io/v1" && kind == "MutatingWebhookConfiguration")
+    admissionregistration.mapMutatingWebhookConfiguration(src, prefix, namespace)
+  else
+    throw("Unsupported resource type: \(apiVersion)/\(kind). Check isSupported() before calling mapResource().")

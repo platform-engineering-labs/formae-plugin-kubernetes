@@ -98,130 +98,42 @@ jobs:
       - name: Verify schema
         run: make verify-schema
 
-  # Discover test cases dynamically from testdata/
-  # Splits into resource tests and chart tests for different timeout configs.
-  discover-tests:
-    needs: [build, lint, pkl-validate, verify-schema, test-unit]
+  verify-helm:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-    outputs:
-      resource-tests: ${{ steps.discover.outputs.resource-tests }}
-      chart-tests: ${{ steps.discover.outputs.chart-tests }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Discover test cases
-        id: discover
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Set up Pkl
+        uses: pkl-community/setup-pkl@v0
+        with:
+          pkl-version: 0.30.0
+
+      # `make verify` regenerates helm/v*/ from helm/main/ and fails if
+      # the diff isn't empty — catches stale committed trees in PRs.
+      - name: Verify formae-helm generated trees
+        working-directory: helm
         run: |
-          ALL_CASES=$(ls testdata/*.pkl 2>/dev/null \
-            | xargs -n1 basename \
-            | grep -v '\-update\.pkl$' \
-            | grep -v '\-replace\.pkl$' \
-            | sed 's/\.pkl$//')
+          pkl project resolve .
+          make verify
 
-          RESOURCE_TESTS=$(echo "$ALL_CASES" | grep -v '\-chart$' \
-            | jq -R -s -c 'split("\n") | map(select(length > 0))')
-          CHART_TESTS=$(echo "$ALL_CASES" | grep '\-chart$' \
-            | jq -R -s -c 'split("\n") | map(select(length > 0))')
-
-          echo "Resource tests: ${RESOURCE_TESTS}"
-          echo "Chart tests: ${CHART_TESTS}"
-          echo "resource-tests=${RESOURCE_TESTS}" >> "$GITHUB_OUTPUT"
-          echo "chart-tests=${CHART_TESTS}" >> "$GITHUB_OUTPUT"
-
-  # Conformance tests for individual K8S resource types.
-  conformance-tests:
-    needs: [discover-tests]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-    timeout-minutes: 15
-    strategy:
-      matrix:
-        test-case: ${{ fromJson(needs.discover-tests.outputs.resource-tests) }}
-      max-parallel: 10
-      fail-fast: false
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.25"
-
-      - name: Set up Pkl
-        uses: pkl-community/setup-pkl@v0
-        with:
-          pkl-version: 0.30.0
-
-      - name: Create kind cluster
-        uses: helm/kind-action@v1
-        with:
-          cluster_name: formae-test
-
-      - name: Install plugin
-        run: make install
-
-      - name: Run conformance tests (${{ matrix.test-case }})
-        env:
-          FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          command: make conformance-test-crud-run conformance-test-discovery-run TEST=${{ matrix.test-case }} PARALLEL=1
-
-  # Chart conformance tests deploy full Helm charts (many resources).
-  # Discovery needs a longer timeout since charts create numerous resources.
-  chart-conformance-tests:
-    needs: [discover-tests]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-    timeout-minutes: 20
-    strategy:
-      matrix:
-        test-case: ${{ fromJson(needs.discover-tests.outputs.chart-tests) }}
-      max-parallel: 10
-      fail-fast: false
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.25"
-
-      - name: Set up Pkl
-        uses: pkl-community/setup-pkl@v0
-        with:
-          pkl-version: 0.30.0
-
-      - name: Create kind cluster
-        uses: helm/kind-action@v1
-        with:
-          cluster_name: formae-test
-
-      - name: Install plugin
-        run: make install
-
-      - name: Run chart conformance tests (${{ matrix.test-case }})
-        env:
-          FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
-          FORMAE_TEST_DISCOVERY_TIMEOUT: "5"
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 15
-          max_attempts: 3
-          command: make conformance-test-crud-run conformance-test-discovery-run TEST=${{ matrix.test-case }} PARALLEL=1
+  # Conformance tests are split across per-K8s-version workflow files
+  # (.github/workflows/conformance-v1-XX.yml). Each version is chained
+  # via workflow_run (older versions only run after the newer one has
+  # passed on `main`). Splitting workflows gives each K8s version its
+  # own status-badge URL.
 
   # TODO: Re-enable drift test after fixing examples/drift-demo.pkl path
   # (removed during examples restructure in be695fc)
 
   # Notify when build is fixed (was red, now green)
   notify-fixed:
-    needs: [build, test-unit, lint, pkl-validate, verify-schema, conformance-tests, chart-conformance-tests]
+    needs: [build, test-unit, lint, pkl-validate, verify-schema, verify-helm]
     runs-on: ubuntu-latest
     if: success() && github.event_name == 'push'
     permissions:
@@ -285,7 +197,7 @@ jobs:
 
   # Notify on failure
   notify-failure:
-    needs: [build, test-unit, lint, pkl-validate, verify-schema, conformance-tests, chart-conformance-tests]
+    needs: [build, test-unit, lint, pkl-validate, verify-schema, verify-helm]
     runs-on: ubuntu-latest
     if: failure() && github.event_name == 'push'
     steps:

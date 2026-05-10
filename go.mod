@@ -9,10 +9,11 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.16
 	github.com/oracle/oci-go-sdk/v65 v65.112.0
 	github.com/ovh/go-ovh v1.9.0
-	github.com/platform-engineering-labs/formae/pkg/model v0.1.23
-	github.com/platform-engineering-labs/formae/pkg/plugin v0.2.1
-	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.2.2
+	github.com/platform-engineering-labs/formae/pkg/model v0.1.24-0.20260509210116-ca69b5fbab3e
+	github.com/platform-engineering-labs/formae/pkg/plugin v0.2.2-0.20260509210116-ca69b5fbab3e
+	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.2.4-0.20260509210116-ca69b5fbab3e
 	github.com/stretchr/testify v1.11.1
+	github.com/tidwall/gjson v1.18.0
 	golang.org/x/oauth2 v0.36.0
 	k8s.io/api v0.36.0
 	k8s.io/apiextensions-apiserver v0.36.0
@@ -78,7 +79,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/naegelejd/go-acl v0.0.0-20260323030528-42e4d61407df // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
-	github.com/platform-engineering-labs/formae/pkg/api/model v0.1.1 // indirect
+	github.com/platform-engineering-labs/formae/pkg/api/model v0.1.2-0.20260509210116-ca69b5fbab3e // indirect
 	github.com/platform-engineering-labs/orbital v0.1.36 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
@@ -87,7 +88,6 @@ require (
 	github.com/sony/gobreaker v0.5.0 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/theory/jsonpath v0.10.2 // indirect
-	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect

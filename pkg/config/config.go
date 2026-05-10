@@ -29,6 +29,14 @@ type Config struct {
 	DefaultNamespace string          `json:"DefaultNamespace,omitempty"`
 	Auth             json.RawMessage `json:"Auth"`
 
+	// KubernetesVersion is an optional override for the cluster's reported
+	// version, in MAJOR.MINOR form (e.g., "1.32"). When unset, the plugin
+	// auto-detects via Discovery().ServerVersion(). The override is consumed
+	// by the @K8sVersion field-gate preflight check; it does not change which
+	// API endpoints are called. Useful for dry-run, offline planning, or
+	// pinning to a lower version for portability.
+	KubernetesVersion string `json:"KubernetesVersion,omitempty"`
+
 	// Parsed auth config — populated by FromTargetConfig
 	authType string
 	authRaw  json.RawMessage

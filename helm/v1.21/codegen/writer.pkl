@@ -1,0 +1,76 @@
+/// Low-level PKL source code generation utilities.
+module writer
+
+/// Escape a string for use inside a PKL double-quoted string literal.
+function esc(s: String): String =
+  s.replaceAll("\\", "\\\\")
+   .replaceAll("\"", "\\\"")
+   .replaceAll("\n", "\\n")
+   .replaceAll("\t", "\\t")
+
+/// Wrap a value in double quotes.  Returns `null` literal for null.
+function q(v: Any?): String =
+  if (v == null) "null"
+  else "\"" + esc("\(v)") + "\""
+
+/// Render `prop = "value"` or empty string if value is null.
+function strProp(ind: String, prop: String, v: Any?): String =
+  if (v == null) ""
+  else ind + prop + " = " + q(v)
+
+/// Render `prop = 123` or empty string if value is null.
+function intProp(ind: String, prop: String, v: Any?): String =
+  if (v == null) ""
+  else ind + prop + " = " + "\(v)"
+
+/// Render `prop = true` or empty string if value is null.
+function boolProp(ind: String, prop: String, v: Any?): String =
+  if (v == null) ""
+  else ind + prop + " = " + (if (v == true) "true" else "false")
+
+/// Render a String→String mapping as block entries.
+/// Each entry: `["key"] = "value"`.  Returns empty string if null/empty.
+function mappingEntries(m: Any?, ind: String): String =
+  if (m == null) ""
+  else
+    let (lines = new Listing {
+      for (_k, _v in m) {
+        ind + "[" + q("\(_k)") + "] = " + q("\(_v)")
+      }
+    }.toList())
+    if (lines.isEmpty) ""
+    else lines.join("\n")
+
+/// Render a named mapping block: `prop { ["k"] = "v" }`.
+function mappingBlock(m: Any?, ind: String, prop: String): String =
+  let (content = mappingEntries(m, ind + "  "))
+  if (content == "") ""
+  else ind + prop + " {\n" + content + "\n" + ind + "}"
+
+/// Render a quantity mapping (values rendered as strings).
+function qtyMappingBlock(m: Any?, ind: String, prop: String): String =
+  if (m == null) ""
+  else
+    let (lines = new Listing {
+      for (_k, _v in m) {
+        ind + "  [" + q("\(_k)") + "] = " + q("\(_v)")
+      }
+    }.toList())
+    if (lines.isEmpty) ""
+    else ind + prop + " {\n" + lines.join("\n") + "\n" + ind + "}"
+
+/// Render a Listing<String> as block entries.
+function stringListBlock(lst: Any?, ind: String, prop: String): String =
+  if (lst == null) ""
+  else
+    let (lines = new Listing {
+      for (_item in lst) {
+        ind + "  " + q("\(_item)")
+      }
+    }.toList())
+    if (lines.isEmpty) ""
+    else ind + prop + " {\n" + lines.join("\n") + "\n" + ind + "}"
+
+/// Join a list of strings, filtering out empty strings, with newline separator.
+function joinNonEmpty(lines: List<String>): String =
+  lines.filter((l) -> l != "").join("\n")

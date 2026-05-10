@@ -1,0 +1,72 @@
+// Discover every @K8sVersion gate across the master schema in one pass
+// using pkl:reflect + import*. Emits one JSON document covering all files.
+//
+// Invoke from the project root:
+//   pkl eval --project-dir schema/pkl/main \
+//            tools/gen-versioned-reflect/discover.pkl
+//
+// Output:
+//   {
+//     "files": [
+//       {
+//         "path": "<absolute uri>",
+//         "module": "<module name>",
+//         "moduleGate": null | <gate>,
+//         "classGates":    [ { "className", "introducedIn", "removedIn", ... }, ... ],
+//         "propertyGates": [ { "className", "propertyName", "introducedIn", "removedIn", ... }, ... ],
+//       },
+//       ...
+//     ]
+//   }
+//
+// `className` = "" for module-scoped (top-level) properties.
+
+import "pkl:reflect"
+import "../../schema/pkl/main/k8s.pkl" as k8sBase
+
+// Glob ALL .pkl files relative to this discover.pkl. Pkl resolves
+// import* paths relative to the file containing the directive.
+// Two patterns: top-level (e.g. k8s.pkl) + nested (group/Resource.pkl).
+// Combined via fold since Mapping doesn't support `+`.
+local topLevel = import*("../../schema/pkl/main/*.pkl")
+local nested = import*("../../schema/pkl/main/**/*.pkl")
+local allModules =
+  nested.fold(topLevel.toMap(), (acc, key, value) -> acc.put(key, value))
+
+function findGate(annots: List): Any? =
+  let (matches = annots.filter((a) -> a is k8sBase.K8sVersion))
+    if (matches.isEmpty) null else
+      new {
+        introducedIn = matches.first.introducedIn ?? ""
+        removedIn    = matches.first.removedIn ?? ""
+        deprecatedIn = matches.first.deprecatedIn ?? ""
+        reference    = matches.first.reference ?? ""
+      }
+
+function describe(uri: String, m) =
+  let (mod = reflect.Module(m))
+  new {
+    path = uri
+    moduleName = mod.name
+    moduleGate = findGate(mod.annotations)
+    classGates = mod.classes.fold(List(), (acc, name, cls) ->
+      let (gate = findGate(cls.annotations))
+        if (gate == null) acc else acc + List((gate) { className = name })
+    )
+    propertyGates = mod.classes.fold(List(), (acc, clsName, cls) ->
+      acc + cls.properties.fold(List(), (innerAcc, pName, prop) ->
+        let (gate = findGate(prop.annotations))
+          if (gate == null) innerAcc else innerAcc + List((gate) {
+            className = clsName
+            propertyName = pName
+          })
+      )
+    )
+  }
+
+output {
+  renderer = new JsonRenderer {}
+  value = new {
+    files = allModules.fold(List(), (acc, uri, m) -> acc + List(describe(uri, m)))
+  }
+}

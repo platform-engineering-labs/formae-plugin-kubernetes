@@ -32,6 +32,9 @@ local _eksCluster = eks.eksCluster(properties)
 local _k8sTarget = new formae.Target {
   label = "k8s-target"
   config = new k8s.Config {
+    // Mirror the EKS cluster's `clusterVersion` set in vars.pkl so the
+    // K8s plugin's schema-version dispatch picks the matching subtree.
+    kubernetesVersion = properties.clusterVersion.value
     auth = new k8s.EKSAuth {
       endpoint = _eksCluster.res.endpoint
       certificateAuthority = _eksCluster.res.certificateAuthorityData

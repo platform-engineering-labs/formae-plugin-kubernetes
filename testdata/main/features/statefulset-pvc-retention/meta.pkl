@@ -1,0 +1,2 @@
+minK8sVersion = "1.32"
+description = "StatefulSet with PVC retention policy on scale-down/delete (KEP-1847). GA in 1.32. Default is Retain on both, but can be set to Delete to clean up PVCs."

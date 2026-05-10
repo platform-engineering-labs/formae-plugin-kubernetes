@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/prov"
@@ -19,6 +20,47 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	v1coreac "k8s.io/client-go/applyconfigurations/core/v1"
 )
+
+// stripLegacyTokenSecrets drops auto-generated token Secret refs from a
+// ServiceAccount's `.secrets` array. Pre-K8s-1.24, the
+// service-account-controller appends `{name: "<sa-name>-token-xxxxx"}`
+// to every SA. The controller (not formae) is the field manager, but
+// the entry leaks through extract and shows up as drift on Sync.
+// On K8s 1.24+ this is a no-op (LegacyServiceAccountTokenNoAutoGeneration
+// is GA — controller doesn't auto-create the token Secret entry).
+func stripLegacyTokenSecrets(propsJSON []byte, saName string) ([]byte, error) {
+	if len(propsJSON) == 0 {
+		return propsJSON, nil
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(propsJSON, &doc); err != nil {
+		return propsJSON, nil
+	}
+	raw, ok := doc["secrets"].([]any)
+	if !ok || len(raw) == 0 {
+		return propsJSON, nil
+	}
+	prefix := saName + "-token-"
+	kept := raw[:0]
+	for _, e := range raw {
+		entry, ok := e.(map[string]any)
+		if !ok {
+			kept = append(kept, e)
+			continue
+		}
+		name, _ := entry["name"].(string)
+		if strings.HasPrefix(name, prefix) {
+			continue
+		}
+		kept = append(kept, e)
+	}
+	if len(kept) == 0 {
+		delete(doc, "secrets")
+	} else {
+		doc["secrets"] = kept
+	}
+	return json.Marshal(doc)
+}
 
 const ResourceTypeServiceAccount = "K8S::Core::ServiceAccount"
 
@@ -69,6 +111,10 @@ func (sa *ServiceAccount) Create(ctx context.Context, request *resource.CreateRe
 	if err != nil {
 		return nil, fmt.Errorf("failed to get serviceaccount live state: %w", err)
 	}
+	properties, err = stripLegacyTokenSecrets(properties, result.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to strip legacy token secrets: %w", err)
+	}
 
 	return &resource.CreateResult{
 		ProgressResult: &resource.ProgressResult{
@@ -97,6 +143,10 @@ func (sa *ServiceAccount) Read(ctx context.Context, request *resource.ReadReques
 	properties, err := prov.LiveState[v1coreac.ServiceAccountApplyConfiguration](result, "ServiceAccount", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get serviceaccount live state: %w", err)
+	}
+	properties, err = stripLegacyTokenSecrets(properties, result.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to strip legacy token secrets: %w", err)
 	}
 
 	return &resource.ReadResult{
@@ -135,6 +185,10 @@ func (sa *ServiceAccount) Update(ctx context.Context, request *resource.UpdateRe
 	properties, err := prov.LiveState[v1coreac.ServiceAccountApplyConfiguration](result, "ServiceAccount", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get serviceaccount live state: %w", err)
+	}
+	properties, err = stripLegacyTokenSecrets(properties, result.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to strip legacy token secrets: %w", err)
 	}
 
 	return &resource.UpdateResult{
@@ -190,6 +244,10 @@ func (sa *ServiceAccount) Status(ctx context.Context, request *resource.StatusRe
 	properties, err := prov.LiveState[v1coreac.ServiceAccountApplyConfiguration](result, "ServiceAccount", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get serviceaccount live state: %w", err)
+	}
+	properties, err = stripLegacyTokenSecrets(properties, result.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to strip legacy token secrets: %w", err)
 	}
 
 	return &resource.StatusResult{

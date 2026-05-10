@@ -1,0 +1,43 @@
+/*
+ * Conformance Test: ResourceQuota (Update)
+ * Changes: increased pod limit and cpu request (mutable)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.21/core/Namespace.pkl" as ns
+import "@k8s/v1.21/core/ResourceQuota.pkl" as rq
+import "@k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local ns = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  ns
+
+  new rq.ResourceQuota {
+    label = "test-resourcequota"
+    metadata = new k8s.ObjectMeta {
+      name = "test-rq-\(v.testRunID)"
+      namespace = ns.res.name
+    }
+    spec = new rq.ResourceQuotaSpec {
+      hard = new Mapping {
+        ["pods"] = "20"
+        ["services"] = "10"
+        ["configmaps"] = "20"
+      }
+    }
+  }
+}

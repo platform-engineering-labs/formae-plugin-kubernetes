@@ -3,7 +3,7 @@ import "@oci/oci.pkl"
 
 projectName = "oke-bookstore"
 ociRegion = "us-chicago-1"
-k8sVersion = "v1.34.1"
+k8sVersion = "v1.34.3"
 
 // Network config
 vcnCidr = "10.0.0.0/16"

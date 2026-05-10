@@ -1,0 +1,59 @@
+/*
+ * Conformance Test: ReplicaSet (Create)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.34/core/Namespace.pkl" as ns
+import "@k8s/v1.34/apps/ReplicaSet.pkl" as rs
+import "@k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local ns = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  ns
+
+  new rs.ReplicaSet {
+    label = "test-replicaset"
+    metadata = new k8s.ObjectMeta {
+      name = "test-rs-\(v.testRunID)"
+      namespace = ns.res.name
+    }
+    spec = new rs.ReplicaSetSpec {
+      replicas = 1
+      selector = new k8s.LabelSelector {
+        matchLabels = new Mapping {
+          ["app"] = "test-rs"
+        }
+      }
+      template = new k8s.PodTemplateSpec {
+        metadata = new k8s.ObjectMeta {
+          name = "test-rs-\(v.testRunID)"
+          labels = new Mapping {
+            ["app"] = "test-rs"
+          }
+        }
+        spec = new k8s.PodSpec {
+          containers = new Listing {
+            new k8s.Container {
+              name = "nginx"
+              image = "nginx:alpine"
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+amends "pkl:Project"
+
+package {
+  name = "k8s"
+  baseUri = "package://hub.platform.engineering/plugins/k8s/schema/pkl/\(name)/\(name)"
+  version = "0.1.1"
+  packageZipUrl = "https://hub.platform.engineering/plugins/k8s/schema/pkl/\(name)/\(name)@\(version).zip"
+}
+
+dependencies {
+  ["formae"] {
+    uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.84.0"
+  }
+}

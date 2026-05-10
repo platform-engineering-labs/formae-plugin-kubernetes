@@ -1,0 +1,51 @@
+// AUTO-GENERATED — DO NOT EDIT.
+// Source: schema/pkl/main/apiextensions/CustomResourceDefinition.pkl
+// Regenerate via: make generate-versioned-schemas
+// Edits made directly to this file will be lost on the next regen.
+
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * K8S Plugin Schema - CustomResourceDefinition
+ */
+module customresourcedefinition
+
+import "@formae/formae.pkl"
+import "../../k8s.pkl"
+
+const type = "K8S::ApiExtensions::CustomResourceDefinition"
+
+open class CustomResourceDefinitionResolvable extends formae.Resolvable {
+  hidden type = module.type
+  hidden name: CustomResourceDefinitionResolvable = (this) { property = "metadata.name" }
+}
+/// K8S CustomResourceDefinition resource.
+/// CRDs extend the Kubernetes API with custom resource types.
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.metadata.name"
+  discoverable = false
+}
+open class CustomResourceDefinition extends k8s.Resource {
+  hidden parent = this
+  fixed hidden resourceType: String = module.type
+
+  hidden res: CustomResourceDefinitionResolvable = new {
+    label = parent.label
+    stack = parent.stack?.label
+  }
+
+  @k8s.FieldHint { required = true }
+  apiVersion: String = "apiextensions.k8s.io/v1"
+
+  @k8s.FieldHint { required = true }
+  kind: String = "CustomResourceDefinition"
+
+  @k8s.FieldHint { required = true }
+  metadata: k8s.ObjectMeta
+
+  @k8s.FieldHint { required = true }
+  spec : Mapping
+}

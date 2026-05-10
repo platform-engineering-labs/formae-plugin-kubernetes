@@ -1,0 +1,2 @@
+minK8sVersion = "1.30"
+description = "ValidatingWebhookConfiguration with CEL matchConditions (KEP-3716). GA in 1.30. Lets webhooks pre-filter requests via CEL expressions before invoking the remote endpoint."

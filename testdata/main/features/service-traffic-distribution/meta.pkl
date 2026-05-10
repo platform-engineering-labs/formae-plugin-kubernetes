@@ -1,0 +1,2 @@
+minK8sVersion = "1.33"
+description = "Service with topology-aware traffic distribution (KEP-4444). GA in 1.33. Sets PreferClose to prefer endpoints in the same zone."

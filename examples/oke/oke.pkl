@@ -79,6 +79,9 @@ local _okeCluster = _oke.okeCluster
 local _k8sTarget = new formae.Target {
   label = "k8s-target"
   config = new k8s.Config {
+    // Major.minor of vars.k8sVersion. Keep in sync when bumping the
+    // OCI cluster's k8sVersion (currently v1.34.3 → 1.34).
+    kubernetesVersion = "1.34"
     auth = new k8s.OCIAuth {
       endpoint = _okeCluster.res.endpoint
       certificateAuthority = _okeCluster.res.certificateAuthority

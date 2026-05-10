@@ -1,0 +1,24 @@
+/*
+ * Conformance Test: Namespace (Replace)
+ * Changes: name changed (createOnly field) - triggers delete+create
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.22/core/Namespace.pkl" as ns
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new ns.Namespace {
+    label = "test-namespace"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)-replaced"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+}

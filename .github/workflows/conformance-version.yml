@@ -1,0 +1,185 @@
+name: Conformance (per K8s version)
+
+# Reusable workflow: runs the per-fixture parallel conformance matrix
+# (shared resources + features) against a single K8s minor. Called from
+# ci.yml in a chained sequence so older versions only run once newer
+# versions pass.
+#
+# Builds formae from a git tag (default: 0.85.0-dev.7) and injects
+# replace directives into the plugin's go.mod so the harness, formae
+# Go code, and Pkl schemas all resolve from the same /tmp/formae source
+# tree. Hub.platform.engineering doesn't host dev tags as Pkl packages,
+# so remote schema resolution would 404 — the source clone is what
+# makes `--schema-location local` actually find the formae Pkl package
+# under /tmp/formae.
+
+on:
+  workflow_call:
+    inputs:
+      k8s_version:
+        description: "K8s minor version (e.g. 1.34)"
+        type: string
+        required: true
+      kind_version:
+        description: "KinD release tag for the matrix entry (e.g. v0.31.0)"
+        type: string
+        required: true
+      kind_image:
+        description: "kindest/node image (with sha256 digest) matching k8s_version"
+        type: string
+        required: true
+      formae_ref:
+        description: "Git ref of platform-engineering-labs/formae to build & test against (tag or branch)."
+        type: string
+        required: false
+        default: "0.85.0-dev.7"
+      formae_pkl_version:
+        description: "Version string the binary self-reports + the Pkl package the runtime fetches from hub. Must match a published `formae@<version>` package — dev tags publish under their .pkl-side base version (e.g. tag 0.85.0-dev.7 ships pkl as 0.85.0)."
+        type: string
+        required: false
+        default: "0.85.0"
+
+jobs:
+  # Build formae from the requested ref once and share the binary across
+  # the discover/conformance jobs. The reported binary version matches
+  # the ref (passed to `make build VERSION=...`).
+  build-formae:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Build formae from ref ${{ inputs.formae_ref }}
+        run: |
+          set -euo pipefail
+          REF="${{ inputs.formae_ref }}"
+          PKL_VERSION="${{ inputs.formae_pkl_version }}"
+          echo "Building formae from ref ${REF} reporting version ${PKL_VERSION}"
+          git clone --branch "${REF}" --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          cd /tmp/formae
+          # Self-reported binary version drives FORMAE_VERSION on plugin
+          # spawn, which the plugin SDK appends to the hub Pkl package
+          # URL. The actual published Pkl package version (read from
+          # internal/schema/pkl/schema/PklProject) is what hub serves,
+          # not the git tag, so we build the binary with PKL_VERSION
+          # rather than REF to keep runtime fetches in sync with hub.
+          make build VERSION="${PKL_VERSION}"
+          ./formae --version
+
+      - name: Upload formae binary and Makefile
+        uses: actions/upload-artifact@v7
+        with:
+          name: formae-binary-${{ inputs.k8s_version }}
+          path: |
+            /tmp/formae/formae
+            /tmp/formae/Makefile
+          retention-days: 1
+
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      resource-tests: ${{ steps.discover.outputs.resource-tests }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: discover
+        run: |
+          # Only the shared resource fixtures run in CI. Charts
+          # (testdata/main/charts/) and per-version feature fixtures
+          # (testdata/main/features/) are intentionally excluded for now.
+          RESOURCE_TESTS=$(ls testdata/generated/v${{ inputs.k8s_version }}/shared/*.pkl 2>/dev/null \
+            | xargs -n1 basename \
+            | grep -v '\-update\.pkl$' \
+            | grep -v '\-replace\.pkl$' \
+            | sed 's/\.pkl$//' \
+            | jq -R -s -c 'split("\n") | map(select(length > 0))')
+
+          echo "Resource tests: ${RESOURCE_TESTS}"
+          echo "resource-tests=${RESOURCE_TESTS}" >> "$GITHUB_OUTPUT"
+
+  conformance:
+    needs: [build-formae, discover]
+    runs-on: ubuntu-latest
+    # 20min job budget = 2 retry × 7min make + ~3-4min for setup (checkout,
+    # setup-go, setup-pkl, KinD spin-up, plugin install) + cushion. Keep
+    # retry max_attempts × timeout_minutes ≤ 14 so the job doesn't get
+    # cancelled mid-retry.
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        test-case: ${{ fromJson(needs.discover.outputs.resource-tests) }}
+      max-parallel: 10
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - uses: pkl-community/setup-pkl@v0
+        with:
+          pkl-version: 0.30.0
+
+      - name: Download formae binary
+        uses: actions/download-artifact@v8
+        with:
+          name: formae-binary-${{ inputs.k8s_version }}
+          path: /tmp/formae-artifact
+
+      - name: Clone formae source for replace directives
+        run: |
+          set -euo pipefail
+          # Re-clone the same ref so the source tree matches the binary
+          # we just downloaded. Replace directives below point the
+          # plugin's Go modules at this tree, and the in-tree Pkl
+          # packages let `--schema-location local` resolve `@formae/...`
+          # imports without hitting hub.platform.engineering (which
+          # doesn't host dev tags as Pkl packages).
+          git clone --branch "${{ inputs.formae_ref }}" --depth 1 \
+            https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          # Place binary under <tmpDir>/bin/ so orbital's tree-root derivation
+          # `filepath.Dir(filepath.Dir(binPath))` resolves to /tmp/formae,
+          # where the empty .ops/ marker satisfies orbital's Ready() check
+          # without scaffolding a signed tree. Mirrors the pattern in
+          # formae's tests/blackbox/testmain_test.go.
+          mkdir -p /tmp/formae/bin /tmp/formae/.ops
+          cp /tmp/formae-artifact/formae /tmp/formae/bin/formae
+          chmod +x /tmp/formae/bin/formae
+          /tmp/formae/bin/formae --version
+
+      - name: Inject formae replace directives
+        run: |
+          set -euo pipefail
+          FORMAE_SRC=/tmp/formae
+          for pkg in pkg/auth pkg/model pkg/plugin pkg/plugin-conformance-tests pkg/api/model; do
+            if grep -q "formae/$pkg" go.mod 2>/dev/null; then
+              echo "Injecting replace for $pkg -> $FORMAE_SRC/$pkg"
+              go mod edit -replace "github.com/platform-engineering-labs/formae/$pkg=$FORMAE_SRC/$pkg"
+            fi
+          done
+          go mod tidy
+
+      - name: Create kind cluster (K8s ${{ inputs.k8s_version }})
+        uses: helm/kind-action@v1
+        with:
+          version: ${{ inputs.kind_version }}
+          cluster_name: formae-test
+          node_image: ${{ inputs.kind_image }}
+
+      - name: Install plugin (multi-version schema layout)
+        # install-versioned cps schema/pkl/generated/ wholesale (PklProject +
+        # all v*/ subtrees) so the runtime version dispatch can pick the
+        # right schema based on each target's ApiVersion. The legacy `install`
+        # target only copies one v*/ subtree without the top-level PklProject
+        # and breaks here.
+        run: make install-versioned
+
+      - name: Run conformance tests (${{ matrix.test-case }})
+        env:
+          FORMAE_BINARY: /tmp/formae/bin/formae
+          FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-v${{ inputs.k8s_version }}
+          FORMAE_TEST_TESTDATA_DIR: testdata/generated/v${{ inputs.k8s_version }}/shared
+          FORMAE_K8S_VERSION: ${{ inputs.k8s_version }}
+        uses: nick-fields/retry@v3
+        with:
+          # Total retry budget: 2 × 7min = 14min ≤ 20min job timeout.
+          # Covers transient formae plugin-spawn timeouts (5s) under load.
+          timeout_minutes: 7
+          max_attempts: 2
+          command: make conformance-test-crud-run conformance-test-discovery-run TEST=${{ matrix.test-case }} PARALLEL=1 TIMEOUT=6

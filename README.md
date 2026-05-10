@@ -3,6 +3,18 @@
 [![CI](https://github.com/platform-engineering-labs/formae-plugin-k8s/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/platform-engineering-labs/formae-plugin-k8s/actions/workflows/ci.yml)
 [![Nightly](https://github.com/platform-engineering-labs/formae-plugin-k8s/actions/workflows/nightly.yml/badge.svg?branch=main)](https://github.com/platform-engineering-labs/formae-plugin-k8s/actions/workflows/nightly.yml)
 
+### Conformance per K8s version
+
+Older versions only run after the next-newer version has passed on `main`.
+
+[![K8s 1.34](https://github.com/platform-engineering-labs/formae-plugin-k8s/actions/workflows/conformance-v1-34.yml/badge.svg?branch=main)](https://github.com/platform-engineering-labs/formae-plugin-k8s/actions/workflows/conformance-v1-34.yml)
+[![K8s 1.33](https://github.com/platform-engineering-labs/formae-plugin-k8s/actions/workflows/conformance-v1-33.yml/badge.svg?branch=main)](https://github.com/platform-engineering-labs/formae-plugin-k8s/actions/workflows/conformance-v1-33.yml)
+[![K8s 1.32](https://github.com/platform-engineering-labs/formae-plugin-k8s/actions/workflows/conformance-v1-32.yml/badge.svg?branch=main)](https://github.com/platform-engineering-labs/formae-plugin-k8s/actions/workflows/conformance-v1-32.yml)
+[![K8s 1.31](https://github.com/platform-engineering-labs/formae-plugin-k8s/actions/workflows/conformance-v1-31.yml/badge.svg?branch=main)](https://github.com/platform-engineering-labs/formae-plugin-k8s/actions/workflows/conformance-v1-31.yml)
+[![K8s 1.25](https://github.com/platform-engineering-labs/formae-plugin-k8s/actions/workflows/conformance-v1-25.yml/badge.svg?branch=main)](https://github.com/platform-engineering-labs/formae-plugin-k8s/actions/workflows/conformance-v1-25.yml)
+[![K8s 1.22](https://github.com/platform-engineering-labs/formae-plugin-k8s/actions/workflows/conformance-v1-22.yml/badge.svg?branch=main)](https://github.com/platform-engineering-labs/formae-plugin-k8s/actions/workflows/conformance-v1-22.yml)
+[![K8s 1.21](https://github.com/platform-engineering-labs/formae-plugin-k8s/actions/workflows/conformance-v1-21.yml/badge.svg?branch=main)](https://github.com/platform-engineering-labs/formae-plugin-k8s/actions/workflows/conformance-v1-21.yml)
+
 Kubernetes resource plugin for
 [formae](https://github.com/platform-engineering-labs/formae). This plugin
 enables formae to manage Kubernetes resources using

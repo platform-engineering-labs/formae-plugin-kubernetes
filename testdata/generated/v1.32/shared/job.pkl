@@ -1,0 +1,59 @@
+/*
+ * Conformance Test: Job (Create)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.32/core/Namespace.pkl" as ns
+import "@k8s/v1.32/batch/Job.pkl" as job
+import "@k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local ns = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  ns
+
+  new job.Job {
+    label = "test-job"
+    metadata = new k8s.ObjectMeta {
+      name = "test-job-\(v.testRunID)"
+      namespace = ns.res.name
+      labels = new Mapping {
+        ["app"] = "test-job"
+      }
+    }
+    spec = new k8s.JobSpec {
+      backoffLimit = 3
+      template = new k8s.PodTemplateSpec {
+        metadata = new k8s.ObjectMeta {
+          name = "test-job-\(v.testRunID)"
+          labels = new Mapping {
+            ["app"] = "test-job"
+          }
+        }
+        spec = new k8s.PodSpec {
+          containers = new Listing {
+            new k8s.Container {
+              name = "worker"
+              image = "busybox:latest"
+              command = new Listing { "echo"; "hello" }
+            }
+          }
+          restartPolicy = "Never"
+        }
+      }
+    }
+  }
+}

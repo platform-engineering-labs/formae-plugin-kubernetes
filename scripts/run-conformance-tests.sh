@@ -153,6 +153,10 @@ if [[ -n "${FORMAE_TEST_TYPE:-}" ]]; then
     export FORMAE_TEST_TYPE
     echo "Test type: ${FORMAE_TEST_TYPE}"
 fi
+if [[ -n "${FORMAE_TEST_TESTDATA_DIR:-}" ]]; then
+    export FORMAE_TEST_TESTDATA_DIR
+    echo "Testdata dir override: ${FORMAE_TEST_TESTDATA_DIR}"
+fi
 
 # =============================================================================
 # Update and Resolve PKL Dependencies
@@ -220,7 +224,8 @@ echo "PKL dependencies resolved successfully"
 # Run Conformance Tests
 # =============================================================================
 TIMEOUT="${FORMAE_TEST_TIMEOUT:-5}"
+PARALLEL="${FORMAE_TEST_PARALLEL:-1}"
 echo ""
-echo "Running conformance tests (timeout: ${TIMEOUT}m)..."
+echo "Running conformance tests (timeout: ${TIMEOUT}m, parallel: ${PARALLEL})..."
 cd "${PROJECT_ROOT}"
-go test -tags=conformance -v -timeout "${TIMEOUT}m" ./...
+go test -tags=conformance -v -timeout "${TIMEOUT}m" -parallel "${PARALLEL}" ./...

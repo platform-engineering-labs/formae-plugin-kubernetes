@@ -8,7 +8,7 @@
 /// Requires: pkl-reader-helm binary on PATH, helm repos configured.
 amends "@formae/forma.pkl"
 
-import "@formae-helm/Generator.pkl"
+import "@formae-helm/v1.34/Generator.pkl"
 
 local rel = new Generator.HelmRelease {
   chart = "bitnami/nginx"

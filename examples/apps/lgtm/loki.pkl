@@ -3,10 +3,10 @@
 // headless Service forms the hash ring across all pods.
 
 import "@formae/formae.pkl"
-import "@k8s/core/Namespace.pkl" as ns
-import "@k8s/core/ConfigMap.pkl" as cm
-import "@k8s/core/Service.pkl" as svc
-import "@k8s/apps/Deployment.pkl" as dep
+import "@k8s/v1.34/core/Namespace.pkl" as ns
+import "@k8s/v1.34/core/ConfigMap.pkl" as cm
+import "@k8s/v1.34/core/Service.pkl" as svc
+import "@k8s/v1.34/apps/Deployment.pkl" as dep
 import "@k8s/k8s.pkl" as k8s
 
 local appName = "loki"

@@ -1,0 +1,19 @@
+name: Conformance K8s 1.22
+
+on:
+  workflow_run:
+    workflows: ["Conformance K8s 1.23"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  conformance:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    uses: ./.github/workflows/conformance-version.yml
+    with:
+      k8s_version: "1.22"
+      kind_version: "v0.20.0"
+      kind_image: "kindest/node:v1.22.17@sha256:f5b2e5698c6c9d6d0adc419c0deae21a425c07d81bbf3b6a6834042f25d4fba2"

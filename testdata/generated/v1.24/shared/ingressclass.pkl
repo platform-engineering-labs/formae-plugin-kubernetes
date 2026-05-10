@@ -1,0 +1,23 @@
+/*
+ * Conformance Test: IngressClass (Create)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.24/networking/IngressClass.pkl" as ic
+import "@k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new ic.IngressClass {
+    label = "test-ingressclass"
+    metadata = new k8s.ObjectMeta {
+      name = "test-ic-\(v.testRunID)"
+    }
+    spec = new ic.IngressClassSpec {
+      controller = "k8s.io/ingress-nginx"
+    }
+  }
+}

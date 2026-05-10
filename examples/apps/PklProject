@@ -11,5 +11,5 @@ dependencies {
   ["formae"] {
     uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.84.0"
   }
-  ["k8s"] = import("../../schema/pkl/PklProject")
+  ["k8s"] = import("../../schema/pkl/generated/PklProject")
 }

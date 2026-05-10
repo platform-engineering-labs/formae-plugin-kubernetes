@@ -1,0 +1,120 @@
+/// StaticGenerator: Render a Helm chart into self-contained PKL source code.
+///
+/// Usage — create a spec file:
+///
+///   ```pkl
+///   // my-chart-static.pkl
+///   import "@formae-helm/StaticGenerator.pkl"
+///
+///   local rel = new StaticGenerator.StaticHelmRelease {
+///     chart = "bitnami/nginx"
+///     version = "22.4.7"
+///     releaseName = "my-nginx"
+///     namespace = "formae-test"
+///     targetLabel = "k8s-local"
+///     targetContext = "orbstack"
+///     createNamespace = true
+///     values {
+///       replicaCount = 2
+///       service { type = "ClusterIP" }
+///     }
+///   }
+///
+///   output {
+///     text = rel.pklSource
+///   }
+///   ```
+///
+/// Then generate the static forma:
+///
+///   ```bash
+///   pkl eval my-chart-static.pkl > my-nginx-forma.pkl
+///   ```
+///
+/// The output file is a complete, editable PKL forma that uses typed
+/// k8s resources.  It does NOT need pkl-reader-helm.
+module StaticGenerator
+
+import "@helm/helm.pkl" as helm
+import "codegen/render.pkl"
+
+/// A Helm release configuration that generates static PKL source code.
+open class StaticHelmRelease {
+  /// Helm chart reference (e.g., "bitnami/nginx").
+  chart: String
+
+  /// Chart version (e.g., "22.4.7").
+  version: String
+
+  /// Helm release name.
+  releaseName: String
+
+  /// Target namespace for namespaced resources.
+  namespace: String = "default"
+
+  /// Helm values.
+  values: Dynamic?
+
+  /// Stack label. Defaults to releaseName.
+  stackLabel: String = releaseName
+
+  /// Stack description.
+  stackDescription: String = "Helm chart: \(chart) \(version)"
+
+  /// Target label.
+  targetLabel: String = "k8s"
+
+  /// K8S context for the target. Null uses current-context.
+  targetContext: String?
+
+  /// K8S kubeconfig path. Null uses default.
+  targetKubeconfig: String?
+
+  /// Whether to include a Namespace resource in the output.
+  createNamespace: Boolean = false
+
+  /// Prefix for Formae resource labels. Defaults to releaseName.
+  labelPrefix: String = releaseName
+
+  /// When true, silently skip unsupported resource types.
+  skipUnsupported: Boolean = true
+
+  /// The generated PKL source code.
+  /// Save this to a file for a self-contained, editable forma.
+  pklSource: String = let (_self = this)
+    render.renderForma(
+      _self.stackLabel,
+      _self.stackDescription,
+      _self.targetLabel,
+      _self._targetConfig,
+      _self.namespace,
+      _self.createNamespace,
+      _self.labelPrefix,
+      _self.skipUnsupported,
+      _self._helmTemplate
+    )
+
+  // ── Internal ──────────────────────────────────────────────────────────────
+
+  hidden _helmTemplate = let (_self = this)
+    (new helm.Template {
+      chart = _self.chart
+      version = _self.version
+      releaseName = _self.releaseName
+      namespace = _self.namespace
+      when (_self.values != null) {
+        values = _self.values
+      }
+    }).resources
+
+  hidden _targetConfig: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      when (_self.targetContext != null) {
+        ["context"] = _self.targetContext
+      }
+      when (_self.targetKubeconfig != null) {
+        ["kubeconfig"] = _self.targetKubeconfig
+      }
+      ["namespace"] = _self.namespace
+    }
+}

@@ -53,6 +53,10 @@ func (p *Pod) Create(ctx context.Context, request *resource.CreateRequest) (*res
 		return nil, fmt.Errorf("failed to unmarshal pod properties: %w", err)
 	}
 
+	if err := prov.CheckPayloadGates(ctx, ResourceTypePod, request.Properties, p.Client, p.Config); err != nil {
+		return nil, err
+	}
+
 	namespace := p.Config.EffectiveNamespace()
 	if pod.Namespace != nil {
 		namespace = *pod.Namespace
@@ -112,6 +116,10 @@ func (p *Pod) Update(ctx context.Context, request *resource.UpdateRequest) (*res
 	var pod *v1coreac.PodApplyConfiguration
 	if err := json.Unmarshal(request.DesiredProperties, &pod); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal pod properties: %w", err)
+	}
+
+	if err := prov.CheckPayloadGates(ctx, ResourceTypePod, request.DesiredProperties, p.Client, p.Config); err != nil {
+		return nil, err
 	}
 
 	namespace := p.Config.EffectiveNamespace()

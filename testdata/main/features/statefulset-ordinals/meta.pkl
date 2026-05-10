@@ -1,0 +1,2 @@
+minK8sVersion = "1.32"
+description = "StatefulSet with custom ordinal start (KEP-3335). GA in 1.32. Lets two STSes share a headless Service without ordinal collisions."

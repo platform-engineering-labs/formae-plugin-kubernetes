@@ -1,0 +1,128 @@
+/// Mappers for rbac.authorization.k8s.io/v1 K8S resource types.
+module rbac
+
+import "@k8s/k8s.pkl" as k8s
+import "@k8s/v1.24/rbac/Role.pkl" as role
+import "@k8s/v1.24/rbac/RoleBinding.pkl" as rb
+import "@k8s/v1.24/rbac/ClusterRole.pkl" as cr
+import "@k8s/v1.24/rbac/ClusterRoleBinding.pkl" as crb
+
+import "common.pkl"
+
+// =============================================================================
+// Shared helpers
+// =============================================================================
+
+function mapPolicyRule(src: Any): role.PolicyRule =
+  new role.PolicyRule {
+    when (src.apiGroups != null) {
+      apiGroups = common.mapStringListing(src.apiGroups)
+    }
+    when (src.resources != null) {
+      resources = common.mapStringListing(src.resources)
+    }
+    verbs = common.mapStringListing(src.verbs)
+    when (src.resourceNames != null) {
+      resourceNames = common.mapStringListing(src.resourceNames)
+    }
+  }
+
+function mapRoleRef(src: Any): rb.RoleRef =
+  new rb.RoleRef {
+    apiGroup = if (src.apiGroup != null) src.apiGroup else "rbac.authorization.k8s.io"
+    kind = src.kind
+    name = src.name
+  }
+
+function mapSubject(src: Any): rb.Subject =
+  new rb.Subject {
+    kind = src.kind
+    name = src.name
+    when (src.namespace != null) {
+      namespace = src.namespace
+    }
+    when (src.apiGroup != null) {
+      apiGroup = src.apiGroup
+    }
+  }
+
+// =============================================================================
+// Role
+// =============================================================================
+
+function mapRole(src: Any, prefix: String, namespace: String): role.Role =
+  new role.Role {
+    label = common.makeLabel(prefix, "role", src.metadata.name)
+    metadata = common.mapObjectMeta(src.metadata, namespace)
+    rules = new Listing {
+      for (_rule in src.rules) {
+        mapPolicyRule(_rule)
+      }
+    }
+  }
+
+// =============================================================================
+// RoleBinding
+// =============================================================================
+
+function mapRoleBinding(src: Any, prefix: String, namespace: String): rb.RoleBinding =
+  new rb.RoleBinding {
+    label = common.makeLabel(prefix, "rolebinding", src.metadata.name)
+    metadata = common.mapObjectMeta(src.metadata, namespace)
+    roleRef = mapRoleRef(src.roleRef)
+    when (src.subjects != null) {
+      subjects = new Listing {
+        for (_s in src.subjects) {
+          mapSubject(_s)
+        }
+      }
+    }
+  }
+
+// =============================================================================
+// ClusterRole (cluster-scoped)
+// =============================================================================
+
+function mapClusterRole(src: Any, prefix: String, _namespace: String): cr.ClusterRole =
+  new cr.ClusterRole {
+    label = common.makeLabel(prefix, "clusterrole", src.metadata.name)
+    metadata = common.mapClusterMeta(src.metadata)
+    rules = new Listing {
+      for (_rule in src.rules) {
+        mapPolicyRule(_rule)
+      }
+    }
+    when (src.aggregationRule != null) {
+      aggregationRule = new cr.AggregationRule {
+        when (src.aggregationRule.clusterRoleSelectors != null) {
+          clusterRoleSelectors = new Listing {
+            for (_sel in src.aggregationRule.clusterRoleSelectors) {
+              new cr.LabelSelector {
+                when (_sel.matchLabels != null) {
+                  matchLabels = common.mapStringMapping(_sel.matchLabels)
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+// =============================================================================
+// ClusterRoleBinding (cluster-scoped)
+// =============================================================================
+
+function mapClusterRoleBinding(src: Any, prefix: String, _namespace: String): crb.ClusterRoleBinding =
+  new crb.ClusterRoleBinding {
+    label = common.makeLabel(prefix, "clusterrolebinding", src.metadata.name)
+    metadata = common.mapClusterMeta(src.metadata)
+    roleRef = mapRoleRef(src.roleRef)
+    when (src.subjects != null) {
+      subjects = new Listing {
+        for (_s in src.subjects) {
+          mapSubject(_s)
+        }
+      }
+    }
+  }

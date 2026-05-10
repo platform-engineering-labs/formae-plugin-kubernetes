@@ -25,6 +25,7 @@ local _k8sTarget = new formae.Target {
   label = "k8s-target"
   namespace = "K8S"
   config = new k8s.Config {
+    kubernetesVersion = "1.34"
     auth = new k8s.KubeconfigAuth {}
   }
 }

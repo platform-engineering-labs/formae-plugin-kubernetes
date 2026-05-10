@@ -1,0 +1,22 @@
+/*
+ * Conformance Test: StorageClass (Create)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.27/storage/StorageClass.pkl" as sc
+import "@k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new sc.StorageClass {
+    label = "test-storageclass"
+    metadata = new k8s.ObjectMeta {
+      name = "test-sc-\(v.testRunID)"
+    }
+    provisioner = "kubernetes.io/no-provisioner"
+    volumeBindingMode = "WaitForFirstConsumer"
+  }
+}

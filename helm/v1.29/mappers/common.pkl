@@ -1,0 +1,292 @@
+/// Shared mapper functions for converting pkl-k8s types to k8s types.
+///
+/// All mapper functions accept `Any` as the source parameter — a pragmatic trade-off
+/// because pkl-k8s module-level types aren't cleanly importable as function parameter types.
+/// Runtime errors from field access are clear and actionable.
+module common
+
+import "@k8s/k8s.pkl" as k8s
+import "@k8s/v1.29/core/Namespace.pkl" as ns
+
+// =============================================================================
+// Label generation
+// =============================================================================
+
+/// Generate a Formae label from prefix, kind, and resource name.
+/// Format: <prefix>-<kind-lower>-<name>
+function makeLabel(prefix: String, kind: String, name: String): String =
+  "\(prefix)-\(kind.toLowerCase())-\(name)"
+
+// =============================================================================
+// ObjectMeta mappers
+// =============================================================================
+
+/// Map a pkl-k8s ObjectMeta to k8s ObjectMeta (namespaced resource).
+function mapObjectMeta(src: Any, defaultNamespace: String): k8s.ObjectMeta =
+  new k8s.ObjectMeta {
+    name = src.name
+    namespace = if (src.namespace != null) src.namespace else defaultNamespace
+    when (src.labels != null) {
+      labels = mapStringMapping(src.labels)
+    }
+    when (src.annotations != null) {
+      annotations = filterAnnotations(src.annotations)
+    }
+  }
+
+/// Map a pkl-k8s ObjectMeta to k8s ObjectMeta for cluster-scoped resources (no namespace).
+function mapClusterMeta(src: Any): k8s.ObjectMeta =
+  new k8s.ObjectMeta {
+    name = src.name
+    when (src.labels != null) {
+      labels = mapStringMapping(src.labels)
+    }
+    when (src.annotations != null) {
+      annotations = filterAnnotations(src.annotations)
+    }
+  }
+
+/// Map a pkl-k8s ObjectMeta to NamespaceMetadata.
+function mapNamespaceMetadata(src: Any): ns.NamespaceMetadata =
+  new ns.NamespaceMetadata {
+    name = src.name
+    when (src.labels != null) {
+      labels = mapStringMapping(src.labels)
+    }
+    when (src.annotations != null) {
+      annotations = filterAnnotations(src.annotations)
+    }
+  }
+
+// =============================================================================
+// LabelSelector mappers
+// =============================================================================
+
+/// Map a pkl-k8s LabelSelector to k8s LabelSelector.
+function mapLabelSelector(src: Any): k8s.LabelSelector =
+  new k8s.LabelSelector {
+    when (src.matchLabels != null) {
+      matchLabels = mapStringMapping(src.matchLabels)
+    }
+    when (src.matchExpressions != null) {
+      matchExpressions = new Listing {
+        for (_expr in src.matchExpressions) {
+          mapLabelSelectorRequirement(_expr)
+        }
+      }
+    }
+  }
+
+/// Map a pkl-k8s LabelSelector to k8s.LabelSelector (shared sub-resource type).
+/// Use this for resources that reference k8s.LabelSelector directly (e.g. admissionregistration webhooks).
+function mapK8sLabelSelector(src: Any): k8s.LabelSelector =
+  new k8s.LabelSelector {
+    when (src.matchLabels != null) {
+      matchLabels = mapStringMapping(src.matchLabels)
+    }
+    when (src.matchExpressions != null) {
+      matchExpressions = new Listing {
+        for (_expr in src.matchExpressions) {
+          mapK8sLabelSelectorRequirement(_expr)
+        }
+      }
+    }
+  }
+
+/// Map a pkl-k8s LabelSelectorRequirement to k8s.LabelSelectorRequirement.
+function mapK8sLabelSelectorRequirement(src: Any): k8s.LabelSelectorRequirement =
+  new k8s.LabelSelectorRequirement {
+    key = src.key
+    operator = src.operator
+    when (src.values != null) {
+      values = new Listing {
+        for (_v in src.values) {
+          _v
+        }
+      }
+    }
+  }
+
+/// Map a pkl-k8s LabelSelectorRequirement.
+function mapLabelSelectorRequirement(src: Any): k8s.LabelSelectorRequirement =
+  new k8s.LabelSelectorRequirement {
+    key = src.key
+    operator = src.operator
+    when (src.values != null) {
+      values = new Listing {
+        for (_v in src.values) {
+          _v
+        }
+      }
+    }
+  }
+
+// =============================================================================
+// Pod-related mappers
+// =============================================================================
+
+/// Map a pkl-k8s PodSpec to k8s PodSpec.
+function mapPodSpec(src: Any): k8s.PodSpec =
+  new k8s.PodSpec {
+    containers = new Listing {
+      for (_c in src.containers) {
+        mapContainer(_c)
+      }
+    }
+    when (src.restartPolicy != null) {
+      restartPolicy = src.restartPolicy
+    }
+    when (src.nodeSelector != null) {
+      nodeSelector = mapStringMapping(src.nodeSelector)
+    }
+    when (src.serviceAccountName != null) {
+      serviceAccountName = src.serviceAccountName
+    }
+  }
+
+/// Map a pkl-k8s Container to k8s Container.
+function mapContainer(src: Any): k8s.Container =
+  new k8s.Container {
+    name = src.name
+    image = src.image
+    when (src.command != null) {
+      command = new Listing {
+        for (_c in src.command) {
+          _c
+        }
+      }
+    }
+    when (src.args != null) {
+      args = new Listing {
+        for (_a in src.args) {
+          _a
+        }
+      }
+    }
+    when (src.env != null) {
+      env = new Listing {
+        for (_e in src.env) {
+          mapEnvVar(_e)
+        }
+      }
+    }
+    when (src.ports != null) {
+      ports = new Listing {
+        for (_p in src.ports) {
+          mapContainerPort(_p)
+        }
+      }
+    }
+    when (src.resources != null) {
+      resources = mapResourceRequirements(src.resources)
+    }
+  }
+
+/// Map an environment variable.
+function mapEnvVar(src: Any): k8s.EnvVar =
+  new k8s.EnvVar {
+    name = src.name
+    when (src.value != null) {
+      value = src.value
+    }
+  }
+
+/// Map a container port.
+function mapContainerPort(src: Any): k8s.ContainerPort =
+  new k8s.ContainerPort {
+    containerPort = src.containerPort
+    when (src.protocol != null) {
+      protocol = src.protocol
+    }
+    when (src.name != null) {
+      name = src.name
+    }
+  }
+
+/// Map resource requirements.
+function mapResourceRequirements(src: Any): k8s.ResourceRequirements =
+  new k8s.ResourceRequirements {
+    when (src.limits != null) {
+      limits = mapQuantityMapping(src.limits)
+    }
+    when (src.requests != null) {
+      requests = mapQuantityMapping(src.requests)
+    }
+  }
+
+// =============================================================================
+// PodTemplate mappers
+// =============================================================================
+
+/// Map a PodTemplateSpec.
+///
+/// PodTemplateSpec.metadata is k8s.ObjectMeta? — ObjectMeta requires
+/// name. Pod templates conventionally inherit name from their owner
+/// (Deployment/StatefulSet/etc), so leave metadata unset rather than
+/// invent a name. Labels + annotations from the source are dropped
+/// here; if a chart sets them on the template, the owning workload
+/// surfaces them via its own selector.
+function mapPodTemplateSpec(src: Any, ownerName: String): k8s.PodTemplateSpec =
+  new k8s.PodTemplateSpec {
+    when (src.metadata != null && (src.metadata.labels != null || src.metadata.annotations != null)) {
+      metadata = mapPodTemplateMetadata(src.metadata, ownerName)
+    }
+    spec = mapPodSpec(src.spec)
+  }
+
+/// Map PodTemplate metadata (labels + annotations only).
+///
+/// PodTemplateSpec.metadata is typed `k8s.ObjectMeta?` in the
+/// versioned schema (no separate PodTemplateMetadata class), so
+/// return ObjectMeta directly with `name` left null since pod
+/// templates inherit name from their owner.
+function mapPodTemplateMetadata(src: Any, ownerName: String): k8s.ObjectMeta =
+  new k8s.ObjectMeta {
+    name = ownerName
+    when (src.labels != null) {
+      labels = mapStringMapping(src.labels)
+    }
+    when (src.annotations != null) {
+      annotations = filterAnnotations(src.annotations)
+    }
+  }
+
+// =============================================================================
+// Utility functions
+// =============================================================================
+
+/// Convert a Dynamic/Mapping of string keys to a Mapping<String, String>.
+/// Handles both standard mappings and Dynamic objects from pkl-k8s.
+function mapStringMapping(src: Any): Mapping<String, String> =
+  new Mapping {
+    for (k, v in src) {
+      [k] = v
+    }
+  }
+
+/// Convert a Quantity mapping to Mapping<String, String>.
+/// pkl-k8s Quantity types render as strings.
+function mapQuantityMapping(src: Any): Mapping<String, String> =
+  new Mapping {
+    for (k, v in src) {
+      [k] = "\(v)"
+    }
+  }
+
+/// Filter out annotations that are empty or null, converting to Mapping<String, String>.
+function filterAnnotations(src: Any): Mapping<String, String> =
+  new Mapping {
+    for (k, v in src) {
+      when (v != null && "\(v)" != "") {
+        [k] = "\(v)"
+      }
+    }
+  }
+
+/// Convert a Listing of strings from pkl-k8s Dynamic to formae Listing<String>.
+function mapStringListing(src: Any): Listing<String> =
+  new Listing {
+    for (_s in src) {
+      "\(_s)"
+    }
+  }

@@ -1,0 +1,47 @@
+/*
+ * Conformance Test: RoleBinding (Create)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.32/core/Namespace.pkl" as ns
+import "@k8s/v1.32/rbac/RoleBinding.pkl" as rb
+import "@k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local ns = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  ns
+
+  new rb.RoleBinding {
+    label = "test-rolebinding"
+    metadata = new k8s.ObjectMeta {
+      name = "test-rb-\(v.testRunID)"
+      namespace = ns.res.name
+    }
+    roleRef = new k8s.RoleRef {
+      apiGroup = "rbac.authorization.k8s.io"
+      kind = "Role"
+      name = "test-role-\(v.testRunID)"
+    }
+    subjects = new Listing {
+      new k8s.Subject {
+        kind = "ServiceAccount"
+        name = "default"
+        namespace = ns.res.name
+      }
+    }
+  }
+}
