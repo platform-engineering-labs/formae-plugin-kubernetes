@@ -39,28 +39,4 @@ func TestFromTargetConfig_EKSAuth(t *testing.T) {
 	}
 }
 
-func TestFromTargetConfig_DefaultNamespace(t *testing.T) {
-	raw := json.RawMessage(`{
-		"DefaultNamespace": "production",
-		"Auth": {"Type": "Kubeconfig"}
-	}`)
-	cfg, err := config.FromTargetConfig(raw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.EffectiveNamespace() != "production" {
-		t.Errorf("expected production, got %s", cfg.EffectiveNamespace())
-	}
-}
-
-func TestFromTargetConfig_DefaultNamespaceFallback(t *testing.T) {
-	raw := json.RawMessage(`{"Auth": {"Type": "Kubeconfig"}}`)
-	cfg, err := config.FromTargetConfig(raw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.EffectiveNamespace() != "default" {
-		t.Errorf("expected default, got %s", cfg.EffectiveNamespace())
-	}
-}
 

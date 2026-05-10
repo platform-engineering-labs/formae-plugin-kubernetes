@@ -53,7 +53,7 @@ func (ing *Ingress) Create(ctx context.Context, request *resource.CreateRequest)
 		return nil, fmt.Errorf("failed to unmarshal ingress properties: %w", err)
 	}
 
-	namespace := ing.Config.EffectiveNamespace()
+	namespace := "default"
 	if ingress.Namespace != nil {
 		namespace = *ingress.Namespace
 	}
@@ -113,7 +113,7 @@ func (ing *Ingress) Update(ctx context.Context, request *resource.UpdateRequest)
 		return nil, fmt.Errorf("failed to unmarshal ingress properties: %w", err)
 	}
 
-	namespace := ing.Config.EffectiveNamespace()
+	namespace := "default"
 	if ingress.Namespace != nil {
 		namespace = *ingress.Namespace
 	}
@@ -209,7 +209,7 @@ func (ing *Ingress) Status(ctx context.Context, request *resource.StatusRequest)
 }
 
 func (ing *Ingress) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := ing.Config.EffectiveNamespace()
+	namespace := "default"
 	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
 		namespace = ns
 	}

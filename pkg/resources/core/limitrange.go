@@ -52,7 +52,7 @@ func (l *LimitRange) Create(ctx context.Context, request *resource.CreateRequest
 		return nil, fmt.Errorf("failed to unmarshal limitrange properties: %w", err)
 	}
 
-	namespace := l.Config.EffectiveNamespace()
+	namespace := "default"
 	if lr.Namespace != nil {
 		namespace = *lr.Namespace
 	}
@@ -111,7 +111,7 @@ func (l *LimitRange) Update(ctx context.Context, request *resource.UpdateRequest
 		return nil, fmt.Errorf("failed to unmarshal limitrange properties: %w", err)
 	}
 
-	namespace := l.Config.EffectiveNamespace()
+	namespace := "default"
 	if lr.Namespace != nil {
 		namespace = *lr.Namespace
 	}
@@ -204,7 +204,7 @@ func (l *LimitRange) Status(ctx context.Context, request *resource.StatusRequest
 }
 
 func (l *LimitRange) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := l.Config.EffectiveNamespace()
+	namespace := "default"
 	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
 		namespace = ns
 	}

@@ -26,8 +26,7 @@ import (
 
 // Config holds the K8S plugin configuration extracted from target config.
 type Config struct {
-	DefaultNamespace string          `json:"DefaultNamespace,omitempty"`
-	Auth             json.RawMessage `json:"Auth"`
+	Auth json.RawMessage `json:"Auth"`
 
 	// KubernetesVersion is an optional override for the cluster's reported
 	// version, in MAJOR.MINOR form (e.g., "1.32"). When unset, the plugin
@@ -111,14 +110,6 @@ func FromTargetConfig(targetConfig []byte) (*Config, error) {
 // AuthType returns the auth strategy type string.
 func (c *Config) AuthType() string {
 	return c.authType
-}
-
-// EffectiveNamespace returns the namespace to use for operations.
-func (c *Config) EffectiveNamespace() string {
-	if c.DefaultNamespace != "" {
-		return c.DefaultNamespace
-	}
-	return "default"
 }
 
 // ToK8sConfig builds a rest.Config based on the auth strategy.

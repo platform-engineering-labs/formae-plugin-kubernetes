@@ -53,7 +53,7 @@ func (ss *StatefulSet) Create(ctx context.Context, request *resource.CreateReque
 		return nil, fmt.Errorf("failed to unmarshal statefulset properties: %w", err)
 	}
 
-	namespace := ss.Config.EffectiveNamespace()
+	namespace := "default"
 	if sts.Namespace != nil {
 		namespace = *sts.Namespace
 	}
@@ -113,7 +113,7 @@ func (ss *StatefulSet) Update(ctx context.Context, request *resource.UpdateReque
 		return nil, fmt.Errorf("failed to unmarshal statefulset properties: %w", err)
 	}
 
-	namespace := ss.Config.EffectiveNamespace()
+	namespace := "default"
 	if sts.Namespace != nil {
 		namespace = *sts.Namespace
 	}
@@ -208,7 +208,7 @@ func (ss *StatefulSet) Status(ctx context.Context, request *resource.StatusReque
 }
 
 func (ss *StatefulSet) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := ss.Config.EffectiveNamespace()
+	namespace := "default"
 	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
 		namespace = ns
 	}

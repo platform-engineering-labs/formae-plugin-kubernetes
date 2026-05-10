@@ -53,7 +53,7 @@ func (svc *Service) Create(ctx context.Context, request *resource.CreateRequest)
 		return nil, fmt.Errorf("failed to unmarshal service properties: %w", err)
 	}
 
-	namespace := svc.Config.EffectiveNamespace()
+	namespace := "default"
 	if s.Namespace != nil {
 		namespace = *s.Namespace
 	}
@@ -113,7 +113,7 @@ func (svc *Service) Update(ctx context.Context, request *resource.UpdateRequest)
 		return nil, fmt.Errorf("failed to unmarshal service properties: %w", err)
 	}
 
-	namespace := svc.Config.EffectiveNamespace()
+	namespace := "default"
 	if s.Namespace != nil {
 		namespace = *s.Namespace
 	}
@@ -208,7 +208,7 @@ func (svc *Service) Status(ctx context.Context, request *resource.StatusRequest)
 }
 
 func (svc *Service) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := svc.Config.EffectiveNamespace()
+	namespace := "default"
 	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
 		namespace = ns
 	}

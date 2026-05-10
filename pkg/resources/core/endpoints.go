@@ -52,7 +52,7 @@ func (e *Endpoints) Create(ctx context.Context, request *resource.CreateRequest)
 		return nil, fmt.Errorf("failed to unmarshal endpoints properties: %w", err)
 	}
 
-	namespace := e.Config.EffectiveNamespace()
+	namespace := "default"
 	if ep.Namespace != nil {
 		namespace = *ep.Namespace
 	}
@@ -111,7 +111,7 @@ func (e *Endpoints) Update(ctx context.Context, request *resource.UpdateRequest)
 		return nil, fmt.Errorf("failed to unmarshal endpoints properties: %w", err)
 	}
 
-	namespace := e.Config.EffectiveNamespace()
+	namespace := "default"
 	if ep.Namespace != nil {
 		namespace = *ep.Namespace
 	}
@@ -204,7 +204,7 @@ func (e *Endpoints) Status(ctx context.Context, request *resource.StatusRequest)
 }
 
 func (e *Endpoints) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := e.Config.EffectiveNamespace()
+	namespace := "default"
 	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
 		namespace = ns
 	}

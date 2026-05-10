@@ -52,7 +52,7 @@ func (r *ResourceQuota) Create(ctx context.Context, request *resource.CreateRequ
 		return nil, fmt.Errorf("failed to unmarshal resourcequota properties: %w", err)
 	}
 
-	namespace := r.Config.EffectiveNamespace()
+	namespace := "default"
 	if rq.Namespace != nil {
 		namespace = *rq.Namespace
 	}
@@ -111,7 +111,7 @@ func (r *ResourceQuota) Update(ctx context.Context, request *resource.UpdateRequ
 		return nil, fmt.Errorf("failed to unmarshal resourcequota properties: %w", err)
 	}
 
-	namespace := r.Config.EffectiveNamespace()
+	namespace := "default"
 	if rq.Namespace != nil {
 		namespace = *rq.Namespace
 	}
@@ -204,7 +204,7 @@ func (r *ResourceQuota) Status(ctx context.Context, request *resource.StatusRequ
 }
 
 func (r *ResourceQuota) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := r.Config.EffectiveNamespace()
+	namespace := "default"
 	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
 		namespace = ns
 	}

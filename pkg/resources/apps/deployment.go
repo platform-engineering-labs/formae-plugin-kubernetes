@@ -53,7 +53,7 @@ func (d *Deployment) Create(ctx context.Context, request *resource.CreateRequest
 		return nil, fmt.Errorf("failed to unmarshal deployment properties: %w", err)
 	}
 
-	namespace := d.Config.EffectiveNamespace()
+	namespace := "default"
 	if deploy.Namespace != nil {
 		namespace = *deploy.Namespace
 	}
@@ -113,7 +113,7 @@ func (d *Deployment) Update(ctx context.Context, request *resource.UpdateRequest
 		return nil, fmt.Errorf("failed to unmarshal deployment properties: %w", err)
 	}
 
-	namespace := d.Config.EffectiveNamespace()
+	namespace := "default"
 	if deploy.Namespace != nil {
 		namespace = *deploy.Namespace
 	}
@@ -208,7 +208,7 @@ func (d *Deployment) Status(ctx context.Context, request *resource.StatusRequest
 }
 
 func (d *Deployment) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := d.Config.EffectiveNamespace()
+	namespace := "default"
 	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
 		namespace = ns
 	}

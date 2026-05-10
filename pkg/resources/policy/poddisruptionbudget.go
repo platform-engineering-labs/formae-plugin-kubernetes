@@ -52,7 +52,7 @@ func (p *PodDisruptionBudget) Create(ctx context.Context, request *resource.Crea
 		return nil, fmt.Errorf("failed to unmarshal poddisruptionbudget properties: %w", err)
 	}
 
-	namespace := p.Config.EffectiveNamespace()
+	namespace := "default"
 	if pdb.Namespace != nil {
 		namespace = *pdb.Namespace
 	}
@@ -111,7 +111,7 @@ func (p *PodDisruptionBudget) Update(ctx context.Context, request *resource.Upda
 		return nil, fmt.Errorf("failed to unmarshal poddisruptionbudget properties: %w", err)
 	}
 
-	namespace := p.Config.EffectiveNamespace()
+	namespace := "default"
 	if pdb.Namespace != nil {
 		namespace = *pdb.Namespace
 	}
@@ -204,7 +204,7 @@ func (p *PodDisruptionBudget) Status(ctx context.Context, request *resource.Stat
 }
 
 func (p *PodDisruptionBudget) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := p.Config.EffectiveNamespace()
+	namespace := "default"
 	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
 		namespace = ns
 	}

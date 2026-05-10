@@ -48,10 +48,7 @@ func SetupEnv(t *testing.T) *TestEnv {
 		ns = ns[:63]
 	}
 
-	targetJSON := fmt.Sprintf(`{
-		"DefaultNamespace": %q,
-		"Auth": {"Type": "Kubeconfig", "Context": "orbstack"}
-	}`, ns)
+	targetJSON := `{"Auth": {"Type": "Kubeconfig", "Context": "orbstack"}}`
 	cfg, err := config.FromTargetConfig([]byte(targetJSON))
 	if err != nil {
 		t.Fatalf("failed to parse target config: %v", err)

@@ -52,7 +52,7 @@ func (rb *RoleBinding) Create(ctx context.Context, request *resource.CreateReque
 		return nil, fmt.Errorf("failed to unmarshal rolebinding properties: %w", err)
 	}
 
-	namespace := rb.Config.EffectiveNamespace()
+	namespace := "default"
 	if binding.Namespace != nil {
 		namespace = *binding.Namespace
 	}
@@ -111,7 +111,7 @@ func (rb *RoleBinding) Update(ctx context.Context, request *resource.UpdateReque
 		return nil, fmt.Errorf("failed to unmarshal rolebinding properties: %w", err)
 	}
 
-	namespace := rb.Config.EffectiveNamespace()
+	namespace := "default"
 	if binding.Namespace != nil {
 		namespace = *binding.Namespace
 	}
@@ -205,7 +205,7 @@ func (rb *RoleBinding) Status(ctx context.Context, request *resource.StatusReque
 }
 
 func (rb *RoleBinding) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := rb.Config.EffectiveNamespace()
+	namespace := "default"
 	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
 		namespace = ns
 	}

@@ -64,7 +64,6 @@ forma {
     namespace = "K8S"
     config = new k8s.Config {
       kubernetesVersion = "1.31"
-      defaultNamespace  = "demo"
       auth = new k8s.KubeconfigAuth {}
     }
   }

@@ -52,7 +52,7 @@ func (r *Role) Create(ctx context.Context, request *resource.CreateRequest) (*re
 		return nil, fmt.Errorf("failed to unmarshal role properties: %w", err)
 	}
 
-	namespace := r.Config.EffectiveNamespace()
+	namespace := "default"
 	if role.Namespace != nil {
 		namespace = *role.Namespace
 	}
@@ -111,7 +111,7 @@ func (r *Role) Update(ctx context.Context, request *resource.UpdateRequest) (*re
 		return nil, fmt.Errorf("failed to unmarshal role properties: %w", err)
 	}
 
-	namespace := r.Config.EffectiveNamespace()
+	namespace := "default"
 	if role.Namespace != nil {
 		namespace = *role.Namespace
 	}
@@ -205,7 +205,7 @@ func (r *Role) Status(ctx context.Context, request *resource.StatusRequest) (*re
 }
 
 func (r *Role) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := r.Config.EffectiveNamespace()
+	namespace := "default"
 	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
 		namespace = ns
 	}

@@ -53,7 +53,6 @@ new formae.Target {
   label = "k8s-local"
   config = new k8s.Config {
     kubernetesVersion = "1.31"           // must match the imports above
-    defaultNamespace = "demo"
     auth = new k8s.KubeconfigAuth {}     // or InCluster, etc.
   }
 }
@@ -94,7 +93,6 @@ new formae.Target {
   namespace = "K8S"
   config = new k8s.Config {
     kubernetesVersion = "1.31"           // K8s minor — matches @k8s/v1.31/* imports
-    defaultNamespace = "my-namespace"    // ns used when a resource omits one
     auth = new k8s.KubeconfigAuth {}     // see Authentication below
   }
 }
@@ -105,7 +103,7 @@ new formae.Target {
 | Field | Type | Purpose |
 |---|---|---|
 | `kubernetesVersion` | `String` | K8s minor (e.g. `"1.31"`). Selects the schema subtree the plugin uses to validate the resource. **If omitted, the plugin assumes the most recent supported minor** (currently `1.34`). Set it explicitly for older clusters so field-level mismatches surface at `pkl eval`. |
-| `defaultNamespace` | `String?` | Namespace assumed for namespaced resources that don't set `metadata.namespace`. |
+| `defaultNamespace` | `String?` | _Optional._ Fallback namespace for resources that don't set `metadata.namespace` themselves. Defaults to `"default"`. Most formas set `metadata.namespace` on every resource (or get it injected by `@formae-helm`), so this field is rarely needed. |
 | `auth` | `Auth` | One of `KubeconfigAuth` or `InClusterAuth`. |
 
 ### Authentication
@@ -163,7 +161,6 @@ forma {
     namespace = "K8S"
     config = new k8s.Config {
       kubernetesVersion = "1.31"
-      defaultNamespace = "demo"
       auth = new k8s.KubeconfigAuth {}
     }
   }

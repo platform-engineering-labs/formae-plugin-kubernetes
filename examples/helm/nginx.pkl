@@ -49,7 +49,6 @@ forma {
     namespace = "K8S"
     config = new k8s.Config {
       kubernetesVersion = "1.34"
-      defaultNamespace = "formae-test"
       // KubeconfigAuth uses the kubeconfig's current context when
       // `context` is unset — works with kind, OrbStack, Docker
       // Desktop, anything `kubectl` reaches today. Override only

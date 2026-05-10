@@ -53,7 +53,7 @@ func (r *ReplicaSet) Create(ctx context.Context, request *resource.CreateRequest
 		return nil, fmt.Errorf("failed to unmarshal replicaset properties: %w", err)
 	}
 
-	namespace := r.Config.EffectiveNamespace()
+	namespace := "default"
 	if rs.Namespace != nil {
 		namespace = *rs.Namespace
 	}
@@ -113,7 +113,7 @@ func (r *ReplicaSet) Update(ctx context.Context, request *resource.UpdateRequest
 		return nil, fmt.Errorf("failed to unmarshal replicaset properties: %w", err)
 	}
 
-	namespace := r.Config.EffectiveNamespace()
+	namespace := "default"
 	if rs.Namespace != nil {
 		namespace = *rs.Namespace
 	}
@@ -208,7 +208,7 @@ func (r *ReplicaSet) Status(ctx context.Context, request *resource.StatusRequest
 }
 
 func (r *ReplicaSet) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := r.Config.EffectiveNamespace()
+	namespace := "default"
 	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
 		namespace = ns
 	}

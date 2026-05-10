@@ -52,7 +52,7 @@ func (cj *CronJob) Create(ctx context.Context, request *resource.CreateRequest) 
 		return nil, fmt.Errorf("failed to unmarshal cronjob properties: %w", err)
 	}
 
-	namespace := cj.Config.EffectiveNamespace()
+	namespace := "default"
 	if cronjob.Namespace != nil {
 		namespace = *cronjob.Namespace
 	}
@@ -111,7 +111,7 @@ func (cj *CronJob) Update(ctx context.Context, request *resource.UpdateRequest) 
 		return nil, fmt.Errorf("failed to unmarshal cronjob properties: %w", err)
 	}
 
-	namespace := cj.Config.EffectiveNamespace()
+	namespace := "default"
 	if cronjob.Namespace != nil {
 		namespace = *cronjob.Namespace
 	}
@@ -205,7 +205,7 @@ func (cj *CronJob) Status(ctx context.Context, request *resource.StatusRequest) 
 }
 
 func (cj *CronJob) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := cj.Config.EffectiveNamespace()
+	namespace := "default"
 	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
 		namespace = ns
 	}

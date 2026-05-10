@@ -52,7 +52,7 @@ func (s *Secret) Create(ctx context.Context, request *resource.CreateRequest) (*
 		return nil, fmt.Errorf("failed to unmarshal secret properties: %w", err)
 	}
 
-	namespace := s.Config.EffectiveNamespace()
+	namespace := "default"
 	if secret.Namespace != nil {
 		namespace = *secret.Namespace
 	}
@@ -111,7 +111,7 @@ func (s *Secret) Update(ctx context.Context, request *resource.UpdateRequest) (*
 		return nil, fmt.Errorf("failed to unmarshal secret properties: %w", err)
 	}
 
-	namespace := s.Config.EffectiveNamespace()
+	namespace := "default"
 	if secret.Namespace != nil {
 		namespace = *secret.Namespace
 	}
@@ -204,7 +204,7 @@ func (s *Secret) Status(ctx context.Context, request *resource.StatusRequest) (*
 }
 
 func (s *Secret) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := s.Config.EffectiveNamespace()
+	namespace := "default"
 	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
 		namespace = ns
 	}

@@ -57,7 +57,7 @@ func (p *Pod) Create(ctx context.Context, request *resource.CreateRequest) (*res
 		return nil, err
 	}
 
-	namespace := p.Config.EffectiveNamespace()
+	namespace := "default"
 	if pod.Namespace != nil {
 		namespace = *pod.Namespace
 	}
@@ -122,7 +122,7 @@ func (p *Pod) Update(ctx context.Context, request *resource.UpdateRequest) (*res
 		return nil, err
 	}
 
-	namespace := p.Config.EffectiveNamespace()
+	namespace := "default"
 	if pod.Namespace != nil {
 		namespace = *pod.Namespace
 	}
@@ -219,7 +219,7 @@ func (p *Pod) Status(ctx context.Context, request *resource.StatusRequest) (*res
 }
 
 func (p *Pod) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := p.Config.EffectiveNamespace()
+	namespace := "default"
 	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
 		namespace = ns
 	}

@@ -53,7 +53,7 @@ func (p *PersistentVolumeClaim) Create(ctx context.Context, request *resource.Cr
 		return nil, fmt.Errorf("failed to unmarshal persistentvolumeclaim properties: %w", err)
 	}
 
-	namespace := p.Config.EffectiveNamespace()
+	namespace := "default"
 	if pvc.Namespace != nil {
 		namespace = *pvc.Namespace
 	}
@@ -121,7 +121,7 @@ func (p *PersistentVolumeClaim) Update(ctx context.Context, request *resource.Up
 		return nil, fmt.Errorf("failed to unmarshal persistentvolumeclaim properties: %w", err)
 	}
 
-	namespace := p.Config.EffectiveNamespace()
+	namespace := "default"
 	if pvc.Namespace != nil {
 		namespace = *pvc.Namespace
 	}
@@ -216,7 +216,7 @@ func (p *PersistentVolumeClaim) Status(ctx context.Context, request *resource.St
 }
 
 func (p *PersistentVolumeClaim) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := p.Config.EffectiveNamespace()
+	namespace := "default"
 	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
 		namespace = ns
 	}

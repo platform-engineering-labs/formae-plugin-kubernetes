@@ -52,7 +52,7 @@ func (c *ConfigMap) Create(ctx context.Context, request *resource.CreateRequest)
 		return nil, fmt.Errorf("failed to unmarshal configmap properties: %w", err)
 	}
 
-	namespace := c.Config.EffectiveNamespace()
+	namespace := "default"
 	if cm.Namespace != nil {
 		namespace = *cm.Namespace
 	}
@@ -111,7 +111,7 @@ func (c *ConfigMap) Update(ctx context.Context, request *resource.UpdateRequest)
 		return nil, fmt.Errorf("failed to unmarshal configmap properties: %w", err)
 	}
 
-	namespace := c.Config.EffectiveNamespace()
+	namespace := "default"
 	if cm.Namespace != nil {
 		namespace = *cm.Namespace
 	}
@@ -204,7 +204,7 @@ func (c *ConfigMap) Status(ctx context.Context, request *resource.StatusRequest)
 }
 
 func (c *ConfigMap) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := c.Config.EffectiveNamespace()
+	namespace := "default"
 	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
 		namespace = ns
 	}

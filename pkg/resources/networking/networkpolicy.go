@@ -52,7 +52,7 @@ func (n *NetworkPolicy) Create(ctx context.Context, request *resource.CreateRequ
 		return nil, fmt.Errorf("failed to unmarshal networkpolicy properties: %w", err)
 	}
 
-	namespace := n.Config.EffectiveNamespace()
+	namespace := "default"
 	if np.Namespace != nil {
 		namespace = *np.Namespace
 	}
@@ -111,7 +111,7 @@ func (n *NetworkPolicy) Update(ctx context.Context, request *resource.UpdateRequ
 		return nil, fmt.Errorf("failed to unmarshal networkpolicy properties: %w", err)
 	}
 
-	namespace := n.Config.EffectiveNamespace()
+	namespace := "default"
 	if np.Namespace != nil {
 		namespace = *np.Namespace
 	}
@@ -205,7 +205,7 @@ func (n *NetworkPolicy) Status(ctx context.Context, request *resource.StatusRequ
 }
 
 func (n *NetworkPolicy) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := n.Config.EffectiveNamespace()
+	namespace := "default"
 	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
 		namespace = ns
 	}

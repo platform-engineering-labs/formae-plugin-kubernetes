@@ -53,7 +53,7 @@ func (ds *DaemonSet) Create(ctx context.Context, request *resource.CreateRequest
 		return nil, fmt.Errorf("failed to unmarshal daemonset properties: %w", err)
 	}
 
-	namespace := ds.Config.EffectiveNamespace()
+	namespace := "default"
 	if daemonset.Namespace != nil {
 		namespace = *daemonset.Namespace
 	}
@@ -113,7 +113,7 @@ func (ds *DaemonSet) Update(ctx context.Context, request *resource.UpdateRequest
 		return nil, fmt.Errorf("failed to unmarshal daemonset properties: %w", err)
 	}
 
-	namespace := ds.Config.EffectiveNamespace()
+	namespace := "default"
 	if daemonset.Namespace != nil {
 		namespace = *daemonset.Namespace
 	}
@@ -208,7 +208,7 @@ func (ds *DaemonSet) Status(ctx context.Context, request *resource.StatusRequest
 }
 
 func (ds *DaemonSet) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := ds.Config.EffectiveNamespace()
+	namespace := "default"
 	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
 		namespace = ns
 	}

@@ -52,7 +52,7 @@ func (l *Lease) Create(ctx context.Context, request *resource.CreateRequest) (*r
 		return nil, fmt.Errorf("failed to unmarshal lease properties: %w", err)
 	}
 
-	namespace := l.Config.EffectiveNamespace()
+	namespace := "default"
 	if lease.Namespace != nil {
 		namespace = *lease.Namespace
 	}
@@ -111,7 +111,7 @@ func (l *Lease) Update(ctx context.Context, request *resource.UpdateRequest) (*r
 		return nil, fmt.Errorf("failed to unmarshal lease properties: %w", err)
 	}
 
-	namespace := l.Config.EffectiveNamespace()
+	namespace := "default"
 	if lease.Namespace != nil {
 		namespace = *lease.Namespace
 	}
@@ -204,7 +204,7 @@ func (l *Lease) Status(ctx context.Context, request *resource.StatusRequest) (*r
 }
 
 func (l *Lease) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := l.Config.EffectiveNamespace()
+	namespace := "default"
 	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
 		namespace = ns
 	}

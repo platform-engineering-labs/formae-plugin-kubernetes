@@ -57,7 +57,7 @@ func (j *Job) Create(ctx context.Context, request *resource.CreateRequest) (*res
 		return nil, err
 	}
 
-	namespace := j.Config.EffectiveNamespace()
+	namespace := "default"
 	if job.Namespace != nil {
 		namespace = *job.Namespace
 	}
@@ -117,7 +117,7 @@ func (j *Job) Update(ctx context.Context, request *resource.UpdateRequest) (*res
 		return nil, fmt.Errorf("failed to unmarshal job properties: %w", err)
 	}
 
-	namespace := j.Config.EffectiveNamespace()
+	namespace := "default"
 	if job.Namespace != nil {
 		namespace = *job.Namespace
 	}
@@ -217,7 +217,7 @@ func (j *Job) Status(ctx context.Context, request *resource.StatusRequest) (*res
 }
 
 func (j *Job) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := j.Config.EffectiveNamespace()
+	namespace := "default"
 	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
 		namespace = ns
 	}

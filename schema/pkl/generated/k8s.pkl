@@ -18,10 +18,6 @@ import "@formae/formae.pkl"
 open class Config {
   hidden fixed type: String = "K8S"
 
-  /// Default namespace for namespaced resources (defaults to "default")
-  @formae.ConfigFieldHint { createOnly = false }
-  hidden defaultNamespace: String?
-
   /// Authentication strategy. Determines how the plugin connects to the
   /// K8S API server.
   @formae.ConfigFieldHint { createOnly = true }
@@ -36,7 +32,6 @@ open class Config {
   hidden kubernetesVersion: String
 
   fixed Type: String = type
-  fixed DefaultNamespace: String? = defaultNamespace
   fixed Auth: Auth = auth
 
   /// Convention key. Formae's schema-version resolver scans

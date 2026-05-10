@@ -42,7 +42,6 @@ forma {
     namespace = "K8S"
     config = new k8s.Config {
       kubernetesVersion = "1.34"
-      defaultNamespace = "formae-helm-test"
       auth = new k8s.KubeconfigAuth {}
     }
   }

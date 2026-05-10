@@ -94,7 +94,7 @@ func (sa *ServiceAccount) Create(ctx context.Context, request *resource.CreateRe
 		return nil, fmt.Errorf("failed to unmarshal serviceaccount properties: %w", err)
 	}
 
-	namespace := sa.Config.EffectiveNamespace()
+	namespace := "default"
 	if svcAcct.Namespace != nil {
 		namespace = *svcAcct.Namespace
 	}
@@ -161,7 +161,7 @@ func (sa *ServiceAccount) Update(ctx context.Context, request *resource.UpdateRe
 		return nil, fmt.Errorf("failed to unmarshal serviceaccount properties: %w", err)
 	}
 
-	namespace := sa.Config.EffectiveNamespace()
+	namespace := "default"
 	if svcAcct.Namespace != nil {
 		namespace = *svcAcct.Namespace
 	}
@@ -262,7 +262,7 @@ func (sa *ServiceAccount) Status(ctx context.Context, request *resource.StatusRe
 }
 
 func (sa *ServiceAccount) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := sa.Config.EffectiveNamespace()
+	namespace := "default"
 	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
 		namespace = ns
 	}

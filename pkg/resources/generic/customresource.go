@@ -236,7 +236,7 @@ func (cr *CustomResource) List(ctx context.Context, request *resource.ListReques
 	var err error
 
 	if cr.Info.Namespaced {
-		namespace := cr.Config.EffectiveNamespace()
+		namespace := "default"
 		if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
 			namespace = ns
 		}
@@ -285,7 +285,7 @@ func (cr *CustomResource) resolveNamespace(obj *unstructured.Unstructured) strin
 	if ns := obj.GetNamespace(); ns != "" {
 		return ns
 	}
-	return cr.Config.EffectiveNamespace()
+	return "default"
 }
 
 // unmarshalObject unmarshals JSON properties into an Unstructured object.
