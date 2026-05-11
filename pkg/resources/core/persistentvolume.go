@@ -70,7 +70,7 @@ func (p *PersistentVolume) Create(ctx context.Context, request *resource.CreateR
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCreate,
 			OperationStatus:    p.fromPhase(result.Status.Phase),
-			RequestID:          fmt.Sprintf("%d", result.Generation),
+			RequestID:          result.ResourceVersion,
 			StatusMessage:      p.statusMessage(result.Status.Phase),
 			NativeID:           result.Name,
 			ResourceProperties: properties,
@@ -228,13 +228,22 @@ func (p *PersistentVolume) List(ctx context.Context, request *resource.ListReque
 }
 
 // fromPhase maps K8S PersistentVolumePhase to Formae OperationStatus.
-// Released means the PVC was deleted and the PV is orphaned — it requires
-// admin intervention and cannot be reused without manual cleanup.
+//
+//   - Pending: the volume plugin hasn't finished creating the backing storage —
+//     not yet usable, so InProgress.
+//   - Available / Bound: the backing volume exists and is either ready to bind
+//     or already bound to a claim — Success.
+//   - Released: the bound PVC was deleted; the PV still exists and can be
+//     reclaimed manually. Not a Formae provisioning failure — Success.
+//   - Failed: the volume plugin reported a hard failure — Failure.
 func (p *PersistentVolume) fromPhase(phase v1.PersistentVolumePhase) resource.OperationStatus {
 	switch phase {
-	case v1.VolumeFailed, v1.VolumeReleased:
+	case v1.VolumeFailed:
 		return resource.OperationStatusFailure
+	case v1.VolumePending:
+		return resource.OperationStatusInProgress
 	default:
+		// VolumeAvailable, VolumeBound, VolumeReleased
 		return resource.OperationStatusSuccess
 	}
 }

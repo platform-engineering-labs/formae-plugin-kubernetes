@@ -69,7 +69,7 @@ func (r *RuntimeClass) Create(ctx context.Context, request *resource.CreateReque
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
-			RequestID:          fmt.Sprintf("%d", result.Generation),
+			RequestID:          result.ResourceVersion,
 			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},

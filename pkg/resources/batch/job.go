@@ -79,7 +79,7 @@ func (j *Job) Create(ctx context.Context, request *resource.CreateRequest) (*res
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCreate,
 			OperationStatus:    j.fromConditions(result.Status.Conditions),
-			RequestID:          fmt.Sprintf("%d", result.Generation),
+			RequestID:          result.ResourceVersion,
 			StatusMessage:      j.statusMessage(result.Status),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,

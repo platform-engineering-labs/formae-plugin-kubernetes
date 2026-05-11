@@ -69,7 +69,7 @@ func (c *ClusterRole) Create(ctx context.Context, request *resource.CreateReques
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
-			RequestID:          fmt.Sprintf("%d", result.Generation),
+			RequestID:          result.ResourceVersion,
 			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},

@@ -75,7 +75,7 @@ func (p *PersistentVolumeClaim) Create(ctx context.Context, request *resource.Cr
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCreate,
 			OperationStatus:    p.fromPhase(result.Status.Phase),
-			RequestID:          fmt.Sprintf("%d", result.Generation),
+			RequestID:          result.ResourceVersion,
 			StatusMessage:      p.statusMessage(result.Status.Phase),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,

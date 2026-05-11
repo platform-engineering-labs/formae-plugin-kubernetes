@@ -69,7 +69,7 @@ func (m *MutatingWebhookConfiguration) Create(ctx context.Context, request *reso
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
-			RequestID:          fmt.Sprintf("%d", result.Generation),
+			RequestID:          result.ResourceVersion,
 			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},

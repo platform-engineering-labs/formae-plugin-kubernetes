@@ -75,7 +75,7 @@ func (r *ReplicaSet) Create(ctx context.Context, request *resource.CreateRequest
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCreate,
 			OperationStatus:    r.fromConditions(result.Status.Conditions),
-			RequestID:          fmt.Sprintf("%d", result.Generation),
+			RequestID:          result.ResourceVersion,
 			StatusMessage:      r.statusMessage(result.Status),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
@@ -159,7 +159,14 @@ func (r *ReplicaSet) Delete(ctx context.Context, request *resource.DeleteRequest
 	if err != nil {
 		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
 	}
-	err = r.Client.AppsV1().ReplicaSets(ns).Delete(ctx, name, metav1.DeleteOptions{})
+	// Foreground propagation: cascade to managed Pods before the ReplicaSet
+	// object disappears. The K8s default for ReplicaSets is Background, which
+	// orphans Pods until the GC sweeps them, leaving leaked workloads visible
+	// after Formae reports "destroyed".
+	propagation := metav1.DeletePropagationForeground
+	err = r.Client.AppsV1().ReplicaSets(ns).Delete(ctx, name, metav1.DeleteOptions{
+		PropagationPolicy: &propagation,
+	})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{

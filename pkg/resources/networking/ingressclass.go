@@ -69,7 +69,7 @@ func (ic *IngressClass) Create(ctx context.Context, request *resource.CreateRequ
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
-			RequestID:          fmt.Sprintf("%d", result.Generation),
+			RequestID:          result.ResourceVersion,
 			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},

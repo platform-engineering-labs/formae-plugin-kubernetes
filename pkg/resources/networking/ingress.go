@@ -75,7 +75,7 @@ func (ing *Ingress) Create(ctx context.Context, request *resource.CreateRequest)
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
-			RequestID:          fmt.Sprintf("%d", result.Generation),
+			RequestID:          result.ResourceVersion,
 			StatusMessage:      ing.statusMessage(result),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,

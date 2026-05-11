@@ -74,7 +74,7 @@ func (cj *CronJob) Create(ctx context.Context, request *resource.CreateRequest) 
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
-			RequestID:          fmt.Sprintf("%d", result.Generation),
+			RequestID:          result.ResourceVersion,
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
 		},
@@ -157,7 +157,13 @@ func (cj *CronJob) Delete(ctx context.Context, request *resource.DeleteRequest) 
 		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
 	}
 
-	err = cj.Client.BatchV1().CronJobs(ns).Delete(ctx, name, metav1.DeleteOptions{})
+	// Foreground propagation: cascade to active Jobs (and their Pods) before
+	// the CronJob disappears. K8s default for CronJobs is Background, which
+	// leaks already-spawned Jobs and Pods after Formae reports "destroyed".
+	propagation := metav1.DeletePropagationForeground
+	err = cj.Client.BatchV1().CronJobs(ns).Delete(ctx, name, metav1.DeleteOptions{
+		PropagationPolicy: &propagation,
+	})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{

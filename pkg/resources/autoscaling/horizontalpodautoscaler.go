@@ -74,8 +74,8 @@ func (h *HorizontalPodAutoscaler) Create(ctx context.Context, request *resource.
 	return &resource.CreateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCreate,
-			OperationStatus:    h.fromConditions(result),
-			RequestID:          fmt.Sprintf("%d", result.Generation),
+			OperationStatus:    h.operationStatus(result),
+			RequestID:          result.ResourceVersion,
 			StatusMessage:      h.statusMessage(result),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
@@ -145,7 +145,7 @@ func (h *HorizontalPodAutoscaler) Update(ctx context.Context, request *resource.
 	return &resource.UpdateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationUpdate,
-			OperationStatus:    h.fromConditions(result),
+			OperationStatus:    h.operationStatus(result),
 			RequestID:          result.ResourceVersion,
 			StatusMessage:      h.statusMessage(result),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
@@ -207,7 +207,7 @@ func (h *HorizontalPodAutoscaler) Status(ctx context.Context, request *resource.
 	return &resource.StatusResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCheckStatus,
-			OperationStatus:    h.fromConditions(result),
+			OperationStatus:    h.operationStatus(result),
 			RequestID:          request.RequestID,
 			StatusMessage:      h.statusMessage(result),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
@@ -242,15 +242,16 @@ func (h *HorizontalPodAutoscaler) List(ctx context.Context, request *resource.Li
 	}, nil
 }
 
-// fromConditions maps HPA conditions to Formae OperationStatus.
-// HPA is a declarative configuration object — once applied, it is considered
-// successful unless the controller reports it is unable to scale at all.
-func (h *HorizontalPodAutoscaler) fromConditions(hpa *autoscalingv2.HorizontalPodAutoscaler) resource.OperationStatus {
-	for _, cond := range hpa.Status.Conditions {
-		if cond.Type == autoscalingv2.AbleToScale && cond.Status == "False" {
-			return resource.OperationStatusFailure
-		}
-	}
+// operationStatus returns OperationStatus for the HPA.
+//
+// HPA is a declarative configuration object: a successful Apply means the
+// scaling policy is installed in the cluster. Runtime conditions such as
+// AbleToScale=False or ScalingActive=False reflect transient controller
+// behavior (missing metrics, target reconciling, etc.) — not provisioning
+// failures — and are surfaced via statusMessage rather than failing the
+// Formae operation. Aligns with the "config object always-Success" policy
+// applied to CronJob, Ingress, etc.
+func (h *HorizontalPodAutoscaler) operationStatus(_ *autoscalingv2.HorizontalPodAutoscaler) resource.OperationStatus {
 	return resource.OperationStatusSuccess
 }
 

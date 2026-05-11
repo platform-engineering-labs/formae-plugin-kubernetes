@@ -78,7 +78,7 @@ func (n *Namespace) Create(ctx context.Context, request *resource.CreateRequest)
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCreate,
 			OperationStatus:    n.fromPhase(result.Status.Phase),
-			RequestID:          fmt.Sprintf("%d", result.Generation),
+			RequestID:          result.ResourceVersion,
 			NativeID:           result.Name,
 			ResourceProperties: properties,
 		},

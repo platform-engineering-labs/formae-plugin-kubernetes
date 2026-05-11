@@ -74,8 +74,8 @@ func (ds *DaemonSet) Create(ctx context.Context, request *resource.CreateRequest
 	return &resource.CreateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCreate,
-			OperationStatus:    ds.operationStatus(result.Status),
-			RequestID:          fmt.Sprintf("%d", result.Generation),
+			OperationStatus:    ds.operationStatus(result),
+			RequestID:          result.ResourceVersion,
 			StatusMessage:      ds.statusMessage(result.Status),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
@@ -145,7 +145,7 @@ func (ds *DaemonSet) Update(ctx context.Context, request *resource.UpdateRequest
 	return &resource.UpdateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationUpdate,
-			OperationStatus:    ds.operationStatus(result.Status),
+			OperationStatus:    ds.operationStatus(result),
 			RequestID:          result.ResourceVersion,
 			StatusMessage:      ds.statusMessage(result.Status),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
@@ -159,7 +159,12 @@ func (ds *DaemonSet) Delete(ctx context.Context, request *resource.DeleteRequest
 	if err != nil {
 		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
 	}
-	err = ds.Client.AppsV1().DaemonSets(ns).Delete(ctx, name, metav1.DeleteOptions{})
+	// Foreground propagation: cascade to managed Pods before the DaemonSet
+	// object disappears, so destroy completes only once children are gone.
+	propagation := metav1.DeletePropagationForeground
+	err = ds.Client.AppsV1().DaemonSets(ns).Delete(ctx, name, metav1.DeleteOptions{
+		PropagationPolicy: &propagation,
+	})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -207,7 +212,7 @@ func (ds *DaemonSet) Status(ctx context.Context, request *resource.StatusRequest
 	return &resource.StatusResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCheckStatus,
-			OperationStatus:    ds.operationStatus(result.Status),
+			OperationStatus:    ds.operationStatus(result),
 			RequestID:          request.RequestID,
 			StatusMessage:      ds.statusMessage(result.Status),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
@@ -242,10 +247,22 @@ func (ds *DaemonSet) List(ctx context.Context, request *resource.ListRequest) (*
 	}, nil
 }
 
-// operationStatus maps DaemonSet status to Formae OperationStatus.
-// InProgress when NumberReady < DesiredNumberScheduled.
-func (ds *DaemonSet) operationStatus(status appsv1.DaemonSetStatus) resource.OperationStatus {
-	if status.NumberReady < status.DesiredNumberScheduled {
+// operationStatus maps DaemonSet state to Formae OperationStatus.
+//
+// We gate on the DaemonSet controller having observed the latest spec first
+// (status.observedGeneration vs metadata.generation). Immediately after Apply
+// both DesiredNumberScheduled and NumberReady default to 0 and the naive
+// comparison would incorrectly report Success before the controller has had
+// a chance to schedule pods.
+//
+// Once observed, we treat the rollout as InProgress while pods are still
+// being updated or are not yet ready.
+func (ds *DaemonSet) operationStatus(daemonset *appsv1.DaemonSet) resource.OperationStatus {
+	if !prov.ObservedGenerationReady(&daemonset.ObjectMeta, daemonset.Status.ObservedGeneration) {
+		return resource.OperationStatusInProgress
+	}
+	if daemonset.Status.UpdatedNumberScheduled < daemonset.Status.DesiredNumberScheduled ||
+		daemonset.Status.NumberReady < daemonset.Status.DesiredNumberScheduled {
 		return resource.OperationStatusInProgress
 	}
 	return resource.OperationStatusSuccess

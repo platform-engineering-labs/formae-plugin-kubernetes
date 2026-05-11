@@ -74,8 +74,8 @@ func (ss *StatefulSet) Create(ctx context.Context, request *resource.CreateReque
 	return &resource.CreateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCreate,
-			OperationStatus:    ss.operationStatus(result.Status),
-			RequestID:          fmt.Sprintf("%d", result.Generation),
+			OperationStatus:    ss.operationStatus(result),
+			RequestID:          result.ResourceVersion,
 			StatusMessage:      ss.statusMessage(result.Status),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
@@ -145,7 +145,7 @@ func (ss *StatefulSet) Update(ctx context.Context, request *resource.UpdateReque
 	return &resource.UpdateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationUpdate,
-			OperationStatus:    ss.operationStatus(result.Status),
+			OperationStatus:    ss.operationStatus(result),
 			RequestID:          result.ResourceVersion,
 			StatusMessage:      ss.statusMessage(result.Status),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
@@ -159,7 +159,14 @@ func (ss *StatefulSet) Delete(ctx context.Context, request *resource.DeleteReque
 	if err != nil {
 		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
 	}
-	err = ss.Client.AppsV1().StatefulSets(ns).Delete(ctx, name, metav1.DeleteOptions{})
+	// Foreground propagation: cascade to managed Pods (and headless Service)
+	// before the StatefulSet object itself disappears. Note: PVCs created from
+	// volumeClaimTemplates are intentionally retained by K8s — users must
+	// delete those separately or rely on whenDeleted retention policies.
+	propagation := metav1.DeletePropagationForeground
+	err = ss.Client.AppsV1().StatefulSets(ns).Delete(ctx, name, metav1.DeleteOptions{
+		PropagationPolicy: &propagation,
+	})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -207,7 +214,7 @@ func (ss *StatefulSet) Status(ctx context.Context, request *resource.StatusReque
 	return &resource.StatusResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCheckStatus,
-			OperationStatus:    ss.operationStatus(result.Status),
+			OperationStatus:    ss.operationStatus(result),
 			RequestID:          request.RequestID,
 			StatusMessage:      ss.statusMessage(result.Status),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
@@ -292,10 +299,26 @@ func stripVCTStatus(data json.RawMessage) (json.RawMessage, error) {
 	return json.Marshal(obj)
 }
 
-// operationStatus maps StatefulSet status to Formae OperationStatus.
-// InProgress when ReadyReplicas < Replicas.
-func (ss *StatefulSet) operationStatus(status appsv1.StatefulSetStatus) resource.OperationStatus {
-	if status.ReadyReplicas < status.Replicas {
+// operationStatus maps StatefulSet state to Formae OperationStatus.
+//
+// We gate on the StatefulSet controller having observed the latest spec
+// (status.observedGeneration vs metadata.generation) first — otherwise both
+// status.Replicas and status.ReadyReplicas default to 0 immediately after
+// Apply and the naive "ReadyReplicas < Replicas" check would incorrectly
+// return Success for a brand-new StatefulSet.
+//
+// Once the controller has reconciled, we compare against the *desired*
+// replica count (spec.Replicas, defaulting to 1) for both ready and
+// updated replicas to catch in-flight rolling updates.
+func (ss *StatefulSet) operationStatus(sts *appsv1.StatefulSet) resource.OperationStatus {
+	if !prov.ObservedGenerationReady(&sts.ObjectMeta, sts.Status.ObservedGeneration) {
+		return resource.OperationStatusInProgress
+	}
+	var desired int32 = 1
+	if sts.Spec.Replicas != nil {
+		desired = *sts.Spec.Replicas
+	}
+	if sts.Status.ReadyReplicas < desired || sts.Status.UpdatedReplicas < desired {
 		return resource.OperationStatusInProgress
 	}
 	return resource.OperationStatusSuccess

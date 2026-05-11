@@ -74,8 +74,8 @@ func (d *Deployment) Create(ctx context.Context, request *resource.CreateRequest
 	return &resource.CreateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCreate,
-			OperationStatus:    d.fromConditions(result.Status.Conditions),
-			RequestID:          fmt.Sprintf("%d", result.Generation),
+			OperationStatus:    d.operationStatus(result),
+			RequestID:          result.ResourceVersion,
 			StatusMessage:      d.statusMessage(result.Status),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
 			ResourceProperties: properties,
@@ -145,7 +145,7 @@ func (d *Deployment) Update(ctx context.Context, request *resource.UpdateRequest
 	return &resource.UpdateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationUpdate,
-			OperationStatus:    d.fromConditions(result.Status.Conditions),
+			OperationStatus:    d.operationStatus(result),
 			RequestID:          result.ResourceVersion,
 			StatusMessage:      d.statusMessage(result.Status),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
@@ -159,7 +159,14 @@ func (d *Deployment) Delete(ctx context.Context, request *resource.DeleteRequest
 	if err != nil {
 		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
 	}
-	err = d.Client.AppsV1().Deployments(ns).Delete(ctx, name, metav1.DeleteOptions{})
+	// Foreground propagation: cleanly cascade to ReplicaSets and child Pods.
+	// K8s default for Deployments is Background, which immediately removes the
+	// Deployment object while children are garbage-collected asynchronously.
+	// Foreground gives Formae a clearer signal that "destroy" actually finished.
+	propagation := metav1.DeletePropagationForeground
+	err = d.Client.AppsV1().Deployments(ns).Delete(ctx, name, metav1.DeleteOptions{
+		PropagationPolicy: &propagation,
+	})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -207,7 +214,7 @@ func (d *Deployment) Status(ctx context.Context, request *resource.StatusRequest
 	return &resource.StatusResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCheckStatus,
-			OperationStatus:    d.fromConditions(result.Status.Conditions),
+			OperationStatus:    d.operationStatus(result),
 			RequestID:          request.RequestID,
 			StatusMessage:      d.statusMessage(result.Status),
 			NativeID:           prov.NativeID(result.Namespace, result.Name),
@@ -242,18 +249,37 @@ func (d *Deployment) List(ctx context.Context, request *resource.ListRequest) (*
 	}, nil
 }
 
-// fromConditions maps K8S Deployment conditions to Formae OperationStatus.
-// Reports Failure when K8S itself declares the rollout stuck or a replica
-// cannot be created. Runtime pod health (e.g. CrashLoopBackOff) is a
-// separate concern from provisioning — those are surfaced via statusMessage.
-func (d *Deployment) fromConditions(conditions []appsv1.DeploymentCondition) resource.OperationStatus {
-	for _, cond := range conditions {
+// operationStatus maps Deployment state to Formae OperationStatus.
+//
+// Order of checks:
+//  1. Failure: ReplicaFailure=True or ProgressDeadlineExceeded — terminal.
+//  2. InProgress: the controller hasn't observed the latest spec yet
+//     (status.observedGeneration < metadata.generation), or the rollout
+//     hasn't fully landed (updated/ready/available replicas < desired).
+//  3. Success: rollout matches the desired spec.
+//
+// Runtime pod health (e.g. CrashLoopBackOff) is a separate concern from
+// provisioning and is surfaced via statusMessage rather than failing here.
+func (d *Deployment) operationStatus(deploy *appsv1.Deployment) resource.OperationStatus {
+	for _, cond := range deploy.Status.Conditions {
 		if cond.Type == appsv1.DeploymentReplicaFailure && cond.Status == "True" {
 			return resource.OperationStatusFailure
 		}
 		if cond.Type == appsv1.DeploymentProgressing && cond.Status == "False" && cond.Reason == "ProgressDeadlineExceeded" {
 			return resource.OperationStatusFailure
 		}
+	}
+	if !prov.ObservedGenerationReady(&deploy.ObjectMeta, deploy.Status.ObservedGeneration) {
+		return resource.OperationStatusInProgress
+	}
+	var desired int32 = 1
+	if deploy.Spec.Replicas != nil {
+		desired = *deploy.Spec.Replicas
+	}
+	if deploy.Status.UpdatedReplicas < desired ||
+		deploy.Status.ReadyReplicas < desired ||
+		deploy.Status.AvailableReplicas < desired {
+		return resource.OperationStatusInProgress
 	}
 	return resource.OperationStatusSuccess
 }
