@@ -6,7 +6,6 @@ package prov
 
 import (
 	"context"
-	"log"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/k8sversion"
@@ -77,15 +76,10 @@ func CheckPayloadGates(
 			return err
 		}
 		// CheckField handles introducedIn + removedIn. DeprecatedIn is a
-		// soft signal: log a warning and continue.
-		if gate.DeprecatedIn != "" && config.CompareK8sVersions(version, gate.DeprecatedIn) >= 0 {
-			ref := ""
-			if gate.Reference != "" {
-				ref = " (see " + gate.Reference + ")"
-			}
-			log.Printf("WARNING: field %q on %s was deprecated in Kubernetes %s%s",
-				fieldPath, resourceType, gate.DeprecatedIn, ref)
-		}
+		// soft signal — surfaced via PKL @K8sVersion annotations at design
+		// time. Logging at every CRUD call floods the operator output, so
+		// keep the gate read for side-effect-free annotation visibility.
+		_ = gate
 	}
 	return nil
 }
