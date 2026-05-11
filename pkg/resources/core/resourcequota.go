@@ -82,7 +82,10 @@ func (r *ResourceQuota) Create(ctx context.Context, request *resource.CreateRequ
 }
 
 func (r *ResourceQuota) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := r.Client.CoreV1().ResourceQuotas(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -125,8 +128,8 @@ func (r *ResourceQuota) Update(ctx context.Context, request *resource.UpdateRequ
 	}
 
 	// Reconcile metadata: remove labels/annotations not in desired state.
-	if err := prov.ReconcileMetadata(result, rq, func(name string, patch []byte) error {
-		_, err := r.Client.CoreV1().ResourceQuotas(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if err := prov.ReconcileMetadata(result, rq, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := r.Client.CoreV1().ResourceQuotas(namespace).Patch(ctx, name, types.MergePatchType, patch, opts)
 		return err
 	}); err != nil {
 		return nil, fmt.Errorf("failed to reconcile resourcequota metadata: %w", err)
@@ -149,8 +152,11 @@ func (r *ResourceQuota) Update(ctx context.Context, request *resource.UpdateRequ
 }
 
 func (r *ResourceQuota) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
-	err := r.Client.CoreV1().ResourceQuotas(ns).Delete(ctx, name, metav1.DeleteOptions{})
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
+	err = r.Client.CoreV1().ResourceQuotas(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -172,7 +178,10 @@ func (r *ResourceQuota) Delete(ctx context.Context, request *resource.DeleteRequ
 }
 
 func (r *ResourceQuota) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := r.Client.CoreV1().ResourceQuotas(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -209,15 +218,20 @@ func (r *ResourceQuota) List(ctx context.Context, request *resource.ListRequest)
 		return nil, err
 	}
 
-	result, err := r.Client.CoreV1().ResourceQuotas(namespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := r.Client.CoreV1().ResourceQuotas(namespace).List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, rq := range page.Items {
+			nativeIDs = append(nativeIDs, prov.NativeID(rq.Namespace, rq.Name))
+		}
+		return page.Continue, nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to list resourcequotas: %w", err)
 	}
 
-	nativeIDs := make([]string, 0, len(result.Items))
-	for _, rq := range result.Items {
-		nativeIDs = append(nativeIDs, prov.NativeID(rq.Namespace, rq.Name))
-	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,

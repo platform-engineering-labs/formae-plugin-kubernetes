@@ -82,7 +82,10 @@ func (n *NetworkPolicy) Create(ctx context.Context, request *resource.CreateRequ
 }
 
 func (n *NetworkPolicy) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := n.Client.NetworkingV1().NetworkPolicies(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -125,8 +128,8 @@ func (n *NetworkPolicy) Update(ctx context.Context, request *resource.UpdateRequ
 	}
 
 	// Reconcile metadata: remove labels/annotations not in desired state.
-	if err := prov.ReconcileMetadata(result, np, func(name string, patch []byte) error {
-		_, err := n.Client.NetworkingV1().NetworkPolicies(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if err := prov.ReconcileMetadata(result, np, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := n.Client.NetworkingV1().NetworkPolicies(namespace).Patch(ctx, name, types.MergePatchType, patch, opts)
 		return err
 	}); err != nil {
 		return nil, fmt.Errorf("failed to reconcile networkpolicy metadata: %w", err)
@@ -149,9 +152,12 @@ func (n *NetworkPolicy) Update(ctx context.Context, request *resource.UpdateRequ
 }
 
 func (n *NetworkPolicy) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 
-	err := n.Client.NetworkingV1().NetworkPolicies(ns).Delete(ctx, name, metav1.DeleteOptions{})
+	err = n.Client.NetworkingV1().NetworkPolicies(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -173,7 +179,10 @@ func (n *NetworkPolicy) Delete(ctx context.Context, request *resource.DeleteRequ
 }
 
 func (n *NetworkPolicy) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := n.Client.NetworkingV1().NetworkPolicies(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -210,15 +219,20 @@ func (n *NetworkPolicy) List(ctx context.Context, request *resource.ListRequest)
 		return nil, err
 	}
 
-	result, err := n.Client.NetworkingV1().NetworkPolicies(namespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := n.Client.NetworkingV1().NetworkPolicies(namespace).List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, np := range page.Items {
+			nativeIDs = append(nativeIDs, prov.NativeID(np.Namespace, np.Name))
+		}
+		return page.Continue, nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to list networkpolicies: %w", err)
 	}
 
-	nativeIDs := make([]string, 0, len(result.Items))
-	for _, np := range result.Items {
-		nativeIDs = append(nativeIDs, prov.NativeID(np.Namespace, np.Name))
-	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,

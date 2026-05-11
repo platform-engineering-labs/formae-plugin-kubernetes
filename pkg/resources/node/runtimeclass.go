@@ -77,7 +77,10 @@ func (r *RuntimeClass) Create(ctx context.Context, request *resource.CreateReque
 }
 
 func (r *RuntimeClass) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := r.Client.NodeV1().RuntimeClasses().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -115,8 +118,8 @@ func (r *RuntimeClass) Update(ctx context.Context, request *resource.UpdateReque
 	}
 
 	// Reconcile metadata: remove labels/annotations not in desired state.
-	if err := prov.ReconcileMetadata(result, rc, func(name string, patch []byte) error {
-		_, err := r.Client.NodeV1().RuntimeClasses().Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if err := prov.ReconcileMetadata(result, rc, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := r.Client.NodeV1().RuntimeClasses().Patch(ctx, name, types.MergePatchType, patch, opts)
 		return err
 	}); err != nil {
 		return nil, fmt.Errorf("failed to reconcile runtimeclass metadata: %w", err)
@@ -139,8 +142,11 @@ func (r *RuntimeClass) Update(ctx context.Context, request *resource.UpdateReque
 }
 
 func (r *RuntimeClass) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
-	err := r.Client.NodeV1().RuntimeClasses().Delete(ctx, name, metav1.DeleteOptions{})
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
+	err = r.Client.NodeV1().RuntimeClasses().Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -162,7 +168,10 @@ func (r *RuntimeClass) Delete(ctx context.Context, request *resource.DeleteReque
 }
 
 func (r *RuntimeClass) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := r.Client.NodeV1().RuntimeClasses().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -194,15 +203,20 @@ func (r *RuntimeClass) Status(ctx context.Context, request *resource.StatusReque
 }
 
 func (r *RuntimeClass) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	result, err := r.Client.NodeV1().RuntimeClasses().List(ctx, metav1.ListOptions{})
-	if err != nil {
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := r.Client.NodeV1().RuntimeClasses().List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, rc := range page.Items {
+			nativeIDs = append(nativeIDs, rc.Name)
+		}
+		return page.Continue, nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to list runtimeclasses: %w", err)
 	}
 
-	nativeIDs := make([]string, 0, len(result.Items))
-	for _, rc := range result.Items {
-		nativeIDs = append(nativeIDs, rc.Name)
-	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,

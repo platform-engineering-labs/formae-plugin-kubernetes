@@ -89,7 +89,10 @@ func (p *Pod) Create(ctx context.Context, request *resource.CreateRequest) (*res
 }
 
 func (p *Pod) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := p.Client.CoreV1().Pods(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -136,8 +139,8 @@ func (p *Pod) Update(ctx context.Context, request *resource.UpdateRequest) (*res
 	}
 
 	// Reconcile metadata: remove labels/annotations not in desired state.
-	if err := prov.ReconcileMetadata(result, pod, func(name string, patch []byte) error {
-		_, err := p.Client.CoreV1().Pods(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if err := prov.ReconcileMetadata(result, pod, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := p.Client.CoreV1().Pods(namespace).Patch(ctx, name, types.MergePatchType, patch, opts)
 		return err
 	}); err != nil {
 		return nil, fmt.Errorf("failed to reconcile pod metadata: %w", err)
@@ -162,8 +165,11 @@ func (p *Pod) Update(ctx context.Context, request *resource.UpdateRequest) (*res
 }
 
 func (p *Pod) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
-	err := p.Client.CoreV1().Pods(ns).Delete(ctx, name, metav1.DeleteOptions{})
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
+	err = p.Client.CoreV1().Pods(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -185,7 +191,10 @@ func (p *Pod) Delete(ctx context.Context, request *resource.DeleteRequest) (*res
 }
 
 func (p *Pod) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := p.Client.CoreV1().Pods(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -224,20 +233,25 @@ func (p *Pod) List(ctx context.Context, request *resource.ListRequest) (*resourc
 		return nil, err
 	}
 
-	result, err := p.Client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := p.Client.CoreV1().Pods(namespace).List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, pod := range page.Items {
+			// Skip pods owned by a controller (ReplicaSet, DaemonSet, Job, etc.)
+			// Only discover standalone pods that were created directly.
+			if len(pod.OwnerReferences) > 0 {
+				continue
+			}
+			nativeIDs = append(nativeIDs, prov.NativeID(pod.Namespace, pod.Name))
+		}
+		return page.Continue, nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to list pods: %w", err)
 	}
 
-	nativeIDs := make([]string, 0, len(result.Items))
-	for _, pod := range result.Items {
-		// Skip pods owned by a controller (ReplicaSet, DaemonSet, Job, etc.)
-		// Only discover standalone pods that were created directly.
-		if len(pod.OwnerReferences) > 0 {
-			continue
-		}
-		nativeIDs = append(nativeIDs, prov.NativeID(pod.Namespace, pod.Name))
-	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,

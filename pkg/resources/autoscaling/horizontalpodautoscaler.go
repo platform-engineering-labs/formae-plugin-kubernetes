@@ -84,7 +84,10 @@ func (h *HorizontalPodAutoscaler) Create(ctx context.Context, request *resource.
 }
 
 func (h *HorizontalPodAutoscaler) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := h.Client.AutoscalingV2().HorizontalPodAutoscalers(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -127,8 +130,8 @@ func (h *HorizontalPodAutoscaler) Update(ctx context.Context, request *resource.
 	}
 
 	// Reconcile metadata: remove labels/annotations not in desired state.
-	if err := prov.ReconcileMetadata(result, hpa, func(name string, patch []byte) error {
-		_, err := h.Client.AutoscalingV2().HorizontalPodAutoscalers(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if err := prov.ReconcileMetadata(result, hpa, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := h.Client.AutoscalingV2().HorizontalPodAutoscalers(namespace).Patch(ctx, name, types.MergePatchType, patch, opts)
 		return err
 	}); err != nil {
 		return nil, fmt.Errorf("failed to reconcile horizontalpodautoscaler metadata: %w", err)
@@ -152,8 +155,11 @@ func (h *HorizontalPodAutoscaler) Update(ctx context.Context, request *resource.
 }
 
 func (h *HorizontalPodAutoscaler) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
-	err := h.Client.AutoscalingV2().HorizontalPodAutoscalers(ns).Delete(ctx, name, metav1.DeleteOptions{})
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
+	err = h.Client.AutoscalingV2().HorizontalPodAutoscalers(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -175,7 +181,10 @@ func (h *HorizontalPodAutoscaler) Delete(ctx context.Context, request *resource.
 }
 
 func (h *HorizontalPodAutoscaler) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := h.Client.AutoscalingV2().HorizontalPodAutoscalers(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -213,15 +222,20 @@ func (h *HorizontalPodAutoscaler) List(ctx context.Context, request *resource.Li
 		return nil, err
 	}
 
-	result, err := h.Client.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := h.Client.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, hpa := range page.Items {
+			nativeIDs = append(nativeIDs, prov.NativeID(hpa.Namespace, hpa.Name))
+		}
+		return page.Continue, nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to list horizontalpodautoscalers: %w", err)
 	}
 
-	nativeIDs := make([]string, 0, len(result.Items))
-	for _, hpa := range result.Items {
-		nativeIDs = append(nativeIDs, prov.NativeID(hpa.Namespace, hpa.Name))
-	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,

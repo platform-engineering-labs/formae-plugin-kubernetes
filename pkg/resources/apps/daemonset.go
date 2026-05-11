@@ -84,7 +84,10 @@ func (ds *DaemonSet) Create(ctx context.Context, request *resource.CreateRequest
 }
 
 func (ds *DaemonSet) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := ds.Client.AppsV1().DaemonSets(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -127,8 +130,8 @@ func (ds *DaemonSet) Update(ctx context.Context, request *resource.UpdateRequest
 	}
 
 	// Reconcile metadata: remove labels/annotations not in desired state.
-	if err := prov.ReconcileMetadata(result, daemonset, func(name string, patch []byte) error {
-		_, err := ds.Client.AppsV1().DaemonSets(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if err := prov.ReconcileMetadata(result, daemonset, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := ds.Client.AppsV1().DaemonSets(namespace).Patch(ctx, name, types.MergePatchType, patch, opts)
 		return err
 	}); err != nil {
 		return nil, fmt.Errorf("failed to reconcile daemonset metadata: %w", err)
@@ -152,8 +155,11 @@ func (ds *DaemonSet) Update(ctx context.Context, request *resource.UpdateRequest
 }
 
 func (ds *DaemonSet) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
-	err := ds.Client.AppsV1().DaemonSets(ns).Delete(ctx, name, metav1.DeleteOptions{})
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
+	err = ds.Client.AppsV1().DaemonSets(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -175,7 +181,10 @@ func (ds *DaemonSet) Delete(ctx context.Context, request *resource.DeleteRequest
 }
 
 func (ds *DaemonSet) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := ds.Client.AppsV1().DaemonSets(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -213,15 +222,20 @@ func (ds *DaemonSet) List(ctx context.Context, request *resource.ListRequest) (*
 		return nil, err
 	}
 
-	result, err := ds.Client.AppsV1().DaemonSets(namespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := ds.Client.AppsV1().DaemonSets(namespace).List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, daemonset := range page.Items {
+			nativeIDs = append(nativeIDs, prov.NativeID(daemonset.Namespace, daemonset.Name))
+		}
+		return page.Continue, nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to list daemonsets: %w", err)
 	}
 
-	nativeIDs := make([]string, 0, len(result.Items))
-	for _, daemonset := range result.Items {
-		nativeIDs = append(nativeIDs, prov.NativeID(daemonset.Namespace, daemonset.Name))
-	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,

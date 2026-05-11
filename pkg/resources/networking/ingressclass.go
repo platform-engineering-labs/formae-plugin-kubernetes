@@ -77,7 +77,10 @@ func (ic *IngressClass) Create(ctx context.Context, request *resource.CreateRequ
 }
 
 func (ic *IngressClass) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := ic.Client.NetworkingV1().IngressClasses().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -115,8 +118,8 @@ func (ic *IngressClass) Update(ctx context.Context, request *resource.UpdateRequ
 	}
 
 	// Reconcile metadata: remove labels/annotations not in desired state.
-	if err := prov.ReconcileMetadata(result, ingressClass, func(name string, patch []byte) error {
-		_, err := ic.Client.NetworkingV1().IngressClasses().Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if err := prov.ReconcileMetadata(result, ingressClass, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := ic.Client.NetworkingV1().IngressClasses().Patch(ctx, name, types.MergePatchType, patch, opts)
 		return err
 	}); err != nil {
 		return nil, fmt.Errorf("failed to reconcile ingressclass metadata: %w", err)
@@ -139,8 +142,11 @@ func (ic *IngressClass) Update(ctx context.Context, request *resource.UpdateRequ
 }
 
 func (ic *IngressClass) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
-	err := ic.Client.NetworkingV1().IngressClasses().Delete(ctx, name, metav1.DeleteOptions{})
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
+	err = ic.Client.NetworkingV1().IngressClasses().Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -162,7 +168,10 @@ func (ic *IngressClass) Delete(ctx context.Context, request *resource.DeleteRequ
 }
 
 func (ic *IngressClass) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := ic.Client.NetworkingV1().IngressClasses().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -194,15 +203,20 @@ func (ic *IngressClass) Status(ctx context.Context, request *resource.StatusRequ
 }
 
 func (ic *IngressClass) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	result, err := ic.Client.NetworkingV1().IngressClasses().List(ctx, metav1.ListOptions{})
-	if err != nil {
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := ic.Client.NetworkingV1().IngressClasses().List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, ingressClass := range page.Items {
+			nativeIDs = append(nativeIDs, ingressClass.Name)
+		}
+		return page.Continue, nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to list ingressclasses: %w", err)
 	}
 
-	nativeIDs := make([]string, 0, len(result.Items))
-	for _, ingressClass := range result.Items {
-		nativeIDs = append(nativeIDs, ingressClass.Name)
-	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,

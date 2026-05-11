@@ -84,7 +84,10 @@ func (d *Deployment) Create(ctx context.Context, request *resource.CreateRequest
 }
 
 func (d *Deployment) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := d.Client.AppsV1().Deployments(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -127,8 +130,8 @@ func (d *Deployment) Update(ctx context.Context, request *resource.UpdateRequest
 	}
 
 	// Reconcile metadata: remove labels/annotations not in desired state.
-	if err := prov.ReconcileMetadata(result, deploy, func(name string, patch []byte) error {
-		_, err := d.Client.AppsV1().Deployments(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if err := prov.ReconcileMetadata(result, deploy, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := d.Client.AppsV1().Deployments(namespace).Patch(ctx, name, types.MergePatchType, patch, opts)
 		return err
 	}); err != nil {
 		return nil, fmt.Errorf("failed to reconcile deployment metadata: %w", err)
@@ -152,8 +155,11 @@ func (d *Deployment) Update(ctx context.Context, request *resource.UpdateRequest
 }
 
 func (d *Deployment) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
-	err := d.Client.AppsV1().Deployments(ns).Delete(ctx, name, metav1.DeleteOptions{})
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
+	err = d.Client.AppsV1().Deployments(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -175,7 +181,10 @@ func (d *Deployment) Delete(ctx context.Context, request *resource.DeleteRequest
 }
 
 func (d *Deployment) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := d.Client.AppsV1().Deployments(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -213,15 +222,20 @@ func (d *Deployment) List(ctx context.Context, request *resource.ListRequest) (*
 		return nil, err
 	}
 
-	result, err := d.Client.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := d.Client.AppsV1().Deployments(namespace).List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, deploy := range page.Items {
+			nativeIDs = append(nativeIDs, prov.NativeID(deploy.Namespace, deploy.Name))
+		}
+		return page.Continue, nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to list deployments: %w", err)
 	}
 
-	nativeIDs := make([]string, 0, len(result.Items))
-	for _, deploy := range result.Items {
-		nativeIDs = append(nativeIDs, prov.NativeID(deploy.Namespace, deploy.Name))
-	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,

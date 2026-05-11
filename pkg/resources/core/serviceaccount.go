@@ -128,7 +128,10 @@ func (sa *ServiceAccount) Create(ctx context.Context, request *resource.CreateRe
 }
 
 func (sa *ServiceAccount) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := sa.Client.CoreV1().ServiceAccounts(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -175,8 +178,8 @@ func (sa *ServiceAccount) Update(ctx context.Context, request *resource.UpdateRe
 	}
 
 	// Reconcile metadata: remove labels/annotations not in desired state.
-	if err := prov.ReconcileMetadata(result, svcAcct, func(name string, patch []byte) error {
-		_, err := sa.Client.CoreV1().ServiceAccounts(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if err := prov.ReconcileMetadata(result, svcAcct, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := sa.Client.CoreV1().ServiceAccounts(namespace).Patch(ctx, name, types.MergePatchType, patch, opts)
 		return err
 	}); err != nil {
 		return nil, fmt.Errorf("failed to reconcile serviceaccount metadata: %w", err)
@@ -203,8 +206,11 @@ func (sa *ServiceAccount) Update(ctx context.Context, request *resource.UpdateRe
 }
 
 func (sa *ServiceAccount) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
-	err := sa.Client.CoreV1().ServiceAccounts(ns).Delete(ctx, name, metav1.DeleteOptions{})
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
+	err = sa.Client.CoreV1().ServiceAccounts(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -226,7 +232,10 @@ func (sa *ServiceAccount) Delete(ctx context.Context, request *resource.DeleteRe
 }
 
 func (sa *ServiceAccount) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := sa.Client.CoreV1().ServiceAccounts(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -267,15 +276,20 @@ func (sa *ServiceAccount) List(ctx context.Context, request *resource.ListReques
 		return nil, err
 	}
 
-	result, err := sa.Client.CoreV1().ServiceAccounts(namespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := sa.Client.CoreV1().ServiceAccounts(namespace).List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, svcAcct := range page.Items {
+			nativeIDs = append(nativeIDs, prov.NativeID(svcAcct.Namespace, svcAcct.Name))
+		}
+		return page.Continue, nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to list serviceaccounts: %w", err)
 	}
 
-	nativeIDs := make([]string, 0, len(result.Items))
-	for _, svcAcct := range result.Items {
-		nativeIDs = append(nativeIDs, prov.NativeID(svcAcct.Namespace, svcAcct.Name))
-	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,

@@ -82,7 +82,10 @@ func (cj *CronJob) Create(ctx context.Context, request *resource.CreateRequest) 
 }
 
 func (cj *CronJob) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := cj.Client.BatchV1().CronJobs(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -125,8 +128,8 @@ func (cj *CronJob) Update(ctx context.Context, request *resource.UpdateRequest) 
 	}
 
 	// Reconcile metadata: remove labels/annotations not in desired state.
-	if err := prov.ReconcileMetadata(result, cronjob, func(name string, patch []byte) error {
-		_, err := cj.Client.BatchV1().CronJobs(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if err := prov.ReconcileMetadata(result, cronjob, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := cj.Client.BatchV1().CronJobs(namespace).Patch(ctx, name, types.MergePatchType, patch, opts)
 		return err
 	}); err != nil {
 		return nil, fmt.Errorf("failed to reconcile cronjob metadata: %w", err)
@@ -149,9 +152,12 @@ func (cj *CronJob) Update(ctx context.Context, request *resource.UpdateRequest) 
 }
 
 func (cj *CronJob) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 
-	err := cj.Client.BatchV1().CronJobs(ns).Delete(ctx, name, metav1.DeleteOptions{})
+	err = cj.Client.BatchV1().CronJobs(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -173,7 +179,10 @@ func (cj *CronJob) Delete(ctx context.Context, request *resource.DeleteRequest) 
 }
 
 func (cj *CronJob) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := cj.Client.BatchV1().CronJobs(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -210,15 +219,20 @@ func (cj *CronJob) List(ctx context.Context, request *resource.ListRequest) (*re
 		return nil, err
 	}
 
-	result, err := cj.Client.BatchV1().CronJobs(namespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := cj.Client.BatchV1().CronJobs(namespace).List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, cronjob := range page.Items {
+			nativeIDs = append(nativeIDs, prov.NativeID(cronjob.Namespace, cronjob.Name))
+		}
+		return page.Continue, nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to list cronjobs: %w", err)
 	}
 
-	nativeIDs := make([]string, 0, len(result.Items))
-	for _, cronjob := range result.Items {
-		nativeIDs = append(nativeIDs, prov.NativeID(cronjob.Namespace, cronjob.Name))
-	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,

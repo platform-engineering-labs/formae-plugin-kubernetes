@@ -124,11 +124,24 @@ func LiveState[T any](apiObject any, kind, apiVersion string) ([]byte, error) {
 		stripServerManagedLabels(meta)
 	}
 
-	// Strip server-managed spec.finalizers (set by K8S controllers, not user-managed).
-	if spec, ok := result["spec"].(map[string]interface{}); ok {
-		delete(spec, "finalizers")
-		if len(spec) == 0 {
-			delete(result, "spec")
+	// Strip server-managed spec.finalizers ONLY for Namespace (its `kubernetes`
+	// finalizer is owned by the server, not user-managed). For every other
+	// kind `spec.finalizers` is meaningful when a user declares it, so leave
+	// it alone.
+	//
+	// For Namespace specifically: the K8s API server always returns spec with
+	// a `finalizers` array; after stripping, spec is left empty. The Namespace
+	// PKL schema (k8s/core/Namespace.pkl) does not let users declare spec
+	// fields (NamespaceSpec is an empty open class), so removing the empty
+	// spec key entirely lets Formae's property comparator match against the
+	// user's declaration which has no spec field. This is safe ONLY for
+	// Namespace because no other kind ships with an empty user-facing spec.
+	if kind == "Namespace" {
+		if spec, ok := result["spec"].(map[string]interface{}); ok {
+			delete(spec, "finalizers")
+			if len(spec) == 0 {
+				delete(result, "spec")
+			}
 		}
 	}
 
@@ -136,28 +149,57 @@ func LiveState[T any](apiObject any, kind, apiVersion string) ([]byte, error) {
 	stripControllerInjectedFields(result, kind)
 
 	// Recursively strip server defaults (empty objects, container defaults, SA mounts)
-	stripServerDefaults(result)
+	stripServerDefaults(result, "")
 
 	return json.Marshal(result)
 }
 
-// stripServerDefaults recursively walks a JSON object and removes
-// K8S server-defaulted fields that the user didn't specify.
-func stripServerDefaults(v interface{}) {
+// containerListPaths are the JSON paths (joined by ".") under which container
+// objects can legitimately appear. Stripping imagePullPolicy/SA-mounts only
+// happens when traversal reaches one of these — previous heuristic detection
+// (any object with "name"+"image" keys) would clobber user maps that happen
+// to share those keys.
+//
+// Path segments use "[]" for array elements. Comparison ignores the literal
+// "[]" so e.g. "spec.containers[]" matches every element of the array.
+var containerListPaths = map[string]bool{
+	"spec.containers":                                         true,
+	"spec.initContainers":                                     true,
+	"spec.ephemeralContainers":                                true,
+	"spec.template.spec.containers":                           true,
+	"spec.template.spec.initContainers":                       true,
+	"spec.template.spec.ephemeralContainers":                  true,
+	"spec.jobTemplate.spec.template.spec.containers":          true,
+	"spec.jobTemplate.spec.template.spec.initContainers":      true,
+	"spec.jobTemplate.spec.template.spec.ephemeralContainers": true,
+}
+
+// podSpecPaths are the JSON paths at which a PodSpec object lives. Used to
+// scope the deprecated-serviceAccount stripping rather than duck-typing on
+// "has a containers field".
+var podSpecPaths = map[string]bool{
+	"spec":                              true,
+	"spec.template.spec":                true,
+	"spec.jobTemplate.spec.template.spec": true,
+}
+
+// stripServerDefaults walks a JSON object and removes K8S server-defaulted
+// fields that the user didn't specify. The path argument tracks the JSON
+// pointer of the current node so we can apply container/PodSpec-specific
+// rules only where they're correct (e.g. spec.containers[]) instead of
+// heuristically matching any object with a "name"+"image" pair.
+func stripServerDefaults(v interface{}, path string) {
 	switch val := v.(type) {
 	case map[string]interface{}:
-		// Strip imagePullPolicy from containers (objects with both "name" and "image")
-		if _, hasName := val["name"]; hasName {
-			if _, hasImage := val["image"]; hasImage {
-				delete(val, "imagePullPolicy")
-			}
+		// PodSpec rule: strip deprecated serviceAccount field.
+		if podSpecPaths[path] {
+			delete(val, "serviceAccount")
 		}
 
-		// Strip deprecated serviceAccount field from any PodSpec-like object
-		// (has both "containers" and "serviceAccount"). K8S auto-copies
-		// serviceAccountName to the deprecated serviceAccount field.
-		if _, hasContainers := val["containers"]; hasContainers {
-			delete(val, "serviceAccount")
+		// Container rule: strip imagePullPolicy and auto-injected SA mounts.
+		if isContainerElementPath(path) {
+			delete(val, "imagePullPolicy")
+			stripServiceAccountVolumeMounts(val)
 		}
 
 		// Strip server-managed labels/annotations from any metadata-like object
@@ -170,24 +212,40 @@ func stripServerDefaults(v interface{}) {
 			stripServerManagedAnnotations(val)
 		}
 
-		// Strip auto-injected service account volumeMounts
-		stripServiceAccountVolumeMounts(val)
-
 		// Empty-object handling intentionally omitted: apply-config +
 		// encoding/json's omitempty normalizes optional maps consistently on
 		// both sides, and semantic empties (podSelector:{}, namespaceSelector:{},
 		// etc.) survive because their apply-config fields are non-omitempty
 		// pointers. Stripping here was redundant and, paired with a restore on
 		// Create/Update, caused false sync drift on fields like ConfigMap.binaryData.
-		for _, child := range val {
-			stripServerDefaults(child)
+		for k, child := range val {
+			stripServerDefaults(child, joinPath(path, k))
 		}
 
 	case []interface{}:
+		// Array elements live "under" the parent path with a "[]" suffix.
+		elemPath := path + "[]"
 		for _, child := range val {
-			stripServerDefaults(child)
+			stripServerDefaults(child, elemPath)
 		}
 	}
+}
+
+// isContainerElementPath reports whether path identifies a container array
+// element. Paths look like "spec.containers[]" or "spec.template.spec.initContainers[]".
+func isContainerElementPath(path string) bool {
+	if len(path) < 2 || path[len(path)-2:] != "[]" {
+		return false
+	}
+	return containerListPaths[path[:len(path)-2]]
+}
+
+// joinPath appends a key onto a dotted JSON path. The root path is "".
+func joinPath(base, key string) string {
+	if base == "" {
+		return key
+	}
+	return base + "." + key
 }
 
 // stripServiceAccountVolumeMounts removes auto-injected service account

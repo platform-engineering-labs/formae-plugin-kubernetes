@@ -86,7 +86,10 @@ func (n *Namespace) Create(ctx context.Context, request *resource.CreateRequest)
 }
 
 func (n *Namespace) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := n.Client.CoreV1().Namespaces().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -124,8 +127,8 @@ func (n *Namespace) Update(ctx context.Context, request *resource.UpdateRequest)
 	}
 
 	// Reconcile metadata: remove labels/annotations not in desired state.
-	if err := prov.ReconcileMetadata(result, ns, func(name string, patch []byte) error {
-		_, err := n.Client.CoreV1().Namespaces().Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if err := prov.ReconcileMetadata(result, ns, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := n.Client.CoreV1().Namespaces().Patch(ctx, name, types.MergePatchType, patch, opts)
 		return err
 	}); err != nil {
 		return nil, fmt.Errorf("failed to reconcile namespace metadata: %w", err)
@@ -154,8 +157,11 @@ func (n *Namespace) Update(ctx context.Context, request *resource.UpdateRequest)
 }
 
 func (n *Namespace) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
-	err := n.Client.CoreV1().Namespaces().Delete(ctx, name, metav1.DeleteOptions{})
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
+	err = n.Client.CoreV1().Namespaces().Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -177,7 +183,10 @@ func (n *Namespace) Delete(ctx context.Context, request *resource.DeleteRequest)
 }
 
 func (n *Namespace) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := n.Client.CoreV1().Namespaces().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -275,15 +284,20 @@ func (n *Namespace) forceRemoveFinalizers(ctx context.Context, ns *v1.Namespace)
 }
 
 func (n *Namespace) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	result, err := n.Client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
-	if err != nil {
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := n.Client.CoreV1().Namespaces().List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, ns := range page.Items {
+			nativeIDs = append(nativeIDs, ns.Name)
+		}
+		return page.Continue, nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to list namespaces: %w", err)
 	}
 
-	nativeIDs := make([]string, 0, len(result.Items))
-	for _, ns := range result.Items {
-		nativeIDs = append(nativeIDs, ns.Name)
-	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,

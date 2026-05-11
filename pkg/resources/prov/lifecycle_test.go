@@ -9,6 +9,8 @@ package prov
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
@@ -277,4 +279,257 @@ func TestStatus_PassthroughNotFound(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, resource.OperationErrorCodeNotFound, result.ProgressResult.ErrorCode)
+}
+
+// --- nil-guard tests (C-LC-1) ---
+
+func TestDelete_NilResultDoesNotPanic(t *testing.T) {
+	inner := &mockProvisioner{
+		deleteResult: nil,
+		deleteErr:    nil,
+	}
+	la := Wrap(inner)
+	// Should not panic; just return whatever the inner did (nil, nil).
+	result, err := la.Delete(context.Background(), &resource.DeleteRequest{
+		NativeID:     "default/test",
+		ResourceType: "K8S::Core::ConfigMap",
+	})
+	require.NoError(t, err)
+	assert.Nil(t, result)
+}
+
+func TestDelete_NilProgressResultDoesNotPanic(t *testing.T) {
+	inner := &mockProvisioner{
+		deleteResult: &resource.DeleteResult{},
+	}
+	la := Wrap(inner)
+	result, err := la.Delete(context.Background(), &resource.DeleteRequest{
+		NativeID:     "default/test",
+		ResourceType: "K8S::Core::ConfigMap",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	// Nil ProgressResult is preserved — caller can interpret.
+	assert.Nil(t, result.ProgressResult)
+}
+
+func TestStatus_NilResultDoesNotPanic(t *testing.T) {
+	inner := &mockProvisioner{
+		statusResult: nil,
+	}
+	la := Wrap(inner)
+	result, err := la.Status(context.Background(), &resource.StatusRequest{
+		NativeID:     "default/test",
+		ResourceType: "K8S::Core::ConfigMap",
+	})
+	require.NoError(t, err)
+	assert.Nil(t, result)
+}
+
+func TestStatus_NilProgressResultDoesNotPanic(t *testing.T) {
+	inner := &mockProvisioner{
+		statusResult: &resource.StatusResult{},
+	}
+	la := Wrap(inner)
+	result, err := la.Status(context.Background(), &resource.StatusRequest{
+		NativeID:     "default/test",
+		ResourceType: "K8S::Core::ConfigMap",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Nil(t, result.ProgressResult)
+}
+
+// --- panic-recovery tests (C-LC-1) ---
+
+type panickyProvisioner struct{}
+
+func (p *panickyProvisioner) Create(_ context.Context, _ *resource.CreateRequest) (*resource.CreateResult, error) {
+	panic("kaboom-create")
+}
+func (p *panickyProvisioner) Read(_ context.Context, _ *resource.ReadRequest) (*resource.ReadResult, error) {
+	panic("kaboom-read")
+}
+func (p *panickyProvisioner) Update(_ context.Context, _ *resource.UpdateRequest) (*resource.UpdateResult, error) {
+	panic("kaboom-update")
+}
+func (p *panickyProvisioner) Delete(_ context.Context, _ *resource.DeleteRequest) (*resource.DeleteResult, error) {
+	panic("kaboom-delete")
+}
+func (p *panickyProvisioner) Status(_ context.Context, _ *resource.StatusRequest) (*resource.StatusResult, error) {
+	panic("kaboom-status")
+}
+func (p *panickyProvisioner) List(_ context.Context, _ *resource.ListRequest) (*resource.ListResult, error) {
+	panic("kaboom-list")
+}
+
+func TestCreate_PanicRecovered(t *testing.T) {
+	la := Wrap(&panickyProvisioner{})
+	result, err := la.Create(context.Background(), &resource.CreateRequest{ResourceType: "K8S::Core::ConfigMap"})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.ProgressResult)
+	assert.Equal(t, resource.OperationStatusFailure, result.ProgressResult.OperationStatus)
+	assert.Equal(t, resource.OperationErrorCodeUnforeseenError, result.ProgressResult.ErrorCode)
+	assert.Contains(t, result.ProgressResult.StatusMessage, "kaboom-create")
+	assert.Contains(t, result.ProgressResult.StatusMessage, "goroutine ")
+}
+
+func TestUpdate_PanicRecovered(t *testing.T) {
+	la := Wrap(&panickyProvisioner{})
+	result, err := la.Update(context.Background(), &resource.UpdateRequest{ResourceType: "K8S::Core::ConfigMap"})
+	require.NoError(t, err)
+	require.NotNil(t, result.ProgressResult)
+	assert.Equal(t, resource.OperationErrorCodeUnforeseenError, result.ProgressResult.ErrorCode)
+}
+
+func TestDelete_PanicRecovered(t *testing.T) {
+	la := Wrap(&panickyProvisioner{})
+	result, err := la.Delete(context.Background(), &resource.DeleteRequest{ResourceType: "K8S::Core::ConfigMap", NativeID: "default/x"})
+	require.NoError(t, err)
+	require.NotNil(t, result.ProgressResult)
+	assert.Equal(t, resource.OperationErrorCodeUnforeseenError, result.ProgressResult.ErrorCode)
+	assert.Contains(t, result.ProgressResult.StatusMessage, "kaboom-delete")
+}
+
+func TestStatus_PanicRecovered(t *testing.T) {
+	la := Wrap(&panickyProvisioner{})
+	result, err := la.Status(context.Background(), &resource.StatusRequest{ResourceType: "K8S::Core::ConfigMap"})
+	require.NoError(t, err)
+	require.NotNil(t, result.ProgressResult)
+	assert.Equal(t, resource.OperationErrorCodeUnforeseenError, result.ProgressResult.ErrorCode)
+}
+
+func TestRead_PanicRecovered(t *testing.T) {
+	la := Wrap(&panickyProvisioner{})
+	result, err := la.Read(context.Background(), &resource.ReadRequest{ResourceType: "K8S::Core::ConfigMap"})
+	require.Error(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, resource.OperationErrorCodeUnforeseenError, result.ErrorCode)
+	assert.True(t, strings.Contains(err.Error(), "kaboom-read"))
+}
+
+func TestList_PanicRecovered(t *testing.T) {
+	la := Wrap(&panickyProvisioner{})
+	result, err := la.List(context.Background(), &resource.ListRequest{ResourceType: "K8S::Core::ConfigMap"})
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.True(t, strings.Contains(err.Error(), "kaboom-list"))
+}
+
+// --- C-LC-3: Delete swallows Read error ---
+
+func TestDelete_TransientReadError_ReturnsInProgress(t *testing.T) {
+	inner := &mockProvisioner{
+		deleteResult: &resource.DeleteResult{
+			ProgressResult: &resource.ProgressResult{
+				Operation:       resource.OperationDelete,
+				OperationStatus: resource.OperationStatusSuccess,
+				NativeID:        "default/test",
+				RequestID:       "req-1",
+			},
+		},
+		readErr: errors.New("503 service unavailable"),
+	}
+	la := Wrap(inner)
+	result, err := la.Delete(context.Background(), &resource.DeleteRequest{
+		NativeID:     "default/test",
+		ResourceType: "K8S::Core::ConfigMap",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result.ProgressResult)
+	assert.Equal(t, resource.OperationStatusInProgress, result.ProgressResult.OperationStatus)
+	assert.Contains(t, result.ProgressResult.StatusMessage, "post-delete read failed")
+	assert.Equal(t, "req-1", result.ProgressResult.RequestID)
+}
+
+func TestDelete_DeadlineExceeded_PropagatesError(t *testing.T) {
+	inner := &mockProvisioner{
+		deleteResult: &resource.DeleteResult{
+			ProgressResult: &resource.ProgressResult{
+				Operation:       resource.OperationDelete,
+				OperationStatus: resource.OperationStatusSuccess,
+				NativeID:        "default/test",
+			},
+		},
+		readErr: context.DeadlineExceeded,
+	}
+	la := Wrap(inner)
+	_, err := la.Delete(context.Background(), &resource.DeleteRequest{
+		NativeID:     "default/test",
+		ResourceType: "K8S::Core::ConfigMap",
+	})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, context.DeadlineExceeded))
+}
+
+func TestDelete_CanceledContext_PropagatesError(t *testing.T) {
+	inner := &mockProvisioner{
+		deleteResult: &resource.DeleteResult{
+			ProgressResult: &resource.ProgressResult{
+				Operation:       resource.OperationDelete,
+				OperationStatus: resource.OperationStatusSuccess,
+				NativeID:        "default/test",
+			},
+		},
+		readErr: context.Canceled,
+	}
+	la := Wrap(inner)
+	_, err := la.Delete(context.Background(), &resource.DeleteRequest{
+		NativeID:     "default/test",
+		ResourceType: "K8S::Core::ConfigMap",
+	})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, context.Canceled))
+}
+
+// --- C-LC-4: Status doesn't rewrite empty ResourceProperties ---
+
+func TestStatus_EmptyResourcePropertiesNotRewritten(t *testing.T) {
+	inner := &mockProvisioner{
+		statusResult: &resource.StatusResult{
+			ProgressResult: &resource.ProgressResult{
+				Operation:          resource.OperationCheckStatus,
+				OperationStatus:    resource.OperationStatusSuccess,
+				ResourceProperties: nil,
+				NativeID:           "default/test",
+			},
+		},
+	}
+	la := Wrap(inner)
+	result, err := la.Status(context.Background(), &resource.StatusRequest{
+		RequestID:    "rq-9",
+		NativeID:     "default/test",
+		ResourceType: "K8S::Core::ConfigMap",
+	})
+	require.NoError(t, err)
+	// Crucially: no `""` rewrite happened.
+	assert.Empty(t, result.ProgressResult.ResourceProperties)
+}
+
+// --- C-LC-5: Status terminating preserves RequestID + NativeID ---
+
+func TestStatus_TerminatingPreservesRequestIDAndNativeID(t *testing.T) {
+	inner := &mockProvisioner{
+		statusResult: &resource.StatusResult{
+			ProgressResult: &resource.ProgressResult{
+				Operation:          resource.OperationCheckStatus,
+				OperationStatus:    resource.OperationStatusSuccess,
+				NativeID:           "default/dying",
+				ResourceProperties: json.RawMessage(`{"metadata":{"name":"dying","deletionTimestamp":"2026-01-01T00:00:00Z"}}`),
+			},
+		},
+	}
+	la := Wrap(inner)
+	result, err := la.Status(context.Background(), &resource.StatusRequest{
+		RequestID:    "req-42",
+		NativeID:     "default/dying",
+		ResourceType: "K8S::Core::ConfigMap",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result.ProgressResult)
+	assert.Equal(t, "req-42", result.ProgressResult.RequestID)
+	assert.Equal(t, "default/dying", result.ProgressResult.NativeID)
+	assert.Equal(t, resource.OperationErrorCodeNotFound, result.ProgressResult.ErrorCode)
+	assert.Equal(t, "resource is terminating", result.ProgressResult.StatusMessage)
 }

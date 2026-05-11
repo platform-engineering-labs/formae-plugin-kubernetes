@@ -82,7 +82,10 @@ func (r *Role) Create(ctx context.Context, request *resource.CreateRequest) (*re
 }
 
 func (r *Role) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := r.Client.RbacV1().Roles(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -125,8 +128,8 @@ func (r *Role) Update(ctx context.Context, request *resource.UpdateRequest) (*re
 	}
 
 	// Reconcile metadata: remove labels/annotations not in desired state.
-	if err := prov.ReconcileMetadata(result, role, func(name string, patch []byte) error {
-		_, err := r.Client.RbacV1().Roles(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if err := prov.ReconcileMetadata(result, role, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := r.Client.RbacV1().Roles(namespace).Patch(ctx, name, types.MergePatchType, patch, opts)
 		return err
 	}); err != nil {
 		return nil, fmt.Errorf("failed to reconcile role metadata: %w", err)
@@ -149,9 +152,12 @@ func (r *Role) Update(ctx context.Context, request *resource.UpdateRequest) (*re
 }
 
 func (r *Role) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 
-	err := r.Client.RbacV1().Roles(ns).Delete(ctx, name, metav1.DeleteOptions{})
+	err = r.Client.RbacV1().Roles(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -173,7 +179,10 @@ func (r *Role) Delete(ctx context.Context, request *resource.DeleteRequest) (*re
 }
 
 func (r *Role) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := r.Client.RbacV1().Roles(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -210,15 +219,20 @@ func (r *Role) List(ctx context.Context, request *resource.ListRequest) (*resour
 		return nil, err
 	}
 
-	result, err := r.Client.RbacV1().Roles(namespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := r.Client.RbacV1().Roles(namespace).List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, role := range page.Items {
+			nativeIDs = append(nativeIDs, prov.NativeID(role.Namespace, role.Name))
+		}
+		return page.Continue, nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to list roles: %w", err)
 	}
 
-	nativeIDs := make([]string, 0, len(result.Items))
-	for _, role := range result.Items {
-		nativeIDs = append(nativeIDs, prov.NativeID(role.Namespace, role.Name))
-	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,

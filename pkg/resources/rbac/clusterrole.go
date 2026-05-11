@@ -78,7 +78,10 @@ func (c *ClusterRole) Create(ctx context.Context, request *resource.CreateReques
 }
 
 func (c *ClusterRole) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := c.Client.RbacV1().ClusterRoles().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -116,8 +119,8 @@ func (c *ClusterRole) Update(ctx context.Context, request *resource.UpdateReques
 	}
 
 	// Reconcile metadata: remove labels/annotations not in desired state.
-	if err := prov.ReconcileMetadata(result, cr, func(name string, patch []byte) error {
-		_, err := c.Client.RbacV1().ClusterRoles().Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if err := prov.ReconcileMetadata(result, cr, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := c.Client.RbacV1().ClusterRoles().Patch(ctx, name, types.MergePatchType, patch, opts)
 		return err
 	}); err != nil {
 		return nil, fmt.Errorf("failed to reconcile clusterrole metadata: %w", err)
@@ -140,8 +143,11 @@ func (c *ClusterRole) Update(ctx context.Context, request *resource.UpdateReques
 }
 
 func (c *ClusterRole) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
-	err := c.Client.RbacV1().ClusterRoles().Delete(ctx, name, metav1.DeleteOptions{})
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
+	err = c.Client.RbacV1().ClusterRoles().Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -163,7 +169,10 @@ func (c *ClusterRole) Delete(ctx context.Context, request *resource.DeleteReques
 }
 
 func (c *ClusterRole) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := c.Client.RbacV1().ClusterRoles().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -195,21 +204,26 @@ func (c *ClusterRole) Status(ctx context.Context, request *resource.StatusReques
 }
 
 func (c *ClusterRole) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	result, err := c.Client.RbacV1().ClusterRoles().List(ctx, metav1.ListOptions{})
-	if err != nil {
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := c.Client.RbacV1().ClusterRoles().List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, cr := range page.Items {
+			// Skip K8S system ClusterRoles — managed by the control plane.
+			// Filtering at List level prevents formae from processing 60+ system
+			// resources through the changeset pipeline during discovery.
+			if strings.HasPrefix(cr.Name, "system:") {
+				continue
+			}
+			nativeIDs = append(nativeIDs, cr.Name)
+		}
+		return page.Continue, nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to list clusterroles: %w", err)
 	}
 
-	nativeIDs := make([]string, 0, len(result.Items))
-	for _, cr := range result.Items {
-		// Skip K8S system ClusterRoles — managed by the control plane.
-		// Filtering at List level prevents formae from processing 60+ system
-		// resources through the changeset pipeline during discovery.
-		if strings.HasPrefix(cr.Name, "system:") {
-			continue
-		}
-		nativeIDs = append(nativeIDs, cr.Name)
-	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,

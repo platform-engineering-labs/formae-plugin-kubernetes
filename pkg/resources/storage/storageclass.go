@@ -77,7 +77,10 @@ func (s *StorageClass) Create(ctx context.Context, request *resource.CreateReque
 }
 
 func (s *StorageClass) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := s.Client.StorageV1().StorageClasses().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -115,8 +118,8 @@ func (s *StorageClass) Update(ctx context.Context, request *resource.UpdateReque
 	}
 
 	// Reconcile metadata: remove labels/annotations not in desired state.
-	if err := prov.ReconcileMetadata(result, sc, func(name string, patch []byte) error {
-		_, err := s.Client.StorageV1().StorageClasses().Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if err := prov.ReconcileMetadata(result, sc, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := s.Client.StorageV1().StorageClasses().Patch(ctx, name, types.MergePatchType, patch, opts)
 		return err
 	}); err != nil {
 		return nil, fmt.Errorf("failed to reconcile storageclass metadata: %w", err)
@@ -139,8 +142,11 @@ func (s *StorageClass) Update(ctx context.Context, request *resource.UpdateReque
 }
 
 func (s *StorageClass) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
-	err := s.Client.StorageV1().StorageClasses().Delete(ctx, name, metav1.DeleteOptions{})
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
+	err = s.Client.StorageV1().StorageClasses().Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -162,7 +168,10 @@ func (s *StorageClass) Delete(ctx context.Context, request *resource.DeleteReque
 }
 
 func (s *StorageClass) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := s.Client.StorageV1().StorageClasses().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -194,15 +203,20 @@ func (s *StorageClass) Status(ctx context.Context, request *resource.StatusReque
 }
 
 func (s *StorageClass) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	result, err := s.Client.StorageV1().StorageClasses().List(ctx, metav1.ListOptions{})
-	if err != nil {
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := s.Client.StorageV1().StorageClasses().List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, sc := range page.Items {
+			nativeIDs = append(nativeIDs, sc.Name)
+		}
+		return page.Continue, nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to list storageclasses: %w", err)
 	}
 
-	nativeIDs := make([]string, 0, len(result.Items))
-	for _, sc := range result.Items {
-		nativeIDs = append(nativeIDs, sc.Name)
-	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,

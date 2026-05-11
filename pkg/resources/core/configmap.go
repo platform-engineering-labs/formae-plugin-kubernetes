@@ -82,7 +82,10 @@ func (c *ConfigMap) Create(ctx context.Context, request *resource.CreateRequest)
 }
 
 func (c *ConfigMap) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := c.Client.CoreV1().ConfigMaps(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -125,8 +128,8 @@ func (c *ConfigMap) Update(ctx context.Context, request *resource.UpdateRequest)
 	}
 
 	// Reconcile metadata: remove labels/annotations not in desired state.
-	if err := prov.ReconcileMetadata(result, cm, func(name string, patch []byte) error {
-		_, err := c.Client.CoreV1().ConfigMaps(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if err := prov.ReconcileMetadata(result, cm, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := c.Client.CoreV1().ConfigMaps(namespace).Patch(ctx, name, types.MergePatchType, patch, opts)
 		return err
 	}); err != nil {
 		return nil, fmt.Errorf("failed to reconcile configmap metadata: %w", err)
@@ -149,8 +152,11 @@ func (c *ConfigMap) Update(ctx context.Context, request *resource.UpdateRequest)
 }
 
 func (c *ConfigMap) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
-	err := c.Client.CoreV1().ConfigMaps(ns).Delete(ctx, name, metav1.DeleteOptions{})
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
+	err = c.Client.CoreV1().ConfigMaps(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -172,7 +178,10 @@ func (c *ConfigMap) Delete(ctx context.Context, request *resource.DeleteRequest)
 }
 
 func (c *ConfigMap) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := c.Client.CoreV1().ConfigMaps(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -209,15 +218,20 @@ func (c *ConfigMap) List(ctx context.Context, request *resource.ListRequest) (*r
 		return nil, err
 	}
 
-	result, err := c.Client.CoreV1().ConfigMaps(namespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := c.Client.CoreV1().ConfigMaps(namespace).List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, cm := range page.Items {
+			nativeIDs = append(nativeIDs, prov.NativeID(cm.Namespace, cm.Name))
+		}
+		return page.Continue, nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to list configmaps: %w", err)
 	}
 
-	nativeIDs := make([]string, 0, len(result.Items))
-	for _, cm := range result.Items {
-		nativeIDs = append(nativeIDs, prov.NativeID(cm.Namespace, cm.Name))
-	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,

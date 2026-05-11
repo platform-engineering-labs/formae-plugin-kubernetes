@@ -84,7 +84,10 @@ func (p *PersistentVolumeClaim) Create(ctx context.Context, request *resource.Cr
 }
 
 func (p *PersistentVolumeClaim) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := p.Client.CoreV1().PersistentVolumeClaims(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -135,8 +138,8 @@ func (p *PersistentVolumeClaim) Update(ctx context.Context, request *resource.Up
 	}
 
 	// Reconcile metadata: remove labels/annotations not in desired state.
-	if err := prov.ReconcileMetadata(result, pvc, func(name string, patch []byte) error {
-		_, err := p.Client.CoreV1().PersistentVolumeClaims(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if err := prov.ReconcileMetadata(result, pvc, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := p.Client.CoreV1().PersistentVolumeClaims(namespace).Patch(ctx, name, types.MergePatchType, patch, opts)
 		return err
 	}); err != nil {
 		return nil, fmt.Errorf("failed to reconcile persistentvolumeclaim metadata: %w", err)
@@ -160,8 +163,11 @@ func (p *PersistentVolumeClaim) Update(ctx context.Context, request *resource.Up
 }
 
 func (p *PersistentVolumeClaim) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
-	err := p.Client.CoreV1().PersistentVolumeClaims(ns).Delete(ctx, name, metav1.DeleteOptions{})
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
+	err = p.Client.CoreV1().PersistentVolumeClaims(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -183,7 +189,10 @@ func (p *PersistentVolumeClaim) Delete(ctx context.Context, request *resource.De
 }
 
 func (p *PersistentVolumeClaim) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := p.Client.CoreV1().PersistentVolumeClaims(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -221,15 +230,20 @@ func (p *PersistentVolumeClaim) List(ctx context.Context, request *resource.List
 		return nil, err
 	}
 
-	result, err := p.Client.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := p.Client.CoreV1().PersistentVolumeClaims(namespace).List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, pvc := range page.Items {
+			nativeIDs = append(nativeIDs, prov.NativeID(pvc.Namespace, pvc.Name))
+		}
+		return page.Continue, nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to list persistentvolumeclaims: %w", err)
 	}
 
-	nativeIDs := make([]string, 0, len(result.Items))
-	for _, pvc := range result.Items {
-		nativeIDs = append(nativeIDs, prov.NativeID(pvc.Namespace, pvc.Name))
-	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,

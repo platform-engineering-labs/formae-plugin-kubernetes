@@ -5,6 +5,7 @@
 package registry
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -32,6 +33,9 @@ var (
 func Register(resourceType string, operations []resource.Operation, factory ProvisionerFactory) {
 	mu.Lock()
 	defer mu.Unlock()
+	if _, exists := registrations[resourceType]; exists {
+		panic(fmt.Sprintf("duplicate registration for resource type %q", resourceType))
+	}
 	wrappedFactory := func(client *transport.Client, cfg *config.Config) prov.Provisioner {
 		return prov.Wrap(factory(client, cfg))
 	}

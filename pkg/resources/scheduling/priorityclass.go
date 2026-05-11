@@ -77,7 +77,10 @@ func (pc *PriorityClass) Create(ctx context.Context, request *resource.CreateReq
 }
 
 func (pc *PriorityClass) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := pc.Client.SchedulingV1().PriorityClasses().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -115,8 +118,8 @@ func (pc *PriorityClass) Update(ctx context.Context, request *resource.UpdateReq
 	}
 
 	// Reconcile metadata: remove labels/annotations not in desired state.
-	if err := prov.ReconcileMetadata(result, priorityClass, func(name string, patch []byte) error {
-		_, err := pc.Client.SchedulingV1().PriorityClasses().Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if err := prov.ReconcileMetadata(result, priorityClass, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := pc.Client.SchedulingV1().PriorityClasses().Patch(ctx, name, types.MergePatchType, patch, opts)
 		return err
 	}); err != nil {
 		return nil, fmt.Errorf("failed to reconcile priorityclass metadata: %w", err)
@@ -139,8 +142,11 @@ func (pc *PriorityClass) Update(ctx context.Context, request *resource.UpdateReq
 }
 
 func (pc *PriorityClass) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
-	err := pc.Client.SchedulingV1().PriorityClasses().Delete(ctx, name, metav1.DeleteOptions{})
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
+	err = pc.Client.SchedulingV1().PriorityClasses().Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -162,7 +168,10 @@ func (pc *PriorityClass) Delete(ctx context.Context, request *resource.DeleteReq
 }
 
 func (pc *PriorityClass) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := pc.Client.SchedulingV1().PriorityClasses().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -194,15 +203,20 @@ func (pc *PriorityClass) Status(ctx context.Context, request *resource.StatusReq
 }
 
 func (pc *PriorityClass) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	result, err := pc.Client.SchedulingV1().PriorityClasses().List(ctx, metav1.ListOptions{})
-	if err != nil {
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := pc.Client.SchedulingV1().PriorityClasses().List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, priorityClass := range page.Items {
+			nativeIDs = append(nativeIDs, priorityClass.Name)
+		}
+		return page.Continue, nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to list priorityclasses: %w", err)
 	}
 
-	nativeIDs := make([]string, 0, len(result.Items))
-	for _, priorityClass := range result.Items {
-		nativeIDs = append(nativeIDs, priorityClass.Name)
-	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,

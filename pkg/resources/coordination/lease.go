@@ -82,7 +82,10 @@ func (l *Lease) Create(ctx context.Context, request *resource.CreateRequest) (*r
 }
 
 func (l *Lease) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := l.Client.CoordinationV1().Leases(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -125,8 +128,8 @@ func (l *Lease) Update(ctx context.Context, request *resource.UpdateRequest) (*r
 	}
 
 	// Reconcile metadata: remove labels/annotations not in desired state.
-	if err := prov.ReconcileMetadata(result, lease, func(name string, patch []byte) error {
-		_, err := l.Client.CoordinationV1().Leases(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if err := prov.ReconcileMetadata(result, lease, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := l.Client.CoordinationV1().Leases(namespace).Patch(ctx, name, types.MergePatchType, patch, opts)
 		return err
 	}); err != nil {
 		return nil, fmt.Errorf("failed to reconcile lease metadata: %w", err)
@@ -149,8 +152,11 @@ func (l *Lease) Update(ctx context.Context, request *resource.UpdateRequest) (*r
 }
 
 func (l *Lease) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
-	err := l.Client.CoordinationV1().Leases(ns).Delete(ctx, name, metav1.DeleteOptions{})
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
+	err = l.Client.CoordinationV1().Leases(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -172,7 +178,10 @@ func (l *Lease) Delete(ctx context.Context, request *resource.DeleteRequest) (*r
 }
 
 func (l *Lease) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := l.Client.CoordinationV1().Leases(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -209,15 +218,20 @@ func (l *Lease) List(ctx context.Context, request *resource.ListRequest) (*resou
 		return nil, err
 	}
 
-	result, err := l.Client.CoordinationV1().Leases(namespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := l.Client.CoordinationV1().Leases(namespace).List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, lease := range page.Items {
+			nativeIDs = append(nativeIDs, prov.NativeID(lease.Namespace, lease.Name))
+		}
+		return page.Continue, nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to list leases: %w", err)
 	}
 
-	nativeIDs := make([]string, 0, len(result.Items))
-	for _, lease := range result.Items {
-		nativeIDs = append(nativeIDs, prov.NativeID(lease.Namespace, lease.Name))
-	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,

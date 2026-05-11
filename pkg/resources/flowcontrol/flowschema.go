@@ -77,7 +77,10 @@ func (f *FlowSchema) Create(ctx context.Context, request *resource.CreateRequest
 }
 
 func (f *FlowSchema) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := f.Client.FlowcontrolV1().FlowSchemas().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -115,8 +118,8 @@ func (f *FlowSchema) Update(ctx context.Context, request *resource.UpdateRequest
 	}
 
 	// Reconcile metadata: remove labels/annotations not in desired state.
-	if err := prov.ReconcileMetadata(result, fs, func(name string, patch []byte) error {
-		_, err := f.Client.FlowcontrolV1().FlowSchemas().Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if err := prov.ReconcileMetadata(result, fs, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := f.Client.FlowcontrolV1().FlowSchemas().Patch(ctx, name, types.MergePatchType, patch, opts)
 		return err
 	}); err != nil {
 		return nil, fmt.Errorf("failed to reconcile flowschema metadata: %w", err)
@@ -139,8 +142,11 @@ func (f *FlowSchema) Update(ctx context.Context, request *resource.UpdateRequest
 }
 
 func (f *FlowSchema) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
-	err := f.Client.FlowcontrolV1().FlowSchemas().Delete(ctx, name, metav1.DeleteOptions{})
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
+	err = f.Client.FlowcontrolV1().FlowSchemas().Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -162,7 +168,10 @@ func (f *FlowSchema) Delete(ctx context.Context, request *resource.DeleteRequest
 }
 
 func (f *FlowSchema) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := f.Client.FlowcontrolV1().FlowSchemas().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -194,15 +203,20 @@ func (f *FlowSchema) Status(ctx context.Context, request *resource.StatusRequest
 }
 
 func (f *FlowSchema) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	result, err := f.Client.FlowcontrolV1().FlowSchemas().List(ctx, metav1.ListOptions{})
-	if err != nil {
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := f.Client.FlowcontrolV1().FlowSchemas().List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, fs := range page.Items {
+			nativeIDs = append(nativeIDs, fs.Name)
+		}
+		return page.Continue, nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to list flowschemas: %w", err)
 	}
 
-	nativeIDs := make([]string, 0, len(result.Items))
-	for _, fs := range result.Items {
-		nativeIDs = append(nativeIDs, fs.Name)
-	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,

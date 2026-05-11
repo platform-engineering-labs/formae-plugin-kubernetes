@@ -88,7 +88,10 @@ func (j *Job) Create(ctx context.Context, request *resource.CreateRequest) (*res
 }
 
 func (j *Job) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := j.Client.BatchV1().Jobs(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -131,8 +134,8 @@ func (j *Job) Update(ctx context.Context, request *resource.UpdateRequest) (*res
 	}
 
 	// Reconcile metadata: remove labels/annotations not in desired state.
-	if err := prov.ReconcileMetadata(result, job, func(name string, patch []byte) error {
-		_, err := j.Client.BatchV1().Jobs(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if err := prov.ReconcileMetadata(result, job, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := j.Client.BatchV1().Jobs(namespace).Patch(ctx, name, types.MergePatchType, patch, opts)
 		return err
 	}); err != nil {
 		return nil, fmt.Errorf("failed to reconcile job metadata: %w", err)
@@ -156,11 +159,14 @@ func (j *Job) Update(ctx context.Context, request *resource.UpdateRequest) (*res
 }
 
 func (j *Job) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 
 	// Use propagation policy to clean up child pods
 	propagation := metav1.DeletePropagationBackground
-	err := j.Client.BatchV1().Jobs(ns).Delete(ctx, name, metav1.DeleteOptions{
+	err = j.Client.BatchV1().Jobs(ns).Delete(ctx, name, metav1.DeleteOptions{
 		PropagationPolicy: &propagation,
 	})
 	if err != nil {
@@ -184,7 +190,10 @@ func (j *Job) Delete(ctx context.Context, request *resource.DeleteRequest) (*res
 }
 
 func (j *Job) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := j.Client.BatchV1().Jobs(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -222,15 +231,25 @@ func (j *Job) List(ctx context.Context, request *resource.ListRequest) (*resourc
 		return nil, err
 	}
 
-	result, err := j.Client.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := j.Client.BatchV1().Jobs(namespace).List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, job := range page.Items {
+			// Skip Jobs owned by a controller (CronJob). Only discover
+			// standalone Jobs that were created directly.
+			if len(job.OwnerReferences) > 0 {
+				continue
+			}
+			nativeIDs = append(nativeIDs, prov.NativeID(job.Namespace, job.Name))
+		}
+		return page.Continue, nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to list jobs: %w", err)
 	}
 
-	nativeIDs := make([]string, 0, len(result.Items))
-	for _, job := range result.Items {
-		nativeIDs = append(nativeIDs, prov.NativeID(job.Namespace, job.Name))
-	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,

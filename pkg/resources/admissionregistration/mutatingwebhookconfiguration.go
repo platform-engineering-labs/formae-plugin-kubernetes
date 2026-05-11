@@ -77,7 +77,10 @@ func (m *MutatingWebhookConfiguration) Create(ctx context.Context, request *reso
 }
 
 func (m *MutatingWebhookConfiguration) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := m.Client.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -115,8 +118,8 @@ func (m *MutatingWebhookConfiguration) Update(ctx context.Context, request *reso
 	}
 
 	// Reconcile metadata: remove labels/annotations not in desired state.
-	if err := prov.ReconcileMetadata(result, mwc, func(name string, patch []byte) error {
-		_, err := m.Client.AdmissionregistrationV1().MutatingWebhookConfigurations().Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if err := prov.ReconcileMetadata(result, mwc, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := m.Client.AdmissionregistrationV1().MutatingWebhookConfigurations().Patch(ctx, name, types.MergePatchType, patch, opts)
 		return err
 	}); err != nil {
 		return nil, fmt.Errorf("failed to reconcile mutatingwebhookconfiguration metadata: %w", err)
@@ -139,8 +142,11 @@ func (m *MutatingWebhookConfiguration) Update(ctx context.Context, request *reso
 }
 
 func (m *MutatingWebhookConfiguration) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
-	err := m.Client.AdmissionregistrationV1().MutatingWebhookConfigurations().Delete(ctx, name, metav1.DeleteOptions{})
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
+	err = m.Client.AdmissionregistrationV1().MutatingWebhookConfigurations().Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -162,7 +168,10 @@ func (m *MutatingWebhookConfiguration) Delete(ctx context.Context, request *reso
 }
 
 func (m *MutatingWebhookConfiguration) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := m.Client.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -194,15 +203,20 @@ func (m *MutatingWebhookConfiguration) Status(ctx context.Context, request *reso
 }
 
 func (m *MutatingWebhookConfiguration) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	result, err := m.Client.AdmissionregistrationV1().MutatingWebhookConfigurations().List(ctx, metav1.ListOptions{})
-	if err != nil {
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := m.Client.AdmissionregistrationV1().MutatingWebhookConfigurations().List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, mwc := range page.Items {
+			nativeIDs = append(nativeIDs, mwc.Name)
+		}
+		return page.Continue, nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to list mutatingwebhookconfigurations: %w", err)
 	}
 
-	nativeIDs := make([]string, 0, len(result.Items))
-	for _, mwc := range result.Items {
-		nativeIDs = append(nativeIDs, mwc.Name)
-	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,

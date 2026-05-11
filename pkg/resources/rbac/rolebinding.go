@@ -82,7 +82,10 @@ func (rb *RoleBinding) Create(ctx context.Context, request *resource.CreateReque
 }
 
 func (rb *RoleBinding) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := rb.Client.RbacV1().RoleBindings(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -125,8 +128,8 @@ func (rb *RoleBinding) Update(ctx context.Context, request *resource.UpdateReque
 	}
 
 	// Reconcile metadata: remove labels/annotations not in desired state.
-	if err := prov.ReconcileMetadata(result, binding, func(name string, patch []byte) error {
-		_, err := rb.Client.RbacV1().RoleBindings(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if err := prov.ReconcileMetadata(result, binding, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := rb.Client.RbacV1().RoleBindings(namespace).Patch(ctx, name, types.MergePatchType, patch, opts)
 		return err
 	}); err != nil {
 		return nil, fmt.Errorf("failed to reconcile rolebinding metadata: %w", err)
@@ -149,9 +152,12 @@ func (rb *RoleBinding) Update(ctx context.Context, request *resource.UpdateReque
 }
 
 func (rb *RoleBinding) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 
-	err := rb.Client.RbacV1().RoleBindings(ns).Delete(ctx, name, metav1.DeleteOptions{})
+	err = rb.Client.RbacV1().RoleBindings(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -173,7 +179,10 @@ func (rb *RoleBinding) Delete(ctx context.Context, request *resource.DeleteReque
 }
 
 func (rb *RoleBinding) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	ns, name := prov.ParseNativeID(request.NativeID)
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := rb.Client.RbacV1().RoleBindings(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -210,15 +219,20 @@ func (rb *RoleBinding) List(ctx context.Context, request *resource.ListRequest) 
 		return nil, err
 	}
 
-	result, err := rb.Client.RbacV1().RoleBindings(namespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := rb.Client.RbacV1().RoleBindings(namespace).List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, binding := range page.Items {
+			nativeIDs = append(nativeIDs, prov.NativeID(binding.Namespace, binding.Name))
+		}
+		return page.Continue, nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to list rolebindings: %w", err)
 	}
 
-	nativeIDs := make([]string, 0, len(result.Items))
-	for _, binding := range result.Items {
-		nativeIDs = append(nativeIDs, prov.NativeID(binding.Namespace, binding.Name))
-	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,

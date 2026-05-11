@@ -78,7 +78,10 @@ func (c *ClusterRoleBinding) Create(ctx context.Context, request *resource.Creat
 }
 
 func (c *ClusterRoleBinding) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := c.Client.RbacV1().ClusterRoleBindings().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -116,8 +119,8 @@ func (c *ClusterRoleBinding) Update(ctx context.Context, request *resource.Updat
 	}
 
 	// Reconcile metadata: remove labels/annotations not in desired state.
-	if err := prov.ReconcileMetadata(result, crb, func(name string, patch []byte) error {
-		_, err := c.Client.RbacV1().ClusterRoleBindings().Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if err := prov.ReconcileMetadata(result, crb, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := c.Client.RbacV1().ClusterRoleBindings().Patch(ctx, name, types.MergePatchType, patch, opts)
 		return err
 	}); err != nil {
 		return nil, fmt.Errorf("failed to reconcile clusterrolebinding metadata: %w", err)
@@ -140,8 +143,11 @@ func (c *ClusterRoleBinding) Update(ctx context.Context, request *resource.Updat
 }
 
 func (c *ClusterRoleBinding) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
-	err := c.Client.RbacV1().ClusterRoleBindings().Delete(ctx, name, metav1.DeleteOptions{})
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
+	err = c.Client.RbacV1().ClusterRoleBindings().Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return &resource.DeleteResult{
@@ -163,7 +169,10 @@ func (c *ClusterRoleBinding) Delete(ctx context.Context, request *resource.Delet
 }
 
 func (c *ClusterRoleBinding) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	_, name := prov.ParseNativeID(request.NativeID)
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
 	result, err := c.Client.RbacV1().ClusterRoleBindings().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -195,21 +204,26 @@ func (c *ClusterRoleBinding) Status(ctx context.Context, request *resource.Statu
 }
 
 func (c *ClusterRoleBinding) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	result, err := c.Client.RbacV1().ClusterRoleBindings().List(ctx, metav1.ListOptions{})
-	if err != nil {
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := c.Client.RbacV1().ClusterRoleBindings().List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, crb := range page.Items {
+			// Skip K8S system ClusterRoleBindings — managed by the control plane.
+			// Filtering at List level prevents formae from processing 48+ system
+			// resources through the changeset pipeline during discovery.
+			if strings.HasPrefix(crb.Name, "system:") {
+				continue
+			}
+			nativeIDs = append(nativeIDs, crb.Name)
+		}
+		return page.Continue, nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to list clusterrolebindings: %w", err)
 	}
 
-	nativeIDs := make([]string, 0, len(result.Items))
-	for _, crb := range result.Items {
-		// Skip K8S system ClusterRoleBindings — managed by the control plane.
-		// Filtering at List level prevents formae from processing 48+ system
-		// resources through the changeset pipeline during discovery.
-		if strings.HasPrefix(crb.Name, "system:") {
-			continue
-		}
-		nativeIDs = append(nativeIDs, crb.Name)
-	}
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,

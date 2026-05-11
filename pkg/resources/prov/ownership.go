@@ -7,10 +7,16 @@ package prov
 import (
 	"encoding/json"
 	"fmt"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // MetaPatchFunc applies a JSON merge patch to a named K8S resource.
-type MetaPatchFunc func(name string, patch []byte) error
+// The PatchOptions are populated with FieldManager set to prov.FieldManager
+// — mixing the SSA field-manager with the default merge-patch manager
+// "kubectl-patch" creates split ownership and surfaces as 409 conflicts on
+// the next label/annotation removal.
+type MetaPatchFunc func(name string, patch []byte, opts metav1.PatchOptions) error
 
 // ReconcileMetadata removes labels and annotations from the live resource that
 // are not present in the desired apply configuration. This implements
@@ -63,7 +69,7 @@ func ReconcileMetadata(live any, desired any, patchFn MetaPatchFunc) error {
 
 	name, _ := liveMeta["name"].(string)
 
-	return patchFn(name, patchBytes)
+	return patchFn(name, patchBytes, metav1.PatchOptions{FieldManager: FieldManager})
 }
 
 // extraMapKeys returns a map with null values for keys in live[field] that are
