@@ -52,9 +52,9 @@ func (e *Endpoints) Create(ctx context.Context, request *resource.CreateRequest)
 		return nil, fmt.Errorf("failed to unmarshal endpoints properties: %w", err)
 	}
 
-	namespace := "default"
-	if ep.Namespace != nil {
-		namespace = *ep.Namespace
+	namespace, err := prov.ResolveCreateNamespace(ep.Namespace, ResourceTypeEndpoints)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := e.Client.CoreV1().Endpoints(namespace).Apply(ctx, ep, metav1.ApplyOptions{
@@ -111,9 +111,9 @@ func (e *Endpoints) Update(ctx context.Context, request *resource.UpdateRequest)
 		return nil, fmt.Errorf("failed to unmarshal endpoints properties: %w", err)
 	}
 
-	namespace := "default"
-	if ep.Namespace != nil {
-		namespace = *ep.Namespace
+	namespace, err := prov.ResolveCreateNamespace(ep.Namespace, ResourceTypeEndpoints)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := e.Client.CoreV1().Endpoints(namespace).Apply(ctx, ep, metav1.ApplyOptions{
@@ -204,9 +204,9 @@ func (e *Endpoints) Status(ctx context.Context, request *resource.StatusRequest)
 }
 
 func (e *Endpoints) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := "default"
-	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
-		namespace = ns
+	namespace, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypeEndpoints)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := e.Client.CoreV1().Endpoints(namespace).List(ctx, metav1.ListOptions{})

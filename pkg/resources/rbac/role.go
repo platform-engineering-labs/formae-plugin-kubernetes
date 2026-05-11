@@ -52,9 +52,9 @@ func (r *Role) Create(ctx context.Context, request *resource.CreateRequest) (*re
 		return nil, fmt.Errorf("failed to unmarshal role properties: %w", err)
 	}
 
-	namespace := "default"
-	if role.Namespace != nil {
-		namespace = *role.Namespace
+	namespace, err := prov.ResolveCreateNamespace(role.Namespace, ResourceTypeRole)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := r.Client.RbacV1().Roles(namespace).Apply(ctx, role, metav1.ApplyOptions{
@@ -111,9 +111,9 @@ func (r *Role) Update(ctx context.Context, request *resource.UpdateRequest) (*re
 		return nil, fmt.Errorf("failed to unmarshal role properties: %w", err)
 	}
 
-	namespace := "default"
-	if role.Namespace != nil {
-		namespace = *role.Namespace
+	namespace, err := prov.ResolveCreateNamespace(role.Namespace, ResourceTypeRole)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := r.Client.RbacV1().Roles(namespace).Apply(ctx, role, metav1.ApplyOptions{
@@ -205,9 +205,9 @@ func (r *Role) Status(ctx context.Context, request *resource.StatusRequest) (*re
 }
 
 func (r *Role) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := "default"
-	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
-		namespace = ns
+	namespace, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypeRole)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := r.Client.RbacV1().Roles(namespace).List(ctx, metav1.ListOptions{})

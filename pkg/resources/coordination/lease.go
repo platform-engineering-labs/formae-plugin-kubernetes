@@ -52,9 +52,9 @@ func (l *Lease) Create(ctx context.Context, request *resource.CreateRequest) (*r
 		return nil, fmt.Errorf("failed to unmarshal lease properties: %w", err)
 	}
 
-	namespace := "default"
-	if lease.Namespace != nil {
-		namespace = *lease.Namespace
+	namespace, err := prov.ResolveCreateNamespace(lease.Namespace, ResourceTypeLease)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := l.Client.CoordinationV1().Leases(namespace).Apply(ctx, lease, metav1.ApplyOptions{
@@ -111,9 +111,9 @@ func (l *Lease) Update(ctx context.Context, request *resource.UpdateRequest) (*r
 		return nil, fmt.Errorf("failed to unmarshal lease properties: %w", err)
 	}
 
-	namespace := "default"
-	if lease.Namespace != nil {
-		namespace = *lease.Namespace
+	namespace, err := prov.ResolveCreateNamespace(lease.Namespace, ResourceTypeLease)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := l.Client.CoordinationV1().Leases(namespace).Apply(ctx, lease, metav1.ApplyOptions{
@@ -204,9 +204,9 @@ func (l *Lease) Status(ctx context.Context, request *resource.StatusRequest) (*r
 }
 
 func (l *Lease) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := "default"
-	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
-		namespace = ns
+	namespace, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypeLease)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := l.Client.CoordinationV1().Leases(namespace).List(ctx, metav1.ListOptions{})

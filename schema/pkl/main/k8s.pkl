@@ -152,6 +152,12 @@ class K8sVersion extends Annotation {
 // =============================================================================
 
 /// Kubernetes ObjectMeta - standard metadata for all K8S resources.
+/// Used directly by cluster-scoped resources (PersistentVolume, ClusterRole,
+/// StorageClass, etc.) where the namespace field is unused.
+///
+/// Namespaced resources MUST use `NamespacedObjectMeta` instead, which
+/// requires `metadata.namespace` at PKL validation time. The K8S plugin
+/// rejects namespaced resources without `metadata.namespace` at Create time.
 @SubResourceHint {}
 open class ObjectMeta extends formae.SubResource {
   /// Name must be unique within a namespace.
@@ -162,6 +168,36 @@ open class ObjectMeta extends formae.SubResource {
   /// Empty for cluster-scoped resources. Accepts resolvable references.
   @FieldHint {}
   namespace: (String|formae.Resolvable)?
+
+  /// Labels are key/value pairs for resource organization.
+  @FieldHint { hasProviderDefault = true }
+  labels: Mapping<String, String>?
+
+  /// Annotations are key/value pairs for arbitrary metadata.
+  @FieldHint { hasProviderDefault = true }
+  annotations: Mapping<String, String>?
+}
+
+/// ObjectMeta variant for namespaced resources. Narrows `namespace` to a
+/// non-null type so that omitting it surfaces as a PKL validation error
+/// (`Tried to assign null to a non-nullable property`) at `pkl eval` time
+/// rather than at apply time.
+///
+/// All namespaced resource modules (Pod, ConfigMap, Service, Deployment,
+/// Job, Ingress, Role, PDB, HPA, Lease, NetworkPolicy, ...) use this for
+/// their top-level `metadata` field. Reference a `K8S::Core::Namespace`
+/// resource declared in the same Forma for the value, e.g.
+/// `metadata { namespace = appNs.res.name }`.
+@SubResourceHint {}
+open class NamespacedObjectMeta extends ObjectMeta {
+  /// Name must be unique within a namespace.
+  @FieldHint { required = true; createOnly = true }
+  name: String
+
+  /// Namespace defines the space within which each name must be unique.
+  /// Required for namespaced resources; accepts resolvable references.
+  @FieldHint { required = true }
+  namespace: (String|formae.Resolvable)
 
   /// Labels are key/value pairs for resource organization.
   @FieldHint { hasProviderDefault = true }

@@ -53,9 +53,9 @@ func (ss *StatefulSet) Create(ctx context.Context, request *resource.CreateReque
 		return nil, fmt.Errorf("failed to unmarshal statefulset properties: %w", err)
 	}
 
-	namespace := "default"
-	if sts.Namespace != nil {
-		namespace = *sts.Namespace
+	namespace, err := prov.ResolveCreateNamespace(sts.Namespace, ResourceTypeStatefulSet)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := ss.Client.AppsV1().StatefulSets(namespace).Apply(ctx, sts, metav1.ApplyOptions{
@@ -113,9 +113,9 @@ func (ss *StatefulSet) Update(ctx context.Context, request *resource.UpdateReque
 		return nil, fmt.Errorf("failed to unmarshal statefulset properties: %w", err)
 	}
 
-	namespace := "default"
-	if sts.Namespace != nil {
-		namespace = *sts.Namespace
+	namespace, err := prov.ResolveCreateNamespace(sts.Namespace, ResourceTypeStatefulSet)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := ss.Client.AppsV1().StatefulSets(namespace).Apply(ctx, sts, metav1.ApplyOptions{
@@ -208,9 +208,9 @@ func (ss *StatefulSet) Status(ctx context.Context, request *resource.StatusReque
 }
 
 func (ss *StatefulSet) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := "default"
-	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
-		namespace = ns
+	namespace, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypeStatefulSet)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := ss.Client.AppsV1().StatefulSets(namespace).List(ctx, metav1.ListOptions{})

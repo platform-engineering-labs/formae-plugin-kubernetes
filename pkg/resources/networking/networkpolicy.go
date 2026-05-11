@@ -52,9 +52,9 @@ func (n *NetworkPolicy) Create(ctx context.Context, request *resource.CreateRequ
 		return nil, fmt.Errorf("failed to unmarshal networkpolicy properties: %w", err)
 	}
 
-	namespace := "default"
-	if np.Namespace != nil {
-		namespace = *np.Namespace
+	namespace, err := prov.ResolveCreateNamespace(np.Namespace, ResourceTypeNetworkPolicy)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := n.Client.NetworkingV1().NetworkPolicies(namespace).Apply(ctx, np, metav1.ApplyOptions{
@@ -111,9 +111,9 @@ func (n *NetworkPolicy) Update(ctx context.Context, request *resource.UpdateRequ
 		return nil, fmt.Errorf("failed to unmarshal networkpolicy properties: %w", err)
 	}
 
-	namespace := "default"
-	if np.Namespace != nil {
-		namespace = *np.Namespace
+	namespace, err := prov.ResolveCreateNamespace(np.Namespace, ResourceTypeNetworkPolicy)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := n.Client.NetworkingV1().NetworkPolicies(namespace).Apply(ctx, np, metav1.ApplyOptions{
@@ -205,9 +205,9 @@ func (n *NetworkPolicy) Status(ctx context.Context, request *resource.StatusRequ
 }
 
 func (n *NetworkPolicy) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := "default"
-	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
-		namespace = ns
+	namespace, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypeNetworkPolicy)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := n.Client.NetworkingV1().NetworkPolicies(namespace).List(ctx, metav1.ListOptions{})

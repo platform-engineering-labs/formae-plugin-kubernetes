@@ -27,7 +27,7 @@ forma {
 
   new pdb.PodDisruptionBudget {
     label = "test-pdb"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "test-pdb-\(v.testRunID)"
       namespace = ns.res.name
     }

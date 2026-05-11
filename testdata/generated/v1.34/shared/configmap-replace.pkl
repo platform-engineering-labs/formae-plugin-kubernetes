@@ -28,7 +28,7 @@ forma {
 
   new cm.ConfigMap {
     label = "test-configmap"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "test-cm-\(v.testRunID)-replaced"
       namespace = ns.res.name
     }

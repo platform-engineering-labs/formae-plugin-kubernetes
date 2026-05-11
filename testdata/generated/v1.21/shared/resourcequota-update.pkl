@@ -28,7 +28,7 @@ forma {
 
   new rq.ResourceQuota {
     label = "test-resourcequota"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "test-rq-\(v.testRunID)"
       namespace = ns.res.name
     }

@@ -28,7 +28,7 @@ forma {
 
   new dep.Deployment {
     label = "test-deployment"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "test-dep-\(v.testRunID)"
       namespace = ns.res.name
       annotations = new Mapping {

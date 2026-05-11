@@ -52,9 +52,9 @@ func (l *LimitRange) Create(ctx context.Context, request *resource.CreateRequest
 		return nil, fmt.Errorf("failed to unmarshal limitrange properties: %w", err)
 	}
 
-	namespace := "default"
-	if lr.Namespace != nil {
-		namespace = *lr.Namespace
+	namespace, err := prov.ResolveCreateNamespace(lr.Namespace, ResourceTypeLimitRange)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := l.Client.CoreV1().LimitRanges(namespace).Apply(ctx, lr, metav1.ApplyOptions{
@@ -111,9 +111,9 @@ func (l *LimitRange) Update(ctx context.Context, request *resource.UpdateRequest
 		return nil, fmt.Errorf("failed to unmarshal limitrange properties: %w", err)
 	}
 
-	namespace := "default"
-	if lr.Namespace != nil {
-		namespace = *lr.Namespace
+	namespace, err := prov.ResolveCreateNamespace(lr.Namespace, ResourceTypeLimitRange)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := l.Client.CoreV1().LimitRanges(namespace).Apply(ctx, lr, metav1.ApplyOptions{
@@ -204,9 +204,9 @@ func (l *LimitRange) Status(ctx context.Context, request *resource.StatusRequest
 }
 
 func (l *LimitRange) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := "default"
-	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
-		namespace = ns
+	namespace, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypeLimitRange)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := l.Client.CoreV1().LimitRanges(namespace).List(ctx, metav1.ListOptions{})

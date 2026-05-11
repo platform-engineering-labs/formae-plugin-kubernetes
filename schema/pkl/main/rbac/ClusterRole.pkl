@@ -20,7 +20,7 @@ open class ClusterRoleResolvable extends formae.Resolvable {
 @k8s.ResourceHint {
   type = module.type
   identifier = "$.metadata.name"
-  discoverable = true
+  discoverable = false
 }
 open class ClusterRole extends k8s.Resource {
   hidden parent = this

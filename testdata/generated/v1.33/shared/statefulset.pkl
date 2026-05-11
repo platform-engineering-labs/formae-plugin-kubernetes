@@ -28,7 +28,7 @@ forma {
 
   new svc.Service {
     label = "test-sts-svc"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "test-sts-svc-\(v.testRunID)"
       namespace = ns.res.name
     }
@@ -48,7 +48,7 @@ forma {
 
   new sts.StatefulSet {
     label = "test-statefulset"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "test-sts-\(v.testRunID)"
       namespace = ns.res.name
     }

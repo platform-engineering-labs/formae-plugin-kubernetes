@@ -43,7 +43,7 @@ open class RoleBinding extends k8s.Resource {
   kind: String = "RoleBinding"
 
   @k8s.FieldHint { required = true }
-  metadata: k8s.ObjectMeta
+  metadata: k8s.NamespacedObjectMeta
 
   @k8s.FieldHint {}
   subjects: Listing<k8s.Subject>?

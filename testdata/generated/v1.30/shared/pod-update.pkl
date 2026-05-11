@@ -28,7 +28,7 @@ forma {
 
   new pod.Pod {
     label = "test-pod"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "test-pod-\(v.testRunID)"
       namespace = ns.res.name
     }

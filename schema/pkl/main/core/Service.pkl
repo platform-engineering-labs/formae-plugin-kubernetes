@@ -45,7 +45,7 @@ open class Service extends k8s.Resource {
   kind: String = "Service"
 
   @k8s.FieldHint { required = true }
-  metadata: k8s.ObjectMeta
+  metadata: k8s.NamespacedObjectMeta
 
   @k8s.FieldHint { required = true }
   spec: ServiceSpec

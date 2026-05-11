@@ -53,9 +53,9 @@ func (r *ReplicaSet) Create(ctx context.Context, request *resource.CreateRequest
 		return nil, fmt.Errorf("failed to unmarshal replicaset properties: %w", err)
 	}
 
-	namespace := "default"
-	if rs.Namespace != nil {
-		namespace = *rs.Namespace
+	namespace, err := prov.ResolveCreateNamespace(rs.Namespace, ResourceTypeReplicaSet)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := r.Client.AppsV1().ReplicaSets(namespace).Apply(ctx, rs, metav1.ApplyOptions{
@@ -113,9 +113,9 @@ func (r *ReplicaSet) Update(ctx context.Context, request *resource.UpdateRequest
 		return nil, fmt.Errorf("failed to unmarshal replicaset properties: %w", err)
 	}
 
-	namespace := "default"
-	if rs.Namespace != nil {
-		namespace = *rs.Namespace
+	namespace, err := prov.ResolveCreateNamespace(rs.Namespace, ResourceTypeReplicaSet)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := r.Client.AppsV1().ReplicaSets(namespace).Apply(ctx, rs, metav1.ApplyOptions{
@@ -208,9 +208,9 @@ func (r *ReplicaSet) Status(ctx context.Context, request *resource.StatusRequest
 }
 
 func (r *ReplicaSet) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := "default"
-	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
-		namespace = ns
+	namespace, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypeReplicaSet)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := r.Client.AppsV1().ReplicaSets(namespace).List(ctx, metav1.ListOptions{})

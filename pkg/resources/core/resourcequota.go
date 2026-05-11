@@ -52,9 +52,9 @@ func (r *ResourceQuota) Create(ctx context.Context, request *resource.CreateRequ
 		return nil, fmt.Errorf("failed to unmarshal resourcequota properties: %w", err)
 	}
 
-	namespace := "default"
-	if rq.Namespace != nil {
-		namespace = *rq.Namespace
+	namespace, err := prov.ResolveCreateNamespace(rq.Namespace, ResourceTypeResourceQuota)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := r.Client.CoreV1().ResourceQuotas(namespace).Apply(ctx, rq, metav1.ApplyOptions{
@@ -111,9 +111,9 @@ func (r *ResourceQuota) Update(ctx context.Context, request *resource.UpdateRequ
 		return nil, fmt.Errorf("failed to unmarshal resourcequota properties: %w", err)
 	}
 
-	namespace := "default"
-	if rq.Namespace != nil {
-		namespace = *rq.Namespace
+	namespace, err := prov.ResolveCreateNamespace(rq.Namespace, ResourceTypeResourceQuota)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := r.Client.CoreV1().ResourceQuotas(namespace).Apply(ctx, rq, metav1.ApplyOptions{
@@ -204,9 +204,9 @@ func (r *ResourceQuota) Status(ctx context.Context, request *resource.StatusRequ
 }
 
 func (r *ResourceQuota) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := "default"
-	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
-		namespace = ns
+	namespace, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypeResourceQuota)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := r.Client.CoreV1().ResourceQuotas(namespace).List(ctx, metav1.ListOptions{})

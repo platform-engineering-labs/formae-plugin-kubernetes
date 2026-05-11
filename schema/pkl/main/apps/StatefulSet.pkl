@@ -46,7 +46,7 @@ open class StatefulSet extends k8s.Resource {
   kind: String = "StatefulSet"
 
   @k8s.FieldHint { required = true }
-  metadata: k8s.ObjectMeta
+  metadata: k8s.NamespacedObjectMeta
 
   @k8s.FieldHint {}
   spec: StatefulSetSpec?
@@ -103,7 +103,7 @@ open class StatefulSetSpec extends formae.SubResource {
 @k8s.SubResourceHint {}
 open class PersistentVolumeClaimTemplate extends formae.SubResource {
   @k8s.FieldHint { required = true }
-  metadata: k8s.ObjectMeta
+  metadata: k8s.NamespacedObjectMeta
 
   @k8s.FieldHint {}
   spec: persistentvolumeclaim.PersistentVolumeClaimSpec?

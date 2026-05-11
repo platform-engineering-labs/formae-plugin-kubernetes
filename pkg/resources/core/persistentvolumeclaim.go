@@ -53,9 +53,9 @@ func (p *PersistentVolumeClaim) Create(ctx context.Context, request *resource.Cr
 		return nil, fmt.Errorf("failed to unmarshal persistentvolumeclaim properties: %w", err)
 	}
 
-	namespace := "default"
-	if pvc.Namespace != nil {
-		namespace = *pvc.Namespace
+	namespace, err := prov.ResolveCreateNamespace(pvc.Namespace, ResourceTypePersistentVolumeClaim)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := p.Client.CoreV1().PersistentVolumeClaims(namespace).Apply(ctx, pvc, metav1.ApplyOptions{
@@ -121,9 +121,9 @@ func (p *PersistentVolumeClaim) Update(ctx context.Context, request *resource.Up
 		return nil, fmt.Errorf("failed to unmarshal persistentvolumeclaim properties: %w", err)
 	}
 
-	namespace := "default"
-	if pvc.Namespace != nil {
-		namespace = *pvc.Namespace
+	namespace, err := prov.ResolveCreateNamespace(pvc.Namespace, ResourceTypePersistentVolumeClaim)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := p.Client.CoreV1().PersistentVolumeClaims(namespace).Apply(ctx, pvc, metav1.ApplyOptions{
@@ -216,9 +216,9 @@ func (p *PersistentVolumeClaim) Status(ctx context.Context, request *resource.St
 }
 
 func (p *PersistentVolumeClaim) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := "default"
-	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
-		namespace = ns
+	namespace, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypePersistentVolumeClaim)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := p.Client.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{})

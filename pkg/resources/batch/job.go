@@ -57,9 +57,9 @@ func (j *Job) Create(ctx context.Context, request *resource.CreateRequest) (*res
 		return nil, err
 	}
 
-	namespace := "default"
-	if job.Namespace != nil {
-		namespace = *job.Namespace
+	namespace, err := prov.ResolveCreateNamespace(job.Namespace, ResourceTypeJob)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := j.Client.BatchV1().Jobs(namespace).Apply(ctx, job, metav1.ApplyOptions{
@@ -117,9 +117,9 @@ func (j *Job) Update(ctx context.Context, request *resource.UpdateRequest) (*res
 		return nil, fmt.Errorf("failed to unmarshal job properties: %w", err)
 	}
 
-	namespace := "default"
-	if job.Namespace != nil {
-		namespace = *job.Namespace
+	namespace, err := prov.ResolveCreateNamespace(job.Namespace, ResourceTypeJob)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := j.Client.BatchV1().Jobs(namespace).Apply(ctx, job, metav1.ApplyOptions{
@@ -217,9 +217,9 @@ func (j *Job) Status(ctx context.Context, request *resource.StatusRequest) (*res
 }
 
 func (j *Job) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := "default"
-	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
-		namespace = ns
+	namespace, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypeJob)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := j.Client.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{})

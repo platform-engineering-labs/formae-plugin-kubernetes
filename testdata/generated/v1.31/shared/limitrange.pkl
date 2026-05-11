@@ -27,7 +27,7 @@ forma {
 
   new lr.LimitRange {
     label = "test-limitrange"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "test-lr-\(v.testRunID)"
       namespace = ns.res.name
     }

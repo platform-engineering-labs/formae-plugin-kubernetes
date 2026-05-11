@@ -57,9 +57,9 @@ func (p *Pod) Create(ctx context.Context, request *resource.CreateRequest) (*res
 		return nil, err
 	}
 
-	namespace := "default"
-	if pod.Namespace != nil {
-		namespace = *pod.Namespace
+	namespace, err := prov.ResolveCreateNamespace(pod.Namespace, ResourceTypePod)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := p.Client.CoreV1().Pods(namespace).Apply(ctx, pod, metav1.ApplyOptions{
@@ -122,9 +122,9 @@ func (p *Pod) Update(ctx context.Context, request *resource.UpdateRequest) (*res
 		return nil, err
 	}
 
-	namespace := "default"
-	if pod.Namespace != nil {
-		namespace = *pod.Namespace
+	namespace, err := prov.ResolveCreateNamespace(pod.Namespace, ResourceTypePod)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := p.Client.CoreV1().Pods(namespace).Apply(ctx, pod, metav1.ApplyOptions{
@@ -219,9 +219,9 @@ func (p *Pod) Status(ctx context.Context, request *resource.StatusRequest) (*res
 }
 
 func (p *Pod) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := "default"
-	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
-		namespace = ns
+	namespace, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypePod)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := p.Client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})

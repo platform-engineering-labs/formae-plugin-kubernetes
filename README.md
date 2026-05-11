@@ -78,9 +78,8 @@ new formae.Target {
 | Flow Control | 2 | FlowSchema, PriorityLevelConfiguration |
 | Node | 1 | RuntimeClass |
 
-Plus `K8S::Apiextensions::CustomResourceDefinition` and a generic
-`K8S::Generic::CustomResource` escape hatch for CRDs not modelled
-explicitly. See [`schema/pkl/`](schema/pkl/) for the full list.
+CRDs and arbitrary custom resources are not currently supported. See
+[`schema/pkl/`](schema/pkl/) for the full list of typed resource kinds.
 
 ## Target configuration
 
@@ -103,8 +102,26 @@ new formae.Target {
 | Field | Type | Purpose |
 |---|---|---|
 | `kubernetesVersion` | `String` | K8s minor (e.g. `"1.31"`). Selects the schema subtree the plugin uses to validate the resource. **If omitted, the plugin assumes the most recent supported minor** (currently `1.34`). Set it explicitly for older clusters so field-level mismatches surface at `pkl eval`. |
-| `defaultNamespace` | `String?` | _Optional._ Fallback namespace for resources that don't set `metadata.namespace` themselves. Defaults to `"default"`. Most formas set `metadata.namespace` on every resource (or get it injected by `@formae-helm`), so this field is rarely needed. |
-| `auth` | `Auth` | One of `KubeconfigAuth` or `InClusterAuth`. |
+| `auth` | `Auth` | One of `KubeconfigAuth`, `EKSAuth`, `GKEAuth`, `AKSAuth`, `OVHAuth`, `OCIAuth`. |
+
+Every namespaced resource MUST set `metadata.namespace` in its PKL. There is no target-level default — the plugin returns an error if `metadata.namespace` is missing on a namespaced kind. Reference a `K8S::Core::Namespace` resource declared in the same Forma to keep the namespace single-sourced:
+
+```pkl
+local appNs = new namespace.Namespace {
+  metadata { name = "my-app" }
+}
+
+forma {
+  appNs
+  new deployment.Deployment {
+    metadata {
+      name = "api"
+      namespace = appNs.res.name   // resolvable ref into the namespace above
+    }
+    spec { ... }
+  }
+}
+```
 
 ### Authentication
 

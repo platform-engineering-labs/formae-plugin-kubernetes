@@ -53,9 +53,9 @@ func (ing *Ingress) Create(ctx context.Context, request *resource.CreateRequest)
 		return nil, fmt.Errorf("failed to unmarshal ingress properties: %w", err)
 	}
 
-	namespace := "default"
-	if ingress.Namespace != nil {
-		namespace = *ingress.Namespace
+	namespace, err := prov.ResolveCreateNamespace(ingress.Namespace, ResourceTypeIngress)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := ing.Client.NetworkingV1().Ingresses(namespace).Apply(ctx, ingress, metav1.ApplyOptions{
@@ -113,9 +113,9 @@ func (ing *Ingress) Update(ctx context.Context, request *resource.UpdateRequest)
 		return nil, fmt.Errorf("failed to unmarshal ingress properties: %w", err)
 	}
 
-	namespace := "default"
-	if ingress.Namespace != nil {
-		namespace = *ingress.Namespace
+	namespace, err := prov.ResolveCreateNamespace(ingress.Namespace, ResourceTypeIngress)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := ing.Client.NetworkingV1().Ingresses(namespace).Apply(ctx, ingress, metav1.ApplyOptions{
@@ -209,9 +209,9 @@ func (ing *Ingress) Status(ctx context.Context, request *resource.StatusRequest)
 }
 
 func (ing *Ingress) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := "default"
-	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
-		namespace = ns
+	namespace, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypeIngress)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := ing.Client.NetworkingV1().Ingresses(namespace).List(ctx, metav1.ListOptions{})

@@ -27,7 +27,7 @@ forma {
 
   new ds.DaemonSet {
     label = "test-daemonset"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "test-ds-\(v.testRunID)"
       namespace = ns.res.name
     }

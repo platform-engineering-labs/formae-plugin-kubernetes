@@ -53,9 +53,9 @@ func (d *Deployment) Create(ctx context.Context, request *resource.CreateRequest
 		return nil, fmt.Errorf("failed to unmarshal deployment properties: %w", err)
 	}
 
-	namespace := "default"
-	if deploy.Namespace != nil {
-		namespace = *deploy.Namespace
+	namespace, err := prov.ResolveCreateNamespace(deploy.Namespace, ResourceTypeDeployment)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := d.Client.AppsV1().Deployments(namespace).Apply(ctx, deploy, metav1.ApplyOptions{
@@ -113,9 +113,9 @@ func (d *Deployment) Update(ctx context.Context, request *resource.UpdateRequest
 		return nil, fmt.Errorf("failed to unmarshal deployment properties: %w", err)
 	}
 
-	namespace := "default"
-	if deploy.Namespace != nil {
-		namespace = *deploy.Namespace
+	namespace, err := prov.ResolveCreateNamespace(deploy.Namespace, ResourceTypeDeployment)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := d.Client.AppsV1().Deployments(namespace).Apply(ctx, deploy, metav1.ApplyOptions{
@@ -208,9 +208,9 @@ func (d *Deployment) Status(ctx context.Context, request *resource.StatusRequest
 }
 
 func (d *Deployment) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := "default"
-	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
-		namespace = ns
+	namespace, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypeDeployment)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := d.Client.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{})

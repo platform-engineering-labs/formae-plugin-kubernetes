@@ -53,9 +53,9 @@ func (svc *Service) Create(ctx context.Context, request *resource.CreateRequest)
 		return nil, fmt.Errorf("failed to unmarshal service properties: %w", err)
 	}
 
-	namespace := "default"
-	if s.Namespace != nil {
-		namespace = *s.Namespace
+	namespace, err := prov.ResolveCreateNamespace(s.Namespace, ResourceTypeService)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := svc.Client.CoreV1().Services(namespace).Apply(ctx, s, metav1.ApplyOptions{
@@ -113,9 +113,9 @@ func (svc *Service) Update(ctx context.Context, request *resource.UpdateRequest)
 		return nil, fmt.Errorf("failed to unmarshal service properties: %w", err)
 	}
 
-	namespace := "default"
-	if s.Namespace != nil {
-		namespace = *s.Namespace
+	namespace, err := prov.ResolveCreateNamespace(s.Namespace, ResourceTypeService)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := svc.Client.CoreV1().Services(namespace).Apply(ctx, s, metav1.ApplyOptions{
@@ -208,9 +208,9 @@ func (svc *Service) Status(ctx context.Context, request *resource.StatusRequest)
 }
 
 func (svc *Service) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := "default"
-	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
-		namespace = ns
+	namespace, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypeService)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := svc.Client.CoreV1().Services(namespace).List(ctx, metav1.ListOptions{})

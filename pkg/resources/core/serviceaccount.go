@@ -94,9 +94,9 @@ func (sa *ServiceAccount) Create(ctx context.Context, request *resource.CreateRe
 		return nil, fmt.Errorf("failed to unmarshal serviceaccount properties: %w", err)
 	}
 
-	namespace := "default"
-	if svcAcct.Namespace != nil {
-		namespace = *svcAcct.Namespace
+	namespace, err := prov.ResolveCreateNamespace(svcAcct.Namespace, ResourceTypeServiceAccount)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := sa.Client.CoreV1().ServiceAccounts(namespace).Apply(ctx, svcAcct, metav1.ApplyOptions{
@@ -161,9 +161,9 @@ func (sa *ServiceAccount) Update(ctx context.Context, request *resource.UpdateRe
 		return nil, fmt.Errorf("failed to unmarshal serviceaccount properties: %w", err)
 	}
 
-	namespace := "default"
-	if svcAcct.Namespace != nil {
-		namespace = *svcAcct.Namespace
+	namespace, err := prov.ResolveCreateNamespace(svcAcct.Namespace, ResourceTypeServiceAccount)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := sa.Client.CoreV1().ServiceAccounts(namespace).Apply(ctx, svcAcct, metav1.ApplyOptions{
@@ -262,9 +262,9 @@ func (sa *ServiceAccount) Status(ctx context.Context, request *resource.StatusRe
 }
 
 func (sa *ServiceAccount) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := "default"
-	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
-		namespace = ns
+	namespace, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypeServiceAccount)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := sa.Client.CoreV1().ServiceAccounts(namespace).List(ctx, metav1.ListOptions{})

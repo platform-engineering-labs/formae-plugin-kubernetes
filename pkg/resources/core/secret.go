@@ -52,9 +52,9 @@ func (s *Secret) Create(ctx context.Context, request *resource.CreateRequest) (*
 		return nil, fmt.Errorf("failed to unmarshal secret properties: %w", err)
 	}
 
-	namespace := "default"
-	if secret.Namespace != nil {
-		namespace = *secret.Namespace
+	namespace, err := prov.ResolveCreateNamespace(secret.Namespace, ResourceTypeSecret)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := s.Client.CoreV1().Secrets(namespace).Apply(ctx, secret, metav1.ApplyOptions{
@@ -111,9 +111,9 @@ func (s *Secret) Update(ctx context.Context, request *resource.UpdateRequest) (*
 		return nil, fmt.Errorf("failed to unmarshal secret properties: %w", err)
 	}
 
-	namespace := "default"
-	if secret.Namespace != nil {
-		namespace = *secret.Namespace
+	namespace, err := prov.ResolveCreateNamespace(secret.Namespace, ResourceTypeSecret)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := s.Client.CoreV1().Secrets(namespace).Apply(ctx, secret, metav1.ApplyOptions{
@@ -204,9 +204,9 @@ func (s *Secret) Status(ctx context.Context, request *resource.StatusRequest) (*
 }
 
 func (s *Secret) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := "default"
-	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
-		namespace = ns
+	namespace, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypeSecret)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := s.Client.CoreV1().Secrets(namespace).List(ctx, metav1.ListOptions{})

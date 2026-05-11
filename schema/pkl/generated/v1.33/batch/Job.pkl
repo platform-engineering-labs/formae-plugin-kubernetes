@@ -50,7 +50,7 @@ open class Job extends k8s.Resource {
   kind: String = "Job"
 
   @k8s.FieldHint { required = true }
-  metadata: k8s.ObjectMeta
+  metadata: k8s.NamespacedObjectMeta
 
   @k8s.FieldHint {}
   spec: k8s.JobSpec?

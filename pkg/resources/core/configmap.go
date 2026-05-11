@@ -52,9 +52,9 @@ func (c *ConfigMap) Create(ctx context.Context, request *resource.CreateRequest)
 		return nil, fmt.Errorf("failed to unmarshal configmap properties: %w", err)
 	}
 
-	namespace := "default"
-	if cm.Namespace != nil {
-		namespace = *cm.Namespace
+	namespace, err := prov.ResolveCreateNamespace(cm.Namespace, ResourceTypeConfigMap)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := c.Client.CoreV1().ConfigMaps(namespace).Apply(ctx, cm, metav1.ApplyOptions{
@@ -111,9 +111,9 @@ func (c *ConfigMap) Update(ctx context.Context, request *resource.UpdateRequest)
 		return nil, fmt.Errorf("failed to unmarshal configmap properties: %w", err)
 	}
 
-	namespace := "default"
-	if cm.Namespace != nil {
-		namespace = *cm.Namespace
+	namespace, err := prov.ResolveCreateNamespace(cm.Namespace, ResourceTypeConfigMap)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := c.Client.CoreV1().ConfigMaps(namespace).Apply(ctx, cm, metav1.ApplyOptions{
@@ -204,9 +204,9 @@ func (c *ConfigMap) Status(ctx context.Context, request *resource.StatusRequest)
 }
 
 func (c *ConfigMap) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := "default"
-	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
-		namespace = ns
+	namespace, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypeConfigMap)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := c.Client.CoreV1().ConfigMaps(namespace).List(ctx, metav1.ListOptions{})

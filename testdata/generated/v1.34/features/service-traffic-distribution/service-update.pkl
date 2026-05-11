@@ -28,7 +28,7 @@ forma {
 
   new svc.Service {
     label = "test-svc-td"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "test-svc-td-\(v.testRunID)"
       namespace = ns.res.name
     }

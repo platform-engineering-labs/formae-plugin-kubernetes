@@ -28,7 +28,7 @@ forma {
 
   new hpa.HorizontalPodAutoscaler {
     label = "test-hpa"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "test-hpa-\(v.testRunID)"
       namespace = ns.res.name
     }

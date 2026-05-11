@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/prov"
@@ -18,7 +19,6 @@ import (
 
 	// Import resources to trigger init() registration
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/admissionregistration"
-	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/apiextensions"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/apps"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/autoscaling"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/batch"
@@ -249,11 +249,24 @@ func (p *Plugin) Create(ctx context.Context, req *resource.CreateRequest) (*reso
 
 // Read retrieves the current state of a K8S resource.
 func (p *Plugin) Read(ctx context.Context, req *resource.ReadRequest) (*resource.ReadResult, error) {
+	logger := plugin.LoggerFromContext(ctx)
+	logger.Info("[K8S-READ] start", "type", req.ResourceType, "nativeID", req.NativeID)
+	startTime := time.Now()
 	provisioner, err := p.getProvisioner(ctx, req.ResourceType, req.TargetConfig)
 	if err != nil {
+		logger.Error("[K8S-READ] getProvisioner failed", "type", req.ResourceType, "duration", time.Since(startTime), "error", err)
 		return nil, err
 	}
-	return provisioner.Read(ctx, req)
+	result, err := provisioner.Read(ctx, req)
+	duration := time.Since(startTime)
+	if err != nil {
+		logger.Error("[K8S-READ] failed", "type", req.ResourceType, "nativeID", req.NativeID, "duration", duration, "error", err)
+	} else if result.ErrorCode != "" {
+		logger.Warn("[K8S-READ] completed with error code", "type", req.ResourceType, "nativeID", req.NativeID, "duration", duration, "errorCode", result.ErrorCode)
+	} else {
+		logger.Info("[K8S-READ] completed", "type", req.ResourceType, "nativeID", req.NativeID, "duration", duration, "propsLen", len(result.Properties))
+	}
+	return result, err
 }
 
 // Update modifies an existing K8S resource using server-side apply.

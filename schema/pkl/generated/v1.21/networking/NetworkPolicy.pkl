@@ -48,7 +48,7 @@ open class NetworkPolicy extends k8s.Resource {
   kind: String = "NetworkPolicy"
 
   @k8s.FieldHint { required = true }
-  metadata: k8s.ObjectMeta
+  metadata: k8s.NamespacedObjectMeta
 
   @k8s.FieldHint {}
   spec: NetworkPolicySpec?

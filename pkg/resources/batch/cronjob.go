@@ -52,9 +52,9 @@ func (cj *CronJob) Create(ctx context.Context, request *resource.CreateRequest) 
 		return nil, fmt.Errorf("failed to unmarshal cronjob properties: %w", err)
 	}
 
-	namespace := "default"
-	if cronjob.Namespace != nil {
-		namespace = *cronjob.Namespace
+	namespace, err := prov.ResolveCreateNamespace(cronjob.Namespace, ResourceTypeCronJob)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := cj.Client.BatchV1().CronJobs(namespace).Apply(ctx, cronjob, metav1.ApplyOptions{
@@ -111,9 +111,9 @@ func (cj *CronJob) Update(ctx context.Context, request *resource.UpdateRequest) 
 		return nil, fmt.Errorf("failed to unmarshal cronjob properties: %w", err)
 	}
 
-	namespace := "default"
-	if cronjob.Namespace != nil {
-		namespace = *cronjob.Namespace
+	namespace, err := prov.ResolveCreateNamespace(cronjob.Namespace, ResourceTypeCronJob)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := cj.Client.BatchV1().CronJobs(namespace).Apply(ctx, cronjob, metav1.ApplyOptions{
@@ -205,9 +205,9 @@ func (cj *CronJob) Status(ctx context.Context, request *resource.StatusRequest) 
 }
 
 func (cj *CronJob) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := "default"
-	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
-		namespace = ns
+	namespace, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypeCronJob)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := cj.Client.BatchV1().CronJobs(namespace).List(ctx, metav1.ListOptions{})

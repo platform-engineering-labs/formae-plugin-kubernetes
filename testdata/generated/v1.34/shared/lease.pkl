@@ -27,7 +27,7 @@ forma {
 
   new l.Lease {
     label = "test-lease"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "test-lease-\(v.testRunID)"
       namespace = ns.res.name
     }

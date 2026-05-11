@@ -31,7 +31,7 @@ forma {
 
   new job.Job {
     label = "test-job-sp"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "test-job-sp-\(v.testRunID)"
       namespace = ns.res.name
     }

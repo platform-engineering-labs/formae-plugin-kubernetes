@@ -28,7 +28,7 @@ forma {
 
   new np.NetworkPolicy {
     label = "test-networkpolicy"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "test-np-\(v.testRunID)"
       namespace = ns.res.name
     }

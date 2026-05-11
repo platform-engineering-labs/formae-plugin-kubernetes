@@ -53,9 +53,9 @@ func (ds *DaemonSet) Create(ctx context.Context, request *resource.CreateRequest
 		return nil, fmt.Errorf("failed to unmarshal daemonset properties: %w", err)
 	}
 
-	namespace := "default"
-	if daemonset.Namespace != nil {
-		namespace = *daemonset.Namespace
+	namespace, err := prov.ResolveCreateNamespace(daemonset.Namespace, ResourceTypeDaemonSet)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := ds.Client.AppsV1().DaemonSets(namespace).Apply(ctx, daemonset, metav1.ApplyOptions{
@@ -113,9 +113,9 @@ func (ds *DaemonSet) Update(ctx context.Context, request *resource.UpdateRequest
 		return nil, fmt.Errorf("failed to unmarshal daemonset properties: %w", err)
 	}
 
-	namespace := "default"
-	if daemonset.Namespace != nil {
-		namespace = *daemonset.Namespace
+	namespace, err := prov.ResolveCreateNamespace(daemonset.Namespace, ResourceTypeDaemonSet)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := ds.Client.AppsV1().DaemonSets(namespace).Apply(ctx, daemonset, metav1.ApplyOptions{
@@ -208,9 +208,9 @@ func (ds *DaemonSet) Status(ctx context.Context, request *resource.StatusRequest
 }
 
 func (ds *DaemonSet) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := "default"
-	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
-		namespace = ns
+	namespace, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypeDaemonSet)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := ds.Client.AppsV1().DaemonSets(namespace).List(ctx, metav1.ListOptions{})

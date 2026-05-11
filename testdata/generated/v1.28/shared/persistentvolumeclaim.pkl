@@ -27,7 +27,7 @@ forma {
 
   new pvc.PersistentVolumeClaim {
     label = "test-persistentvolumeclaim"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "test-pvc-\(v.testRunID)"
       namespace = ns.res.name
     }

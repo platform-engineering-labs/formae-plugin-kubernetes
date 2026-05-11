@@ -53,9 +53,9 @@ func (h *HorizontalPodAutoscaler) Create(ctx context.Context, request *resource.
 		return nil, fmt.Errorf("failed to unmarshal horizontalpodautoscaler properties: %w", err)
 	}
 
-	namespace := "default"
-	if hpa.Namespace != nil {
-		namespace = *hpa.Namespace
+	namespace, err := prov.ResolveCreateNamespace(hpa.Namespace, ResourceTypeHorizontalPodAutoscaler)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := h.Client.AutoscalingV2().HorizontalPodAutoscalers(namespace).Apply(ctx, hpa, metav1.ApplyOptions{
@@ -113,9 +113,9 @@ func (h *HorizontalPodAutoscaler) Update(ctx context.Context, request *resource.
 		return nil, fmt.Errorf("failed to unmarshal horizontalpodautoscaler properties: %w", err)
 	}
 
-	namespace := "default"
-	if hpa.Namespace != nil {
-		namespace = *hpa.Namespace
+	namespace, err := prov.ResolveCreateNamespace(hpa.Namespace, ResourceTypeHorizontalPodAutoscaler)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := h.Client.AutoscalingV2().HorizontalPodAutoscalers(namespace).Apply(ctx, hpa, metav1.ApplyOptions{
@@ -208,9 +208,9 @@ func (h *HorizontalPodAutoscaler) Status(ctx context.Context, request *resource.
 }
 
 func (h *HorizontalPodAutoscaler) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := "default"
-	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
-		namespace = ns
+	namespace, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypeHorizontalPodAutoscaler)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := h.Client.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, metav1.ListOptions{})

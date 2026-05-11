@@ -20,7 +20,7 @@ open class StorageClassResolvable extends formae.Resolvable {
 @k8s.ResourceHint {
   type = module.type
   identifier = "$.metadata.name"
-  discoverable = true
+  discoverable = false
 }
 open class StorageClass extends k8s.Resource {
   hidden parent = this

@@ -52,9 +52,9 @@ func (rb *RoleBinding) Create(ctx context.Context, request *resource.CreateReque
 		return nil, fmt.Errorf("failed to unmarshal rolebinding properties: %w", err)
 	}
 
-	namespace := "default"
-	if binding.Namespace != nil {
-		namespace = *binding.Namespace
+	namespace, err := prov.ResolveCreateNamespace(binding.Namespace, ResourceTypeRoleBinding)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := rb.Client.RbacV1().RoleBindings(namespace).Apply(ctx, binding, metav1.ApplyOptions{
@@ -111,9 +111,9 @@ func (rb *RoleBinding) Update(ctx context.Context, request *resource.UpdateReque
 		return nil, fmt.Errorf("failed to unmarshal rolebinding properties: %w", err)
 	}
 
-	namespace := "default"
-	if binding.Namespace != nil {
-		namespace = *binding.Namespace
+	namespace, err := prov.ResolveCreateNamespace(binding.Namespace, ResourceTypeRoleBinding)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := rb.Client.RbacV1().RoleBindings(namespace).Apply(ctx, binding, metav1.ApplyOptions{
@@ -205,9 +205,9 @@ func (rb *RoleBinding) Status(ctx context.Context, request *resource.StatusReque
 }
 
 func (rb *RoleBinding) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := "default"
-	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
-		namespace = ns
+	namespace, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypeRoleBinding)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := rb.Client.RbacV1().RoleBindings(namespace).List(ctx, metav1.ListOptions{})

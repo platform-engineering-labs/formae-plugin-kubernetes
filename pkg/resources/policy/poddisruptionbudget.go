@@ -52,9 +52,9 @@ func (p *PodDisruptionBudget) Create(ctx context.Context, request *resource.Crea
 		return nil, fmt.Errorf("failed to unmarshal poddisruptionbudget properties: %w", err)
 	}
 
-	namespace := "default"
-	if pdb.Namespace != nil {
-		namespace = *pdb.Namespace
+	namespace, err := prov.ResolveCreateNamespace(pdb.Namespace, ResourceTypePodDisruptionBudget)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := p.Client.PolicyV1().PodDisruptionBudgets(namespace).Apply(ctx, pdb, metav1.ApplyOptions{
@@ -111,9 +111,9 @@ func (p *PodDisruptionBudget) Update(ctx context.Context, request *resource.Upda
 		return nil, fmt.Errorf("failed to unmarshal poddisruptionbudget properties: %w", err)
 	}
 
-	namespace := "default"
-	if pdb.Namespace != nil {
-		namespace = *pdb.Namespace
+	namespace, err := prov.ResolveCreateNamespace(pdb.Namespace, ResourceTypePodDisruptionBudget)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := p.Client.PolicyV1().PodDisruptionBudgets(namespace).Apply(ctx, pdb, metav1.ApplyOptions{
@@ -204,9 +204,9 @@ func (p *PodDisruptionBudget) Status(ctx context.Context, request *resource.Stat
 }
 
 func (p *PodDisruptionBudget) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	namespace := "default"
-	if ns, ok := request.AdditionalProperties["namespace"]; ok && ns != "" {
-		namespace = ns
+	namespace, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypePodDisruptionBudget)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := p.Client.PolicyV1().PodDisruptionBudgets(namespace).List(ctx, metav1.ListOptions{})
