@@ -17,6 +17,11 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
+// tokenFetchTimeout caps the OVH kubeconfig POST. OVH returns the kubeconfig
+// synchronously but the call goes over the public internet, and on quota
+// exhaustion the API can stall before erroring.
+const tokenFetchTimeout = 10 * time.Second
+
 // Provider implements auth.AuthProvider for OVH Managed K8S clusters.
 type Provider struct {
 	ServiceName string
@@ -49,6 +54,9 @@ type kubeconfigResponse struct {
 }
 
 func (s *tokenSource) Token(ctx context.Context) (string, time.Time, error) {
+	ctx, cancel := context.WithTimeout(ctx, tokenFetchTimeout)
+	defer cancel()
+
 	client, err := ovhclient.NewDefaultClient()
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("failed to create OVH client: %w", err)

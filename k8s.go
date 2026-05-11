@@ -418,9 +418,15 @@ func (p *Plugin) LabelConfig() model.LabelConfig {
 // CRUD Operations
 // =============================================================================
 
-// getProvisioner creates a provisioner for the given resource type.
-// With WrapTransport handling token refresh, clients no longer need
-// the TTL-based cache that was previously used for EKS token rotation.
+// getProvisioner returns a provisioner for the given resource type backed
+// by a process-wide-cached *transport.Client.
+//
+// Without caching, every CRUD call rebuilds the client and re-mints an auth
+// token — fine for in-cluster kubeconfig auth, expensive (and in OVH's case,
+// quota-eating) for cloud auth providers. transport.CachedNewClient keys on
+// config.CacheKey(), which composes auth type, endpoint, and cluster
+// identity into a stable string, so two targets pointing at different
+// clusters never alias on the same client.
 func (p *Plugin) getProvisioner(ctx context.Context, resourceType string, targetConfig []byte) (prov.Provisioner, error) {
 	if !registry.HasProvisioner(resourceType) {
 		return nil, fmt.Errorf("unsupported resource type: %s", resourceType)
@@ -431,7 +437,7 @@ func (p *Plugin) getProvisioner(ctx context.Context, resourceType string, target
 		return nil, fmt.Errorf("failed to extract config: %w", err)
 	}
 
-	client, err := transport.NewClient(cfg)
+	client, err := transport.CachedNewClient(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create K8S client: %w", err)
 	}

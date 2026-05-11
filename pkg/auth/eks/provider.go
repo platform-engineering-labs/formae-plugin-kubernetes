@@ -18,7 +18,15 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-const tokenTTL = 14 * time.Minute // STS tokens are valid for 15 min; refresh at 14
+// tokenTTL is the EKS token lifetime we advertise to the cache. Must match the
+// X-Amz-Expires window below — both are captured at the same signedAt instant
+// so the cache never returns a token after the signed URL has expired.
+const tokenTTL = 14 * time.Minute // STS tokens valid for 15 min; cache 14 min.
+
+// tokenFetchTimeout caps SDK credential lookup + STS presigning. STS presign
+// is purely local crypto, but Credentials.Retrieve walks the full provider
+// chain (IMDS, env, profile, SSO, web-identity exchange) which can each hang.
+const tokenFetchTimeout = 10 * time.Second
 
 // Provider implements auth.AuthProvider for AWS EKS clusters.
 type Provider struct {
@@ -49,7 +57,14 @@ type tokenSource struct {
 }
 
 // Token generates a presigned STS GetCallerIdentity URL for EKS auth.
+//
+// signedAt is captured once and used for both PresignHTTP and the cache
+// expiry so the advertised TTL is always anchored to the same wall-clock
+// instant as the signed URL.
 func (s *tokenSource) Token(ctx context.Context) (string, time.Time, error) {
+	ctx, cancel := context.WithTimeout(ctx, tokenFetchTimeout)
+	defer cancel()
+
 	opts := []func(*awsconfig.LoadOptions) error{}
 	if s.region != "" {
 		opts = append(opts, awsconfig.WithRegion(s.region))
@@ -75,16 +90,17 @@ func (s *tokenSource) Token(ctx context.Context) (string, time.Time, error) {
 	}
 	req.Header.Set("x-k8s-aws-id", s.clusterName)
 
+	signedAt := time.Now()
 	signer := v4.NewSigner()
 	signedURL, _, err := signer.PresignHTTP(ctx, creds, req,
 		"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-		"sts", s.region, time.Now())
+		"sts", s.region, signedAt)
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("failed to presign STS request: %w", err)
 	}
 
 	token := "k8s-aws-v1." + base64.RawURLEncoding.EncodeToString([]byte(signedURL))
-	return token, time.Now().Add(tokenTTL), nil
+	return token, signedAt.Add(tokenTTL), nil
 }
 
 // RegionFromEndpoint extracts the AWS region from an EKS endpoint URL.

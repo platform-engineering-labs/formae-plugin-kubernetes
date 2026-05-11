@@ -65,11 +65,25 @@ type EKSAuthConfig struct {
 	Region      string `json:"Region,omitempty"`
 }
 
-// AKSAuthConfig holds AKS-specific auth fields.
+// AKSAuthConfig holds AKS-specific auth fields. Scope is optional and
+// overrides the default AKS-managed-AAD app for private clusters with a
+// custom AAD integration.
 type AKSAuthConfig struct {
 	CloudAuthConfig
 	ResourceGroup string `json:"ResourceGroup,omitempty"`
 	ClusterName   string `json:"ClusterName,omitempty"`
+	Scope         string `json:"Scope,omitempty"`
+}
+
+// GKEAuthConfig holds GKE-specific auth fields. ProjectID, Location, and
+// ClusterName uniquely identify a GKE cluster within Google Cloud and are
+// required for cache keying — without them, two targets pointing at
+// different projects/clusters would alias on the same cached token.
+type GKEAuthConfig struct {
+	CloudAuthConfig
+	ProjectID   string `json:"ProjectId,omitempty"`
+	Location    string `json:"Location,omitempty"`
+	ClusterName string `json:"ClusterName,omitempty"`
 }
 
 // OVHAuthConfig holds OVH-specific auth fields.
@@ -97,9 +111,20 @@ func FromTargetConfig(targetConfig []byte) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse target config: %w", err)
 	}
 
+	// json.Unmarshal happily leaves cfg.Auth as nil / `null` when the field
+	// is missing or explicitly null. Forwarding that to json.Unmarshal again
+	// produces a confusing "unexpected end of JSON input" error — surface
+	// the actual cause instead.
+	if len(cfg.Auth) == 0 || string(cfg.Auth) == "null" {
+		return nil, fmt.Errorf("target config missing required Auth block")
+	}
+
 	var header authHeader
 	if err := json.Unmarshal(cfg.Auth, &header); err != nil {
 		return nil, fmt.Errorf("failed to parse auth type: %w", err)
+	}
+	if header.Type == "" {
+		return nil, fmt.Errorf("target config Auth block missing required Type field")
 	}
 	cfg.authType = header.Type
 	cfg.authRaw = cfg.Auth
@@ -110,6 +135,75 @@ func FromTargetConfig(targetConfig []byte) (*Config, error) {
 // AuthType returns the auth strategy type string.
 func (c *Config) AuthType() string {
 	return c.authType
+}
+
+// CacheKey returns a stable identity string for the cluster this Config
+// targets. The transport-layer cache uses this key to dedupe *transport.Client
+// (and the underlying CachedTokenSource) across CRUD calls — without it,
+// every Create/Read/Update/Delete/Status/List would rebuild the client and
+// re-mint a token.
+//
+// Composition (auth-type-specific):
+//
+//	Kubeconfig: "Kubeconfig|<kubeconfig-path>|<context>"
+//	EKS:        "EKS|<endpoint>|<cluster-name>|<region>"
+//	GKE:        "GKE|<endpoint>|<project>|<location>|<cluster-name>"
+//	AKS:        "AKS|<endpoint>|<resource-group>|<cluster-name>|<scope>"
+//	OVH:        "OVH|<endpoint>|<service-name>|<cluster-id>"
+//	OCI:        "OCI|<endpoint>|<cluster-ocid>|<region>"
+//
+// Endpoint is included as a defense-in-depth tiebreaker in case a user
+// duplicates a logical identifier (e.g. same cluster name across regions
+// they forgot to set). For Kubeconfig auth the path+context are enough.
+//
+// CacheKey returns ("", error) on malformed Auth blocks; the caller should
+// treat that as a hard cache miss and surface the error.
+func (c *Config) CacheKey() (string, error) {
+	switch c.authType {
+	case "Kubeconfig":
+		var kc KubeconfigAuthConfig
+		if err := json.Unmarshal(c.authRaw, &kc); err != nil {
+			return "", fmt.Errorf("CacheKey: parse Kubeconfig auth: %w", err)
+		}
+		// We deliberately do NOT resolve $KUBECONFIG / $HOME here — the same
+		// resolution happens inside buildKubeconfigConfig and is allowed to
+		// vary by process environment. Two targets that both omit
+		// Kubeconfig share a key, which is correct: they resolve to the
+		// same kubeconfig.
+		return fmt.Sprintf("Kubeconfig|%s|%s", kc.Kubeconfig, kc.Context), nil
+	case "EKS":
+		var ac EKSAuthConfig
+		if err := json.Unmarshal(c.authRaw, &ac); err != nil {
+			return "", fmt.Errorf("CacheKey: parse EKS auth: %w", err)
+		}
+		return fmt.Sprintf("EKS|%s|%s|%s", ac.Endpoint, ac.ClusterName, ac.Region), nil
+	case "GKE":
+		var ac GKEAuthConfig
+		if err := json.Unmarshal(c.authRaw, &ac); err != nil {
+			return "", fmt.Errorf("CacheKey: parse GKE auth: %w", err)
+		}
+		return fmt.Sprintf("GKE|%s|%s|%s|%s", ac.Endpoint, ac.ProjectID, ac.Location, ac.ClusterName), nil
+	case "AKS":
+		var ac AKSAuthConfig
+		if err := json.Unmarshal(c.authRaw, &ac); err != nil {
+			return "", fmt.Errorf("CacheKey: parse AKS auth: %w", err)
+		}
+		return fmt.Sprintf("AKS|%s|%s|%s|%s", ac.Endpoint, ac.ResourceGroup, ac.ClusterName, ac.Scope), nil
+	case "OVH":
+		var ac OVHAuthConfig
+		if err := json.Unmarshal(c.authRaw, &ac); err != nil {
+			return "", fmt.Errorf("CacheKey: parse OVH auth: %w", err)
+		}
+		return fmt.Sprintf("OVH|%s|%s|%s", ac.Endpoint, ac.ServiceName, ac.ClusterID), nil
+	case "OCI":
+		var ac OCIAuthConfig
+		if err := json.Unmarshal(c.authRaw, &ac); err != nil {
+			return "", fmt.Errorf("CacheKey: parse OCI auth: %w", err)
+		}
+		return fmt.Sprintf("OCI|%s|%s|%s", ac.Endpoint, ac.ClusterOCID, ac.Region), nil
+	default:
+		return "", fmt.Errorf("CacheKey: unsupported auth type: %s", c.authType)
+	}
 }
 
 // ToK8sConfig builds a rest.Config based on the auth strategy.
@@ -146,6 +240,15 @@ func (c *Config) buildKubeconfigConfig() (*rest.Config, error) {
 		if home := homedir.HomeDir(); home != "" {
 			kubeconfig = filepath.Join(home, ".kube", "config")
 		}
+	}
+	// All three sources empty (no Auth.Kubeconfig, no $KUBECONFIG, no $HOME)
+	// would silently fall through to clientcmd's in-cluster auth path, which
+	// fails on dev machines with the cryptic "no Auth Provider found for
+	// name" error. Bail early with an actionable message — supporting
+	// in-cluster auth (e.g. when running the plugin from inside a pod)
+	// should be a deliberate, explicit opt-in.
+	if kubeconfig == "" {
+		return nil, fmt.Errorf("no kubeconfig: set Auth.Kubeconfig, $KUBECONFIG, or $HOME")
 	}
 
 	overrides := &clientcmd.ConfigOverrides{}
@@ -211,11 +314,11 @@ func (c *Config) newEKSProvider() (auth.AuthProvider, *CloudAuthConfig, error) {
 }
 
 func (c *Config) newGKEProvider() (auth.AuthProvider, *CloudAuthConfig, error) {
-	var ac CloudAuthConfig
+	var ac GKEAuthConfig
 	if err := json.Unmarshal(c.authRaw, &ac); err != nil {
 		return nil, nil, fmt.Errorf("failed to parse GKE auth config: %w", err)
 	}
-	return gke.NewProvider(), &ac, nil
+	return gke.NewProvider(ac.ProjectID, ac.Location, ac.ClusterName), &ac.CloudAuthConfig, nil
 }
 
 func (c *Config) newAKSProvider() (auth.AuthProvider, *CloudAuthConfig, error) {
@@ -223,7 +326,7 @@ func (c *Config) newAKSProvider() (auth.AuthProvider, *CloudAuthConfig, error) {
 	if err := json.Unmarshal(c.authRaw, &ac); err != nil {
 		return nil, nil, fmt.Errorf("failed to parse AKS auth config: %w", err)
 	}
-	return aks.NewProvider(ac.ResourceGroup, ac.ClusterName), &ac.CloudAuthConfig, nil
+	return aks.NewProvider(ac.ResourceGroup, ac.ClusterName, ac.Scope), &ac.CloudAuthConfig, nil
 }
 
 func (c *Config) newOVHProvider() (auth.AuthProvider, *CloudAuthConfig, error) {
