@@ -91,20 +91,6 @@ func (p *Plugin) DiscoveryFilters() []model.MatchFilter {
 				{PropertyPath: "$.metadata.name", PropertyValue: "kubernetes"},
 			},
 		},
-		// Exclude system:* ClusterRoles and ClusterRoleBindings (K8S control plane managed)
-		// Uses JSONPath search() for prefix matching via existence check
-		{
-			ResourceTypes: []string{"K8S::Rbac::ClusterRole"},
-			Conditions: []model.FilterCondition{
-				{PropertyPath: `$.metadata[?search(@, '^system:')]`},
-			},
-		},
-		{
-			ResourceTypes: []string{"K8S::Rbac::ClusterRoleBinding"},
-			Conditions: []model.FilterCondition{
-				{PropertyPath: `$.metadata[?search(@, '^system:')]`},
-			},
-		},
 		// Exclude Jobs created by a CronJob on schedule. Standalone Jobs
 		// (no ownerReferences) are still discovered.
 		{
@@ -186,6 +172,222 @@ func (p *Plugin) DiscoveryFilters() []model.MatchFilter {
 			ResourceTypes: []string{"K8S::Scheduling::PriorityClass"},
 			Conditions: []model.FilterCondition{
 				{PropertyPath: `$.metadata[?search(@, '^system-')]`},
+			},
+		},
+		// Exclude additional bootstrap FlowSchemas that don't carry the
+		// 'system-' prefix but are installed and managed by kube-apiserver.
+		// An operator who wants to manage one of these explicitly can drop
+		// the corresponding filter entry below.
+		{
+			ResourceTypes: []string{"K8S::Flowcontrol::FlowSchema"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "catch-all"},
+			},
+		},
+		{
+			ResourceTypes: []string{"K8S::Flowcontrol::FlowSchema"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "probes"},
+			},
+		},
+		{
+			ResourceTypes: []string{"K8S::Flowcontrol::FlowSchema"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "service-accounts"},
+			},
+		},
+		{
+			ResourceTypes: []string{"K8S::Flowcontrol::FlowSchema"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "kube-controller-manager"},
+			},
+		},
+		{
+			ResourceTypes: []string{"K8S::Flowcontrol::FlowSchema"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "kube-scheduler"},
+			},
+		},
+		{
+			ResourceTypes: []string{"K8S::Flowcontrol::FlowSchema"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "endpoint-controller"},
+			},
+		},
+		{
+			ResourceTypes: []string{"K8S::Flowcontrol::FlowSchema"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "workload-high"},
+			},
+		},
+		{
+			ResourceTypes: []string{"K8S::Flowcontrol::FlowSchema"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "workload-low"},
+			},
+		},
+		// Exclude additional bootstrap PriorityLevelConfigurations without
+		// the 'system-' prefix (catch-all/exempt are bootstrap, workload-low
+		// is bootstrap on older versions; same removal recipe as above).
+		{
+			ResourceTypes: []string{"K8S::Flowcontrol::PriorityLevelConfiguration"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "catch-all"},
+			},
+		},
+		{
+			ResourceTypes: []string{"K8S::Flowcontrol::PriorityLevelConfiguration"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "exempt"},
+			},
+		},
+		{
+			ResourceTypes: []string{"K8S::Flowcontrol::PriorityLevelConfiguration"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "workload-high"},
+			},
+		},
+		{
+			ResourceTypes: []string{"K8S::Flowcontrol::PriorityLevelConfiguration"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "workload-low"},
+			},
+		},
+		{
+			ResourceTypes: []string{"K8S::Flowcontrol::PriorityLevelConfiguration"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "node-high"},
+			},
+		},
+		{
+			ResourceTypes: []string{"K8S::Flowcontrol::PriorityLevelConfiguration"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "leader-election"},
+			},
+		},
+		{
+			ResourceTypes: []string{"K8S::Flowcontrol::PriorityLevelConfiguration"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "global-default"},
+			},
+		},
+		// Exclude cloud-installed default StorageClasses. Each managed K8s
+		// distribution installs its own default — we exclude the well-known
+		// names so a fresh cluster on EKS/GKE/AKS/KinD/OrbStack doesn't drag
+		// the platform-provided StorageClass into discovery. An operator
+		// who genuinely wants to manage one (e.g. to mutate parameters)
+		// can drop the matching entry.
+		{
+			// EKS default (gp2-backed in-tree, gp3 via EBS CSI on newer clusters).
+			ResourceTypes: []string{"K8S::Storage::StorageClass"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "gp2"},
+			},
+		},
+		{
+			ResourceTypes: []string{"K8S::Storage::StorageClass"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "gp3"},
+			},
+		},
+		{
+			// GKE default.
+			ResourceTypes: []string{"K8S::Storage::StorageClass"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "standard"},
+			},
+		},
+		{
+			// GKE Premium / GKE pd-balanced regional defaults.
+			ResourceTypes: []string{"K8S::Storage::StorageClass"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "standard-rwo"},
+			},
+		},
+		{
+			ResourceTypes: []string{"K8S::Storage::StorageClass"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "premium-rwo"},
+			},
+		},
+		{
+			// AKS default.
+			ResourceTypes: []string{"K8S::Storage::StorageClass"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "default"},
+			},
+		},
+		{
+			ResourceTypes: []string{"K8S::Storage::StorageClass"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "managed-premium"},
+			},
+		},
+		{
+			// KinD / k3s default.
+			ResourceTypes: []string{"K8S::Storage::StorageClass"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "local-path"},
+			},
+		},
+		{
+			// OrbStack default (hostpath provisioner).
+			ResourceTypes: []string{"K8S::Storage::StorageClass"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "orbstack"},
+			},
+		},
+		// Exclude managed-provider webhook configurations. EKS, GKE, AKS
+		// install MutatingWebhookConfigurations and ValidatingWebhookConfigurations
+		// that the platform owns and rotates — pulling them into discovery
+		// is noise, and attempting to manage them would conflict with the
+		// platform reconciler. We match by well-known prefixes/suffixes used
+		// by the cloud providers.
+		{
+			// e.g. eks-pod-identity-webhook, eks-validating-webhook
+			ResourceTypes: []string{
+				"K8S::Admissionregistration::MutatingWebhookConfiguration",
+				"K8S::Admissionregistration::ValidatingWebhookConfiguration",
+			},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: `$.metadata[?search(@, '^eks-')]`},
+			},
+		},
+		{
+			// e.g. gke-default-snat-webhook, gmp-operator on GKE.
+			ResourceTypes: []string{
+				"K8S::Admissionregistration::MutatingWebhookConfiguration",
+				"K8S::Admissionregistration::ValidatingWebhookConfiguration",
+			},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: `$.metadata[?search(@, '^gke-')]`},
+			},
+		},
+		{
+			// e.g. aks-node-validating-webhook, aks-webhook-admission-controller.
+			ResourceTypes: []string{
+				"K8S::Admissionregistration::MutatingWebhookConfiguration",
+				"K8S::Admissionregistration::ValidatingWebhookConfiguration",
+			},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: `$.metadata[?search(@, '^aks-')]`},
+			},
+		},
+		// Move RBAC system filters out of List-level into plugin-level
+		// DiscoveryFilters so operators can introspect/disable them
+		// consistently with other system-resource filters. Matches
+		// ClusterRoles and ClusterRoleBindings whose name starts with
+		// 'system:' (the kube-apiserver bootstrap convention).
+		{
+			ResourceTypes: []string{"K8S::Rbac::ClusterRole"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: `$.metadata[?search(@, '^system:')]`},
+			},
+		},
+		{
+			ResourceTypes: []string{"K8S::Rbac::ClusterRoleBinding"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: `$.metadata[?search(@, '^system:')]`},
 			},
 		},
 	}

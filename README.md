@@ -81,6 +81,21 @@ new formae.Target {
 CRDs and arbitrary custom resources are not currently supported. See
 [`schema/pkl/`](schema/pkl/) for the full list of typed resource kinds.
 
+### Discovery filters
+
+`formae discover` skips a small set of system-installed resources by default
+so a fresh managed cluster (EKS / GKE / AKS / KinD / OrbStack) doesn't drag
+control-plane noise into your inventory: system namespaces (`kube-system`,
+`kube-public`, `kube-node-lease`), the default `kubernetes` Service, default
+ServiceAccounts and their token Secrets, controller-owned Pods / ReplicaSets /
+Jobs / Endpoints / Leases, `system:*` ClusterRoles and ClusterRoleBindings,
+bootstrap FlowSchemas and PriorityLevelConfigurations, cloud-provider default
+StorageClasses (e.g. `gp2`, `standard`, `local-path`), and cloud-provider
+admission webhooks (`eks-`, `gke-`, `aks-` prefixed). The full list lives in
+`DiscoveryFilters()` in [`k8s.go`](k8s.go) — every entry is commented so an
+operator who actually wants to manage one of these can drop the matching
+filter and rebuild.
+
 ## Target configuration
 
 ```pkl
