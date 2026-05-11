@@ -3,10 +3,11 @@
 // Deploys the bookstore webapp to a local or pre-configured K8S cluster
 // using kubeconfig auth. No cloud provider required.
 //
-// Deploy (default kubeconfig context):
-//   formae apply --mode reconcile --yes --watch examples/vanilla/vanilla.pkl
+// Resolve Pkl dependencies (first time, or after PklProject changes):
+//   pkl project resolve examples/apps/
+//   pkl project resolve examples/vanilla/
 //
-// Deploy (specific context):
+// Deploy:
 //   formae apply --mode reconcile --yes --watch examples/vanilla/vanilla.pkl
 //
 // Access:
@@ -23,7 +24,6 @@ import "@apps/bookstore.pkl" as bookstore
 
 local _k8sTarget = new formae.Target {
   label = "k8s-target"
-  namespace = "K8S"
   config = new k8s.Config {
     kubernetesVersion = "1.34"
     auth = new k8s.KubeconfigAuth {}

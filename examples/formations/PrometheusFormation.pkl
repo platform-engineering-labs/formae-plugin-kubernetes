@@ -21,7 +21,6 @@
 //     new formae.Stack { label = "monitoring" }
 //     new formae.Target {
 //       label = "prod"
-//       namespace = "K8S"
 //       config { ["context"] = "my-cluster"; ["namespace"] = "monitoring" }
 //     }
 //     for (r in prometheus.resources) { r }

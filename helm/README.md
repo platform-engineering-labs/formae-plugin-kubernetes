@@ -36,6 +36,37 @@ The result: Helm releases manageable through the same forma → reconcile → dr
   ```
 - The matching `@formae-helm/v<X.Y>` import — must line up with the `kubernetesVersion` on the Target and the `@k8s/v<X.Y>` schema imports in the rest of the forma.
 
+### Install `pkl-reader-helm`
+
+Pre-built binaries are published on the [`apple/pkl-readers` releases page](https://github.com/apple/pkl-readers/releases) under the `helm@<ver>` tags. Pick the asset for your OS/arch, drop it on your `PATH` as `pkl-reader-helm`, and make it executable.
+
+```bash
+# Pick the latest helm@<ver> tag from https://github.com/apple/pkl-readers/releases
+VER=0.1.2
+
+# Asset name by platform:
+#   macOS (universal): pkl-reader-helm-macos.bin
+#   Linux x86_64:      pkl-reader-helm-linux-amd64.bin
+#   Linux arm64:       pkl-reader-helm-linux-aarch64.bin
+case "$(uname -s)-$(uname -m)" in
+  Darwin-*)        ASSET=pkl-reader-helm-macos.bin ;;
+  Linux-x86_64)    ASSET=pkl-reader-helm-linux-amd64.bin ;;
+  Linux-aarch64|Linux-arm64) ASSET=pkl-reader-helm-linux-aarch64.bin ;;
+  *) echo "unsupported platform"; exit 1 ;;
+esac
+
+curl -fL \
+  "https://github.com/apple/pkl-readers/releases/download/helm@${VER}/${ASSET}" \
+  -o /usr/local/bin/pkl-reader-helm
+chmod +x /usr/local/bin/pkl-reader-helm
+
+pkl-reader-helm version   # sanity check
+```
+
+Use `~/.local/bin` (or any other directory on your `PATH`) if you don't want to write to `/usr/local/bin`.
+
+> Match the binary major version to the `pkl-readers/helm@<ver>` package version pinned in [`PklProject`](PklProject). A different patch version (e.g. binary `0.1.2` against package `0.1.1`) is normally fine — the wire protocol is stable within a minor.
+
 ## Usage
 
 ```pkl

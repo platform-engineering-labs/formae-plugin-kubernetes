@@ -4,6 +4,11 @@
 // then deploys the bookstore webapp using provider-agnostic auth with
 // STS token refresh via WrapTransport.
 //
+// Resolve Pkl dependencies (first time, or after PklProject changes):
+//   pkl project resolve examples/apps/
+//   pkl project resolve examples/eks/
+//
+// Deploy:
 //   formae apply --mode reconcile --yes --watch examples/eks/eks.pkl
 //
 // Access (after deploy, via port-forward):

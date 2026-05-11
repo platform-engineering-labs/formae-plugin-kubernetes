@@ -2,6 +2,12 @@
 ///
 /// Mirrors examples/helm/nginx-v1.31.pkl but targets the latest supported
 /// K8s minor. Run against a kind cluster on v1.34.
+///
+/// Resolve Pkl dependencies (first time, or after PklProject changes):
+///   pkl project resolve examples/helm/
+///
+/// Deploy:
+///   formae apply --mode reconcile --yes --watch examples/helm/nginx-v1.34.pkl
 amends "@formae/forma.pkl"
 
 import "@formae/formae.pkl"
@@ -39,7 +45,6 @@ forma {
 
   new formae.Target {
     label = "k8s-local"
-    namespace = "K8S"
     config = new k8s.Config {
       kubernetesVersion = "1.34"
       auth = new k8s.KubeconfigAuth {}

@@ -10,6 +10,10 @@
 //   - Replace default prop values in infrastructure/vars.pkl with your
 //     compartmentId, availabilityDomain, nodeImageId, and serviceGatewayServiceId
 //
+// Resolve Pkl dependencies (first time, or after PklProject changes):
+//   pkl project resolve examples/apps/
+//   pkl project resolve examples/oke/
+//
 // Deploy:
 //   formae apply --mode reconcile --yes --watch examples/oke/oke.pkl
 //

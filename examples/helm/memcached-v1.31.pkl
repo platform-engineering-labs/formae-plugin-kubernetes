@@ -1,6 +1,12 @@
 /// bitnami/memcached standalone on K8s 1.31, via HelmChart.pkl.
 ///
 /// Small in-memory cache. Smoke-runnable on a single-node KinD cluster.
+///
+/// Resolve Pkl dependencies (first time, or after PklProject changes):
+///   pkl project resolve examples/helm/
+///
+/// Deploy:
+///   formae apply --mode reconcile --yes --watch examples/helm/memcached-v1.31.pkl
 amends "@formae/forma.pkl"
 
 import "@formae/formae.pkl"
@@ -35,7 +41,6 @@ forma {
 
   new formae.Target {
     label = "k8s-local"
-    namespace = "K8S"
     config = new k8s.Config {
       kubernetesVersion = "1.31"
       auth = new k8s.KubeconfigAuth {}

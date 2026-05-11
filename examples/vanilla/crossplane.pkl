@@ -4,6 +4,10 @@
 // Service, 14 CRDs) to a local or pre-configured K8S cluster using
 // kubeconfig auth. No cloud provider required.
 //
+// Resolve Pkl dependencies (first time, or after PklProject changes):
+//   pkl project resolve examples/apps/
+//   pkl project resolve examples/vanilla/
+//
 // Deploy:
 //   formae apply --mode reconcile --yes --watch examples/vanilla/crossplane.pkl
 //
@@ -32,7 +36,6 @@ import "@apps/crossplane.pkl" as crossplane
 
 local _k8sTarget = new formae.Target {
   label = "k8s-target"
-  namespace = "K8S"
   config = new k8s.Config {
     kubernetesVersion = "1.34"
     auth = new k8s.KubeconfigAuth {}

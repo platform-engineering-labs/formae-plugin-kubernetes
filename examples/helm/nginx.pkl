@@ -3,8 +3,12 @@
 /// Renders bitnami/nginx 22.4.7 through formae-helm and produces
 /// a forma file with typed K8S resources ready for Formae management.
 ///
+/// Resolve Pkl dependencies (first time, or after PklProject changes):
+///   pkl project resolve examples/helm/
+///
 /// Usage:
 ///   pkl eval examples/helm/nginx.pkl
+///   formae apply --mode reconcile --yes --watch examples/helm/nginx.pkl
 ///
 /// Requires:
 ///   - pkl-reader-helm binary on PATH
@@ -46,7 +50,6 @@ forma {
 
   new formae.Target {
     label = "k8s-local"
-    namespace = "K8S"
     config = new k8s.Config {
       kubernetesVersion = "1.34"
       // KubeconfigAuth uses the kubeconfig's current context when

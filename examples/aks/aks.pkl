@@ -9,6 +9,10 @@
 //   - formae-plugin-azure and formae-plugin-k8s installed
 //   - Set AZURE_SUBSCRIPTION_ID env var, or pass --prop subscription-id=<id>
 //
+// Resolve Pkl dependencies (first time, or after PklProject changes):
+//   pkl project resolve examples/apps/
+//   pkl project resolve examples/aks/
+//
 // Deploy:
 //   formae apply --mode reconcile --yes --watch examples/aks/aks.pkl
 //

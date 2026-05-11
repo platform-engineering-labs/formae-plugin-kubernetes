@@ -7,6 +7,12 @@
 /// password Secret file ends up unreadable under the chart's default
 /// containerSecurityContext. Set `volumePermissions.enabled = true` or
 /// override `primary.containerSecurityContext` if the pod fails to start.
+///
+/// Resolve Pkl dependencies (first time, or after PklProject changes):
+///   pkl project resolve examples/helm/
+///
+/// Deploy:
+///   formae apply --mode reconcile --yes --watch examples/helm/postgresql-v1.31.pkl
 amends "@formae/forma.pkl"
 
 import "@formae/formae.pkl"
@@ -44,7 +50,6 @@ forma {
 
   new formae.Target {
     label = "k8s-local"
-    namespace = "K8S"
     config = new k8s.Config {
       kubernetesVersion = "1.31"
       auth = new k8s.KubeconfigAuth {}

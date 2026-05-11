@@ -29,7 +29,6 @@
 //     new formae.Stack { label = "cert-manager" }
 //     new formae.Target {
 //       label = "prod"
-//       namespace = "K8S"
 //       config { ["context"] = "my-cluster"; ["namespace"] = "cert-manager" }
 //     }
 //     for (r in certManager.resources) { r }

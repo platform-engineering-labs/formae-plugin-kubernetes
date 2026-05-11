@@ -10,6 +10,11 @@
 // exempt. Zonal keeps demo cost low; a single e2-medium node is enough
 // for the bookstore workload.
 //
+// Resolve Pkl dependencies (first time, or after PklProject changes):
+//   pkl project resolve examples/apps/
+//   pkl project resolve examples/gke/
+//
+// Deploy:
 //   formae apply --mode reconcile --yes --watch \
 //     --project my-gcp-project examples/gke/gke.pkl
 //

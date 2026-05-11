@@ -26,7 +26,6 @@
 //     new formae.Stack { label = "my-app" }
 //     new formae.Target {
 //       label = "prod"
-//       namespace = "K8S"
 //       config { ["context"] = "my-cluster"; ["namespace"] = "databases" }
 //     }
 //     for (r in pg.resources) { r }

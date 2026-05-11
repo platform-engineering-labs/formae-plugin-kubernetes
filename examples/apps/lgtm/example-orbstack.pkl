@@ -5,6 +5,9 @@
 //   - OrbStack with Kubernetes enabled (`orb config set k8s.enable true`)
 //   - ~4 CPU / 8Gi free — 25+ pods run as part of the stack
 //
+// Resolve Pkl dependencies (first time, or after PklProject changes):
+//   pkl project resolve examples/apps/lgtm/
+//
 // Deploy:
 //   formae apply --mode reconcile --yes --watch examples/apps/lgtm/example-orbstack.pkl
 //
@@ -32,7 +35,6 @@ local enableDemoTraffic = true
 
 local _k8sTarget = new formae.Target {
   label = "lgtm-target"
-  namespace = "K8S"
   config = new k8s.Config {
     auth = new k8s.KubeconfigAuth {}
   }

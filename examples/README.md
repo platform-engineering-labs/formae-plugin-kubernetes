@@ -23,8 +23,30 @@ examples/
 ```
 
 Every subdirectory ships its own `PklProject` declaring the Pkl deps it
-needs (`@formae`, `@k8s`, optional cloud plugins, `@formae-helm`). Run
-`pkl project resolve <subdir>` once before evaluating a forma in it.
+needs (`@formae`, `@k8s`, optional cloud plugins, `@formae-helm`).
+
+**Before evaluating any example, resolve its Pkl deps.** `PklProject.deps.json`
+is git-ignored and must be regenerated on a fresh clone (and any time a
+`PklProject` changes). `pkl project resolve` does not cascade into local
+`import("...")` dependencies, so each project that participates in the
+import chain must be resolved individually.
+
+```bash
+# Generate the versioned K8s schemas under schema/pkl/generated (one-time).
+make install
+
+# Resolve shared workload modules used by all cloud examples + vanilla.
+pkl project resolve examples/apps/
+
+# Resolve the per-example project you are about to run, e.g.:
+pkl project resolve examples/vanilla/
+pkl project resolve examples/eks/
+pkl project resolve examples/helm/         # depends on ../../helm too
+pkl project resolve examples/apps/lgtm/
+```
+
+Each example file's doc-block lists the exact resolve commands it
+needs.
 
 ## How to read these examples
 
@@ -87,6 +109,8 @@ config current-context` points at — kind, OrbStack, k3s, a remote
 cluster, etc.
 
 ```bash
+pkl project resolve examples/apps/
+pkl project resolve examples/vanilla/
 formae apply examples/vanilla/vanilla.pkl
 kubectl -n bookstore port-forward svc/bookstore-frontend 8080:80
 open http://localhost:8080
@@ -114,17 +138,24 @@ Prerequisites per provider:
 - **oke** — OCI credentials, `formae-plugin-oci` installed.
 
 ```bash
+# Resolve shared workload module once — all cloud examples consume it.
+pkl project resolve examples/apps/
+
 # EKS
+pkl project resolve examples/eks/
 formae apply --mode reconcile --yes --watch examples/eks/eks.pkl
 
 # GKE
+pkl project resolve examples/gke/
 formae apply --mode reconcile --yes --watch \
   --prop project=my-gcp-project examples/gke/gke.pkl
 
 # AKS
+pkl project resolve examples/aks/
 formae apply --mode reconcile --yes --watch examples/aks/aks.pkl
 
 # OKE
+pkl project resolve examples/oke/
 formae apply --mode reconcile --yes --watch examples/oke/oke.pkl
 ```
 
