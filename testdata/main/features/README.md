@@ -19,7 +19,6 @@ only when the target K8s minor satisfies the meta.
 | `pod-resize-policy` | `Container.resizePolicy` | 1.33 | [1287](https://kep.k8s.io/1287) |
 | `pod-resource-claims` | `Pod.spec.resourceClaims` | 1.34 | [3063](https://kep.k8s.io/3063) |
 | `pod-scheduling-gates` | `Pod.spec.schedulingGates` | 1.30 | [3521](https://kep.k8s.io/3521) |
-| `service-traffic-distribution` | `Service.spec.trafficDistribution` | 1.33 | [4444](https://kep.k8s.io/4444) |
 | `statefulset-ordinals` | `StatefulSet.spec.ordinals` | 1.32 | [3335](https://kep.k8s.io/3335) |
 | `statefulset-pvc-retention` | `StatefulSet.spec.persistentVolumeClaimRetentionPolicy` | 1.32 | [1847](https://kep.k8s.io/1847) |
 | `volume-mount-recursive-readonly` | `VolumeMount.recursiveReadOnly` | 1.34 | [3857](https://kep.k8s.io/3857) |
