@@ -7,7 +7,7 @@
 //   ```pkl
 //   amends "@formae/forma.pkl"
 //
-//   import "@formae-charts/NginxChart.pkl"
+//   import "@formae-formations/NginxFormation.pkl"
 //   import "@formae/formae.pkl"
 //
 //   local nginx = new NginxChart.Nginx {
@@ -27,7 +27,7 @@
 //     for (r in nginx.resources) { r }
 //   }
 //   ```
-module NginxChart
+module NginxFormation
 
 import "@k8s/k8s.pkl"
 import "@k8s/apps/Deployment.pkl" as dep

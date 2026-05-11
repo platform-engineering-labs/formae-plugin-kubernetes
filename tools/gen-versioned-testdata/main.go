@@ -58,8 +58,8 @@ var pklProjectRewrites = func(_ string) []struct{ Old, New string } {
 			New: `import("../../../schema/pkl/generated/PklProject")`,
 		},
 		{
-			Old: `import("../../charts/PklProject")`,
-			New: `import("../../../charts/PklProject")`,
+			Old: `import("../../examples/formations/PklProject")`,
+			New: `import("../../../examples/formations/PklProject")`,
 		},
 	}
 }

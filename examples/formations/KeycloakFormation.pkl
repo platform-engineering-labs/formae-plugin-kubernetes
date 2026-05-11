@@ -1,44 +1,52 @@
-// GrafanaChart: A native Formae chart for deploying Grafana.
+// KeycloakChart: A native Formae chart for deploying Keycloak.
 //
 // Pure PKL — no Helm, no pkl-reader-helm, no external tools.
+//
+// Keycloak is an open-source identity and access management solution.
+// It provides user authentication, authorization, SSO, and identity brokering.
+//
+// External dependencies (deploy separately or use managed services):
+//   - PostgreSQL (optional, for production — uses embedded H2 by default in dev mode)
 //
 // Usage:
 //
 //   ```pkl
 //   amends "@formae/forma.pkl"
 //
-//   import "@formae-charts/GrafanaChart.pkl"
 //   import "@formae/formae.pkl"
+//   import "@formae-formations/KeycloakFormation.pkl"
 //
-//   local grafana = new GrafanaChart.Grafana {
-//     name = "my-grafana"
-//     namespace = "monitoring"
-//     adminPassword = "s3cret"
-//     datasourceUrl = "http://prometheus:9090"
+//   local keycloak = new KeycloakChart.Keycloak {
+//     name = "keycloak"
+//     namespace = "auth"
+//     adminPassword = "changeme"
+//     databaseVendor = "postgres"
+//     databaseHost = "postgres.auth.svc"
+//     databaseUser = "keycloak"
+//     databasePassword = "dbpass"
 //   }
 //
 //   forma {
-//     new formae.Stack { label = "monitoring" }
+//     new formae.Stack { label = "auth" }
 //     new formae.Target {
 //       label = "prod"
 //       namespace = "K8S"
-//       config { ["context"] = "my-cluster"; ["namespace"] = "monitoring" }
+//       config { ["context"] = "my-cluster"; ["namespace"] = "auth" }
 //     }
-//     for (r in grafana.resources) { r }
+//     for (r in keycloak.resources) { r }
 //   }
 //   ```
-module GrafanaChart
+module KeycloakFormation
 
 import "@k8s/k8s.pkl"
 import "@k8s/apps/Deployment.pkl" as dep
 import "@k8s/core/Service.pkl" as svc
 import "@k8s/core/Secret.pkl" as secret
-import "@k8s/core/ConfigMap.pkl" as cm
 import "@k8s/core/Namespace.pkl" as ns
 import "@k8s/networking/Ingress.pkl" as ing
 
-/// Grafana deployment chart.
-open class Grafana {
+/// Keycloak deployment chart.
+open class Keycloak {
 
   // ── Identity ────────────────────────────────────────────────────────────────
 
@@ -50,47 +58,66 @@ open class Grafana {
 
   // ── Container ───────────────────────────────────────────────────────────────
 
-  /// Grafana image.
-  image: String = "grafana/grafana:latest"
+  /// Keycloak image.
+  image: String = "quay.io/keycloak/keycloak:latest"
 
   /// Number of replicas.
   replicas: Int = 1
 
-  // ── Admin credentials ─────────────────────────────────────────────────────
+  // ── Admin Credentials ─────────────────────────────────────────────────────
 
-  /// Grafana admin password (GF_SECURITY_ADMIN_PASSWORD).
-  adminPassword: String = "admin"
-
-  /// Grafana admin user (GF_SECURITY_ADMIN_USER).
+  /// Keycloak admin username (KEYCLOAK_ADMIN).
   adminUser: String = "admin"
 
-  // ── Networking ────────────────────────────────────────────────────────────
+  /// Keycloak admin password (KEYCLOAK_ADMIN_PASSWORD). Required.
+  adminPassword: String
 
-  /// Grafana HTTP port.
-  port: Int = 3000
+  // ── Service ───────────────────────────────────────────────────────────────
+
+  /// Keycloak HTTP port.
+  port: Int = 8080
 
   /// Service type: "ClusterIP", "NodePort", or "LoadBalancer".
   serviceType: String = "ClusterIP"
 
+  // ── Hostname ──────────────────────────────────────────────────────────────
+
+  /// KC_HOSTNAME — the hostname for production mode. Null for dev mode.
+  hostname: String?
+
+  // ── Database ──────────────────────────────────────────────────────────────
+
+  /// KC_DB — database vendor (e.g., "postgres"). Null uses embedded H2.
+  databaseVendor: String?
+
+  /// KC_DB_URL_HOST — database host.
+  databaseHost: String?
+
+  /// KC_DB_URL_PORT — database port (only used when databaseHost is set).
+  databasePort: Int = 5432
+
+  /// KC_DB_URL_DATABASE — database name.
+  databaseName: String = "keycloak"
+
+  /// KC_DB_USERNAME — database username.
+  databaseUser: String?
+
+  /// KC_DB_PASSWORD — database password.
+  databasePassword: String?
+
   // ── Resources ─────────────────────────────────────────────────────────────
 
-  /// CPU request (e.g., "100m").
+  /// CPU request (e.g., "250m").
   cpuRequest: String?
 
-  /// CPU limit (e.g., "200m").
+  /// CPU limit (e.g., "1000m").
   cpuLimit: String?
 
-  /// Memory request (e.g., "128Mi").
+  /// Memory request (e.g., "512Mi").
   memoryRequest: String?
 
-  /// Memory limit (e.g., "256Mi").
+  /// Memory limit (e.g., "1Gi").
   memoryLimit: String?
-
-  // ── Datasource provisioning ───────────────────────────────────────────────
-
-  /// Prometheus URL for auto-provisioned datasource. When set, creates a ConfigMap
-  /// with datasource provisioning configuration.
-  datasourceUrl: String?
 
   // ── Optional features ─────────────────────────────────────────────────────
 
@@ -124,12 +151,11 @@ open class Grafana {
 
   /// All generated Formae resources. Use in a `forma { }` block:
   ///
-  ///   for (r in grafana.resources) { r }
+  ///   for (r in keycloak.resources) { r }
   resources: Listing = let (_self = this)
     new Listing {
       when (_self.createNamespace) { _self._namespace }
       _self._secret
-      when (_self.datasourceUrl != null) { _self._configMap }
       _self._service
       _self._deployment
       when (_self.ingressHost != null) { _self._ingress }
@@ -139,7 +165,7 @@ open class Grafana {
 
   hidden _appLabels: Mapping<String, String> = let (_self = this)
     new Mapping {
-      ["app.kubernetes.io/name"] = "grafana"
+      ["app.kubernetes.io/name"] = "keycloak"
       ["app.kubernetes.io/instance"] = _self.name
       when (_self.extraLabels != null) {
         for (_k, _v in _self.extraLabels) {
@@ -150,7 +176,7 @@ open class Grafana {
 
   hidden _selectorLabels: Mapping<String, String> = let (_self = this)
     new Mapping {
-      ["app.kubernetes.io/name"] = "grafana"
+      ["app.kubernetes.io/name"] = "keycloak"
       ["app.kubernetes.io/instance"] = _self.name
     }
 
@@ -163,6 +189,10 @@ open class Grafana {
         annotations = _self.extraAnnotations
       }
     }
+
+  // ── Internal: env var helper ──────────────────────────────────────────────
+
+  hidden _ev: (String, String) -> k8s.EnvVar = (n, v) -> new k8s.EnvVar { name = n; value = v }
 
   // ── Internal: resource builders ───────────────────────────────────────────
 
@@ -178,27 +208,13 @@ open class Grafana {
     new secret.Secret {
       label = _self.name + "-secret"
       metadata = _self._objectMeta
+      type = "Opaque"
       stringData {
         ["admin-user"] = _self.adminUser
         ["admin-password"] = _self.adminPassword
-      }
-    }
-
-  hidden _configMap: cm.ConfigMap = let (_self = this)
-    new cm.ConfigMap {
-      label = _self.name + "-datasource-configmap"
-      metadata = _self._objectMeta
-      data {
-        ["datasources.yaml"] = new Listing {
-          "apiVersion: 1"
-          "datasources:"
-          "  - name: Prometheus"
-          "    type: prometheus"
-          "    access: proxy"
-          "    url: \(_self.datasourceUrl)"
-          "    isDefault: true"
-          "    editable: true"
-        }.toList().join("\n")
+        when (_self.databasePassword != null) {
+          ["db-password"] = _self.databasePassword
+        }
       }
     }
 
@@ -219,34 +235,45 @@ open class Grafana {
       }
     }
 
+  hidden _keycloakEnv: Listing = let (_self = this)
+    new Listing {
+      _self._ev.apply("KC_HEALTH_ENABLED", "true")
+      _self._ev.apply("KC_METRICS_ENABLED", "true")
+      _self._ev.apply("KEYCLOAK_ADMIN", _self.adminUser)
+      _self._ev.apply("KEYCLOAK_ADMIN_PASSWORD", _self.adminPassword)
+      when (_self.hostname != null) {
+        _self._ev.apply("KC_HOSTNAME", _self.hostname)
+      }
+      when (_self.databaseVendor != null) {
+        _self._ev.apply("KC_DB", _self.databaseVendor)
+        when (_self.databaseHost != null) {
+          _self._ev.apply("KC_DB_URL_HOST", _self.databaseHost)
+        }
+        _self._ev.apply("KC_DB_URL_PORT", "\(_self.databasePort)")
+        _self._ev.apply("KC_DB_URL_DATABASE", _self.databaseName)
+        when (_self.databaseUser != null) {
+          _self._ev.apply("KC_DB_USERNAME", _self.databaseUser)
+        }
+      }
+      when (_self.databasePassword != null) {
+        _self._ev.apply("KC_DB_PASSWORD", _self.databasePassword)
+      }
+    }
+
   hidden _container: k8s.Container = let (_self = this)
     new k8s.Container {
-      name = "grafana"
+      name = "keycloak"
       image = _self.image
+      args {
+        "start-dev"
+      }
       ports {
         new {
           name = "http"
           containerPort = _self.port
         }
       }
-      env {
-        new {
-          name = "GF_SECURITY_ADMIN_USER"
-          value = _self.adminUser
-        }
-        new {
-          name = "GF_SECURITY_ADMIN_PASSWORD"
-          value = _self.adminPassword
-        }
-      }
-      when (_self.datasourceUrl != null) {
-        volumeMounts {
-          new {
-            name = "datasource-config"
-            mountPath = "/etc/grafana/provisioning/datasources"
-          }
-        }
-      }
+      env = _self._keycloakEnv
       when (_self._resourceReqs != null) {
         resources = _self._resourceReqs
       }
@@ -261,6 +288,9 @@ open class Grafana {
         selector = new k8s.LabelSelector {
           matchLabels = _self._selectorLabels
         }
+        strategy = new dep.DeploymentStrategy {
+          type = "RollingUpdate"
+        }
         template = new k8s.PodTemplateSpec {
           metadata = new k8s.ObjectMeta {
             name = _self.name
@@ -269,16 +299,6 @@ open class Grafana {
           spec = new k8s.PodSpec {
             containers {
               _self._container
-            }
-            when (_self.datasourceUrl != null) {
-              volumes {
-                new {
-                  name = "datasource-config"
-                  configMap = new k8s.ConfigMapVolumeSource {
-                    name = _self.name
-                  }
-                }
-              }
             }
           }
         }

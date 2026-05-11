@@ -1,25 +1,20 @@
-// PostgreSQLChart: A native Formae chart for deploying PostgreSQL.
+// RedisChart: A native Formae chart for deploying Redis with persistent storage.
 //
 // Pure PKL — no Helm, no pkl-reader-helm, no external tools.
-//
-// Deploys a PostgreSQL StatefulSet with persistent storage, a headless Service,
-// and a Secret for credentials. Optionally creates a ConfigMap for custom
-// postgresql.conf and a Namespace resource.
 //
 // Usage:
 //
 //   ```pkl
 //   amends "@formae/forma.pkl"
 //
+//   import "@formae-formations/RedisFormation.pkl"
 //   import "@formae/formae.pkl"
-//   import "@formae-charts/PostgreSQLChart.pkl"
 //
-//   local pg = new PostgreSQLChart.PostgreSQL {
-//     name = "my-postgres"
-//     namespace = "databases"
-//     password = "supersecret"
-//     database = "myapp"
-//     storageSize = "20Gi"
+//   local redis = new RedisChart.Redis {
+//     name = "my-redis"
+//     namespace = "production"
+//     password = "s3cret"
+//     storageSize = "10Gi"
 //   }
 //
 //   forma {
@@ -27,22 +22,21 @@
 //     new formae.Target {
 //       label = "prod"
 //       namespace = "K8S"
-//       config { ["context"] = "my-cluster"; ["namespace"] = "databases" }
+//       config { ["context"] = "my-cluster"; ["namespace"] = "production" }
 //     }
-//     for (r in pg.resources) { r }
+//     for (r in redis.resources) { r }
 //   }
 //   ```
-module PostgreSQLChart
+module RedisFormation
 
 import "@k8s/k8s.pkl"
 import "@k8s/apps/StatefulSet.pkl" as sts
 import "@k8s/core/Service.pkl" as svc
 import "@k8s/core/Secret.pkl" as secret
-import "@k8s/core/ConfigMap.pkl" as cm
 import "@k8s/core/Namespace.pkl" as ns
 
-/// PostgreSQL StatefulSet chart.
-open class PostgreSQL {
+/// Redis deployment chart with persistent storage via StatefulSet.
+open class Redis {
 
   // ── Identity ────────────────────────────────────────────────────────────────
 
@@ -54,54 +48,46 @@ open class PostgreSQL {
 
   // ── Container ───────────────────────────────────────────────────────────────
 
-  /// PostgreSQL image.
-  image: String = "postgres:17"
-
-  /// PostgreSQL port.
-  port: Int = 5432
-
-  // ── Scaling ─────────────────────────────────────────────────────────────────
+  /// Redis image.
+  image: String = "redis:7"
 
   /// Number of replicas.
   replicas: Int = 1
 
-  // ── Storage ─────────────────────────────────────────────────────────────────
+  // ── Storage ───────────────────────────────────────────────────────────────
 
-  /// PVC storage size for the data volume.
-  storageSize: String = "10Gi"
+  /// Size of the persistent volume claim for data.
+  storageSize: String = "5Gi"
 
-  /// Storage class name. Null uses the cluster default.
+  /// Storage class name for the PVC. Uses cluster default when null.
   storageClassName: String?
 
-  // ── Credentials ─────────────────────────────────────────────────────────────
+  // ── Redis Configuration ───────────────────────────────────────────────────
 
-  /// PostgreSQL password (POSTGRES_PASSWORD). Required.
-  password: String
+  /// Optional Redis password (--requirepass). Creates a Secret when set.
+  password: String?
 
-  /// PostgreSQL database name (POSTGRES_DB).
-  database: String = "postgres"
+  /// Optional max memory setting (e.g., "256mb").
+  maxMemory: String?
 
-  /// PostgreSQL username (POSTGRES_USER).
-  username: String = "postgres"
+  /// Redis port.
+  port: Int = 6379
 
-  // ── Resources ─────────────────────────────────────────────────────────────
+  // ── Resources ───────────────────────────────────────────────────────────────
 
-  /// CPU request (e.g., "250m").
+  /// CPU request (e.g., "100m").
   cpuRequest: String?
 
-  /// CPU limit (e.g., "1000m").
+  /// CPU limit (e.g., "200m").
   cpuLimit: String?
 
-  /// Memory request (e.g., "256Mi").
+  /// Memory request (e.g., "128Mi").
   memoryRequest: String?
 
-  /// Memory limit (e.g., "1Gi").
+  /// Memory limit (e.g., "256Mi").
   memoryLimit: String?
 
   // ── Optional features ───────────────────────────────────────────────────────
-
-  /// ConfigMap data for custom postgresql.conf or other configuration files.
-  configData: Mapping<String, String>?
 
   /// Create a Namespace resource.
   createNamespace: Boolean = false
@@ -118,12 +104,11 @@ open class PostgreSQL {
 
   /// All generated Formae resources. Use in a `forma { }` block:
   ///
-  ///   for (r in pg.resources) { r }
+  ///   for (r in redis.resources) { r }
   resources: Listing = let (_self = this)
     new Listing {
       when (_self.createNamespace) { _self._namespace }
-      _self._secret
-      when (_self.configData != null) { _self._configMap }
+      when (_self.password != null) { _self._secret }
       _self._service
       _self._statefulSet
     }
@@ -132,7 +117,7 @@ open class PostgreSQL {
 
   hidden _appLabels: Mapping<String, String> = let (_self = this)
     new Mapping {
-      ["app.kubernetes.io/name"] = "postgresql"
+      ["app.kubernetes.io/name"] = "redis"
       ["app.kubernetes.io/instance"] = _self.name
       when (_self.extraLabels != null) {
         for (_k, _v in _self.extraLabels) {
@@ -143,11 +128,11 @@ open class PostgreSQL {
 
   hidden _selectorLabels: Mapping<String, String> = let (_self = this)
     new Mapping {
-      ["app.kubernetes.io/name"] = "postgresql"
+      ["app.kubernetes.io/name"] = "redis"
       ["app.kubernetes.io/instance"] = _self.name
     }
 
-  hidden _objectMeta: k8s.ObjectMeta = let (_self = this)
+  hidden _objectMeta: k8s.NamespacedObjectMeta = let (_self = this)
     new k8s.NamespacedObjectMeta {
       name = _self.name
       namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
@@ -171,17 +156,10 @@ open class PostgreSQL {
     new secret.Secret {
       label = _self.name + "-secret"
       metadata = _self._objectMeta
-      type = "Opaque"
+      `type` = "Opaque"
       stringData {
-        ["postgres-password"] = _self.password
+        ["redis-password"] = _self.password
       }
-    }
-
-  hidden _configMap: cm.ConfigMap = let (_self = this)
-    new cm.ConfigMap {
-      label = _self.name + "-configmap"
-      metadata = _self._objectMeta
-      data = _self.configData
     }
 
   hidden _resourceReqs: k8s.ResourceRequirements? = let (_self = this)
@@ -203,24 +181,44 @@ open class PostgreSQL {
 
   hidden _container: k8s.Container = let (_self = this)
     new k8s.Container {
-      name = "postgresql"
+      name = "redis"
       image = _self.image
+      command {
+        "redis-server"
+      }
+      args {
+        when (_self.password != null) {
+          "--requirepass"
+          "$(REDIS_PASSWORD)"
+        }
+        when (_self.maxMemory != null) {
+          "--maxmemory"
+          _self.maxMemory
+        }
+      }
       ports {
         new {
-          name = "postgresql"
+          name = "redis"
           containerPort = _self.port
         }
       }
-      env {
-        new k8s.EnvVar { name = "POSTGRES_PASSWORD"; value = _self.password }
-        new k8s.EnvVar { name = "POSTGRES_DB"; value = _self.database }
-        new k8s.EnvVar { name = "POSTGRES_USER"; value = _self.username }
+      when (_self.password != null) {
+        env {
+          new {
+            name = "REDIS_PASSWORD"
+            valueFrom = new k8s.EnvVarSource {
+              secretKeyRef = new k8s.SecretKeySelector {
+                name = _self.name
+                key = "redis-password"
+              }
+            }
+          }
+        }
       }
       volumeMounts {
-        new k8s.VolumeMount {
+        new {
           name = "data"
-          mountPath = "/var/lib/postgresql/data"
-          subPath = "pgdata"
+          mountPath = "/data"
         }
       }
       when (_self._resourceReqs != null) {
@@ -278,13 +276,13 @@ open class PostgreSQL {
       label = _self.name + "-service"
       metadata = _self._objectMeta
       spec = new svc.ServiceSpec {
-        type = "ClusterIP"
+        `type` = "ClusterIP"
         selector = _self._selectorLabels
         ports {
           new {
-            name = "postgresql"
+            name = "redis"
             port = _self.port
-            targetPort = "postgresql"
+            targetPort = "redis"
           }
         }
       }

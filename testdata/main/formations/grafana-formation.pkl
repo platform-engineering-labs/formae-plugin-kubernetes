@@ -1,12 +1,12 @@
 /*
- * Conformance Test: GrafanaChart (Create)
+ * Conformance Test: GrafanaFormation (Create)
  */
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
-import "@formae-charts/GrafanaChart.pkl"
-import "./config/vars.pkl" as v
+import "@formae-formations/GrafanaFormation.pkl"
+import "../shared/config/vars.pkl" as v
 
-local chart = new GrafanaChart.Grafana {
+local chart = new GrafanaFormation.Grafana {
   name = "test-grafana-\(v.testRunID)"
   namespace = "formae-test-\(v.testRunID)"
   createNamespace = true

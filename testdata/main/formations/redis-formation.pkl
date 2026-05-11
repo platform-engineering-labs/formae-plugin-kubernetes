@@ -1,12 +1,12 @@
 /*
- * Conformance Test: RedisChart (Create)
+ * Conformance Test: RedisFormation (Create)
  */
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
-import "@formae-charts/RedisChart.pkl"
-import "./config/vars.pkl" as v
+import "@formae-formations/RedisFormation.pkl"
+import "../shared/config/vars.pkl" as v
 
-local chart = new RedisChart.Redis {
+local chart = new RedisFormation.Redis {
   name = "test-redis-\(v.testRunID)"
   namespace = "formae-test-\(v.testRunID)"
   createNamespace = true

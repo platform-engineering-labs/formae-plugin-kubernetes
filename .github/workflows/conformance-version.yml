@@ -83,8 +83,8 @@ jobs:
       - id: discover
         run: |
           # Shared resource fixtures (testdata/generated/v*/shared) run in
-          # the conformance matrix; chart fixtures (testdata/main/charts/)
-          # are intentionally excluded.
+          # the conformance matrix; formation fixtures
+          # (testdata/main/formations/) are intentionally excluded.
           RESOURCE_TESTS=$(ls testdata/generated/v${{ inputs.k8s_version }}/shared/*.pkl 2>/dev/null \
             | xargs -n1 basename \
             | grep -v '\-update\.pkl$' \

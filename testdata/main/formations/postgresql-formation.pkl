@@ -1,12 +1,12 @@
 /*
- * Conformance Test: PostgreSQLChart (Create)
+ * Conformance Test: PostgreSQLFormation (Create)
  */
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
-import "@formae-charts/PostgreSQLChart.pkl"
-import "./config/vars.pkl" as v
+import "@formae-formations/PostgreSQLFormation.pkl"
+import "../shared/config/vars.pkl" as v
 
-local chart = new PostgreSQLChart.PostgreSQL {
+local chart = new PostgreSQLFormation.PostgreSQL {
   name = "test-pg-\(v.testRunID)"
   namespace = "formae-test-\(v.testRunID)"
   createNamespace = true

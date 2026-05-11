@@ -1,15 +1,15 @@
 /*
- * Conformance Test: CertManagerChart (Create)
+ * Conformance Test: CertManagerFormation (Create)
  *
  * Note: cert-manager pods will NOT be Ready without CRDs installed.
  * This test validates that the chart's K8S resources are created correctly.
  */
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
-import "@formae-charts/CertManagerChart.pkl"
-import "./config/vars.pkl" as v
+import "@formae-formations/CertManagerFormation.pkl"
+import "../shared/config/vars.pkl" as v
 
-local chart = new CertManagerChart.CertManager {
+local chart = new CertManagerFormation.CertManager {
   name = "test-cm-\(v.testRunID)"
   namespace = "formae-test-\(v.testRunID)"
   createNamespace = true

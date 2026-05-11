@@ -1,12 +1,12 @@
 /*
- * Conformance Test: PrometheusChart (Create)
+ * Conformance Test: PrometheusFormation (Create)
  */
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
-import "@formae-charts/PrometheusChart.pkl"
-import "./config/vars.pkl" as v
+import "@formae-formations/PrometheusFormation.pkl"
+import "../shared/config/vars.pkl" as v
 
-local chart = new PrometheusChart.Prometheus {
+local chart = new PrometheusFormation.Prometheus {
   name = "test-prom-\(v.testRunID)"
   namespace = "formae-test-\(v.testRunID)"
   createNamespace = true
