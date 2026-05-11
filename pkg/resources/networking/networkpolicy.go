@@ -6,7 +6,6 @@ package networking
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -48,7 +47,7 @@ var _ prov.Provisioner = &NetworkPolicy{}
 
 func (n *NetworkPolicy) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var np *networkingv1ac.NetworkPolicyApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &np); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &np); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal networkpolicy properties: %w", err)
 	}
 
@@ -110,7 +109,7 @@ func (n *NetworkPolicy) Read(ctx context.Context, request *resource.ReadRequest)
 
 func (n *NetworkPolicy) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var np *networkingv1ac.NetworkPolicyApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &np); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &np); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal networkpolicy properties: %w", err)
 	}
 

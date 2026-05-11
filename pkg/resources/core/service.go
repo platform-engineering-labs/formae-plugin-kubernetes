@@ -6,7 +6,6 @@ package core
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -49,7 +48,7 @@ var _ prov.Provisioner = &Service{}
 
 func (svc *Service) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var s *v1coreac.ServiceApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &s); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &s); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal service properties: %w", err)
 	}
 
@@ -112,7 +111,7 @@ func (svc *Service) Read(ctx context.Context, request *resource.ReadRequest) (*r
 
 func (svc *Service) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var s *v1coreac.ServiceApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &s); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &s); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal service properties: %w", err)
 	}
 
@@ -243,13 +242,11 @@ func (svc *Service) List(ctx context.Context, request *resource.ListRequest) (*r
 }
 
 // operationStatus maps Service state to Formae OperationStatus.
-// LoadBalancer Services are InProgress until the controller assigns an
-// external IP or hostname; ClusterIP, NodePort, and ExternalName Services
-// have no asynchronous provisioning step and are immediately Success.
+// All Services are Success once the API server accepts the object. Whether a
+// LoadBalancer controller eventually provisions an external address depends
+// on cluster configuration (cloud-provider, MetalLB, etc.) and may take an
+// unbounded amount of time — Formae apply should not block on it.
 func (svc *Service) operationStatus(s *v1.Service) resource.OperationStatus {
-	if s.Spec.Type == v1.ServiceTypeLoadBalancer && len(s.Status.LoadBalancer.Ingress) == 0 {
-		return resource.OperationStatusInProgress
-	}
 	return resource.OperationStatusSuccess
 }
 

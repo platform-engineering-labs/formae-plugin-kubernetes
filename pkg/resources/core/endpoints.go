@@ -6,7 +6,6 @@ package core
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -48,7 +47,7 @@ var _ prov.Provisioner = &Endpoints{}
 
 func (e *Endpoints) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var ep *v1coreac.EndpointsApplyConfiguration //nolint:staticcheck // Endpoints resource intentionally supported
-	if err := json.Unmarshal(request.Properties, &ep); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &ep); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal endpoints properties: %w", err)
 	}
 
@@ -110,7 +109,7 @@ func (e *Endpoints) Read(ctx context.Context, request *resource.ReadRequest) (*r
 
 func (e *Endpoints) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var ep *v1coreac.EndpointsApplyConfiguration //nolint:staticcheck // Endpoints resource intentionally supported
-	if err := json.Unmarshal(request.DesiredProperties, &ep); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &ep); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal endpoints properties: %w", err)
 	}
 

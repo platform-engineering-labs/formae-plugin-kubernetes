@@ -6,7 +6,6 @@ package coordination
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -48,7 +47,7 @@ var _ prov.Provisioner = &Lease{}
 
 func (l *Lease) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var lease *coordinationv1ac.LeaseApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &lease); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &lease); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal lease properties: %w", err)
 	}
 
@@ -110,7 +109,7 @@ func (l *Lease) Read(ctx context.Context, request *resource.ReadRequest) (*resou
 
 func (l *Lease) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var lease *coordinationv1ac.LeaseApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &lease); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &lease); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal lease properties: %w", err)
 	}
 

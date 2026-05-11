@@ -90,7 +90,7 @@ var _ prov.Provisioner = &ServiceAccount{}
 
 func (sa *ServiceAccount) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var svcAcct *v1coreac.ServiceAccountApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &svcAcct); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &svcAcct); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal serviceaccount properties: %w", err)
 	}
 
@@ -160,7 +160,7 @@ func (sa *ServiceAccount) Read(ctx context.Context, request *resource.ReadReques
 
 func (sa *ServiceAccount) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var svcAcct *v1coreac.ServiceAccountApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &svcAcct); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &svcAcct); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal serviceaccount properties: %w", err)
 	}
 

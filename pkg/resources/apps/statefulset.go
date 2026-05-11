@@ -49,7 +49,7 @@ var _ prov.Provisioner = &StatefulSet{}
 
 func (ss *StatefulSet) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var sts *appsv1ac.StatefulSetApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &sts); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &sts); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal statefulset properties: %w", err)
 	}
 
@@ -112,7 +112,7 @@ func (ss *StatefulSet) Read(ctx context.Context, request *resource.ReadRequest) 
 
 func (ss *StatefulSet) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var sts *appsv1ac.StatefulSetApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &sts); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &sts); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal statefulset properties: %w", err)
 	}
 

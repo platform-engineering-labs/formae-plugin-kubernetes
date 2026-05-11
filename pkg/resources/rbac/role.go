@@ -6,7 +6,6 @@ package rbac
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -48,7 +47,7 @@ var _ prov.Provisioner = &Role{}
 
 func (r *Role) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var role *rbacv1ac.RoleApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &role); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &role); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal role properties: %w", err)
 	}
 
@@ -110,7 +109,7 @@ func (r *Role) Read(ctx context.Context, request *resource.ReadRequest) (*resour
 
 func (r *Role) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var role *rbacv1ac.RoleApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &role); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &role); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal role properties: %w", err)
 	}
 

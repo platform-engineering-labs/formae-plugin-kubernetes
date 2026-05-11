@@ -6,7 +6,6 @@ package core
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -49,7 +48,7 @@ var _ prov.Provisioner = &PersistentVolumeClaim{}
 
 func (p *PersistentVolumeClaim) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var pvc *v1coreac.PersistentVolumeClaimApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &pvc); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &pvc); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal persistentvolumeclaim properties: %w", err)
 	}
 
@@ -120,7 +119,7 @@ func (p *PersistentVolumeClaim) Read(ctx context.Context, request *resource.Read
 
 func (p *PersistentVolumeClaim) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var pvc *v1coreac.PersistentVolumeClaimApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &pvc); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &pvc); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal persistentvolumeclaim properties: %w", err)
 	}
 

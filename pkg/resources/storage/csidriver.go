@@ -6,7 +6,6 @@ package storage
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -48,7 +47,7 @@ var _ prov.Provisioner = &CSIDriver{}
 
 func (c *CSIDriver) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var cd *storagev1ac.CSIDriverApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &cd); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &cd); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal csidriver properties: %w", err)
 	}
 
@@ -105,7 +104,7 @@ func (c *CSIDriver) Read(ctx context.Context, request *resource.ReadRequest) (*r
 
 func (c *CSIDriver) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var cd *storagev1ac.CSIDriverApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &cd); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &cd); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal csidriver properties: %w", err)
 	}
 

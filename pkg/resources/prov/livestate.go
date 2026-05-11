@@ -196,9 +196,19 @@ func stripServerDefaults(v interface{}, path string) {
 			delete(val, "serviceAccount")
 		}
 
-		// Container rule: strip imagePullPolicy and auto-injected SA mounts.
+		// Container rule: strip imagePullPolicy, auto-injected SA mounts,
+		// and K8s server defaults that leak through SSA-Apply round-trips
+		// (terminationMessagePath/Policy, empty resources{}) — these are
+		// kube-apiserver-defaulted, not Formae-managed, and cause spurious
+		// "containers list changed" drift on reconcile.
 		if isContainerElementPath(path) {
 			delete(val, "imagePullPolicy")
+			delete(val, "terminationMessagePath")
+			delete(val, "terminationMessagePolicy")
+			if res, ok := val["resources"].(map[string]interface{}); ok && len(res) == 0 {
+				delete(val, "resources")
+			}
+			stripFieldRefAPIVersionDefaults(val)
 			stripServiceAccountVolumeMounts(val)
 		}
 
@@ -246,6 +256,32 @@ func joinPath(base, key string) string {
 		return key
 	}
 	return base + "." + key
+}
+
+// stripFieldRefAPIVersionDefaults removes `apiVersion: "v1"` from env-var
+// fieldRef sub-objects. kube-apiserver defaults this whenever it is not set
+// in the user's apply, then echoes it back on subsequent reads — producing
+// container-list drift even though the user never set the field.
+func stripFieldRefAPIVersionDefaults(container map[string]interface{}) {
+	env, ok := container["env"].([]interface{})
+	if !ok {
+		return
+	}
+	for _, e := range env {
+		entry, ok := e.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		valueFrom, ok := entry["valueFrom"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if fr, ok := valueFrom["fieldRef"].(map[string]interface{}); ok {
+			if v, _ := fr["apiVersion"].(string); v == "v1" {
+				delete(fr, "apiVersion")
+			}
+		}
+	}
 }
 
 // stripServiceAccountVolumeMounts removes auto-injected service account

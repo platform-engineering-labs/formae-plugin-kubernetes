@@ -6,7 +6,6 @@ package networking
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -49,7 +48,7 @@ var _ prov.Provisioner = &Ingress{}
 
 func (ing *Ingress) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var ingress *networkingv1ac.IngressApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &ingress); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &ingress); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal ingress properties: %w", err)
 	}
 
@@ -112,7 +111,7 @@ func (ing *Ingress) Read(ctx context.Context, request *resource.ReadRequest) (*r
 
 func (ing *Ingress) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var ingress *networkingv1ac.IngressApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &ingress); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &ingress); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal ingress properties: %w", err)
 	}
 

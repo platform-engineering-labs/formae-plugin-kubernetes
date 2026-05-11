@@ -6,7 +6,6 @@ package core
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -48,7 +47,7 @@ var _ prov.Provisioner = &Secret{}
 
 func (s *Secret) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var secret *v1coreac.SecretApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &secret); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &secret); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal secret properties: %w", err)
 	}
 
@@ -110,7 +109,7 @@ func (s *Secret) Read(ctx context.Context, request *resource.ReadRequest) (*reso
 
 func (s *Secret) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var secret *v1coreac.SecretApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &secret); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &secret); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal secret properties: %w", err)
 	}
 

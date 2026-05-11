@@ -6,7 +6,6 @@ package core
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -57,7 +56,7 @@ var _ prov.Provisioner = &Namespace{}
 
 func (n *Namespace) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var ns *v1coreac.NamespaceApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &ns); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &ns); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal namespace properties: %w", err)
 	}
 
@@ -114,7 +113,7 @@ func (n *Namespace) Read(ctx context.Context, request *resource.ReadRequest) (*r
 
 func (n *Namespace) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var ns *v1coreac.NamespaceApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &ns); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &ns); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal namespace properties: %w", err)
 	}
 

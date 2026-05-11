@@ -39,10 +39,14 @@ local crossplaneReplicas = 1
 // ---------------------------------------------------------------------------
 // Labels
 // ---------------------------------------------------------------------------
+// Dotted label keys (e.g. `app.kubernetes.io/name`) are intentionally
+// omitted — Formae's JSON property comparator treats `.` as a path
+// separator, so `labels."app.kubernetes.io/name"` round-trips through
+// live-state as nested `labels.app.kubernetes.io.name`, collides with
+// the flat `labels.app` string, and triggers spurious drift on every
+// reconcile.
 local commonLabels = new Mapping {
   ["app"] = appName
-  ["app.kubernetes.io/name"] = appName
-  ["app.kubernetes.io/part-of"] = appName
   ["managed-by"] = "formae"
 }
 

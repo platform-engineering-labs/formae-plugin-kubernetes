@@ -6,7 +6,6 @@ package node
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -48,7 +47,7 @@ var _ prov.Provisioner = &RuntimeClass{}
 
 func (r *RuntimeClass) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var rc *nodev1ac.RuntimeClassApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &rc); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &rc); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal runtimeclass properties: %w", err)
 	}
 
@@ -105,7 +104,7 @@ func (r *RuntimeClass) Read(ctx context.Context, request *resource.ReadRequest) 
 
 func (r *RuntimeClass) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var rc *nodev1ac.RuntimeClassApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &rc); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &rc); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal runtimeclass properties: %w", err)
 	}
 

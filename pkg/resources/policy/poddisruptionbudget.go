@@ -6,7 +6,6 @@ package policy
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -48,7 +47,7 @@ var _ prov.Provisioner = &PodDisruptionBudget{}
 
 func (p *PodDisruptionBudget) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var pdb *policyv1ac.PodDisruptionBudgetApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &pdb); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &pdb); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal poddisruptionbudget properties: %w", err)
 	}
 
@@ -110,7 +109,7 @@ func (p *PodDisruptionBudget) Read(ctx context.Context, request *resource.ReadRe
 
 func (p *PodDisruptionBudget) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var pdb *policyv1ac.PodDisruptionBudgetApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &pdb); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &pdb); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal poddisruptionbudget properties: %w", err)
 	}
 

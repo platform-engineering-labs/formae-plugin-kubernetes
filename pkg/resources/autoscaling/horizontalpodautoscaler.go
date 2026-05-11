@@ -6,7 +6,6 @@ package autoscaling
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -49,7 +48,7 @@ var _ prov.Provisioner = &HorizontalPodAutoscaler{}
 
 func (h *HorizontalPodAutoscaler) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var hpa *autoscalingv2ac.HorizontalPodAutoscalerApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &hpa); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &hpa); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal horizontalpodautoscaler properties: %w", err)
 	}
 
@@ -112,7 +111,7 @@ func (h *HorizontalPodAutoscaler) Read(ctx context.Context, request *resource.Re
 
 func (h *HorizontalPodAutoscaler) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var hpa *autoscalingv2ac.HorizontalPodAutoscalerApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &hpa); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &hpa); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal horizontalpodautoscaler properties: %w", err)
 	}
 

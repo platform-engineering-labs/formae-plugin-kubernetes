@@ -6,7 +6,6 @@ package batch
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -49,7 +48,7 @@ var _ prov.Provisioner = &Job{}
 
 func (j *Job) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var job *batchv1ac.JobApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &job); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &job); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal job properties: %w", err)
 	}
 
@@ -116,7 +115,7 @@ func (j *Job) Read(ctx context.Context, request *resource.ReadRequest) (*resourc
 
 func (j *Job) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var job *batchv1ac.JobApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &job); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &job); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal job properties: %w", err)
 	}
 

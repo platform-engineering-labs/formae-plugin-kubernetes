@@ -6,7 +6,6 @@ package apps
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -49,7 +48,7 @@ var _ prov.Provisioner = &DaemonSet{}
 
 func (ds *DaemonSet) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var daemonset *appsv1ac.DaemonSetApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &daemonset); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &daemonset); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal daemonset properties: %w", err)
 	}
 
@@ -112,7 +111,7 @@ func (ds *DaemonSet) Read(ctx context.Context, request *resource.ReadRequest) (*
 
 func (ds *DaemonSet) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var daemonset *appsv1ac.DaemonSetApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &daemonset); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &daemonset); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal daemonset properties: %w", err)
 	}
 

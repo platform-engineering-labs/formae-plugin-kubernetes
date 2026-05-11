@@ -6,7 +6,6 @@ package apps
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -49,7 +48,7 @@ var _ prov.Provisioner = &ReplicaSet{}
 
 func (r *ReplicaSet) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var rs *appsv1ac.ReplicaSetApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &rs); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &rs); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal replicaset properties: %w", err)
 	}
 
@@ -112,7 +111,7 @@ func (r *ReplicaSet) Read(ctx context.Context, request *resource.ReadRequest) (*
 
 func (r *ReplicaSet) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var rs *appsv1ac.ReplicaSetApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &rs); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &rs); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal replicaset properties: %w", err)
 	}
 

@@ -6,7 +6,6 @@ package scheduling
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -48,7 +47,7 @@ var _ prov.Provisioner = &PriorityClass{}
 
 func (pc *PriorityClass) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var priorityClass *schedulingv1ac.PriorityClassApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &priorityClass); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &priorityClass); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal priorityclass properties: %w", err)
 	}
 
@@ -105,7 +104,7 @@ func (pc *PriorityClass) Read(ctx context.Context, request *resource.ReadRequest
 
 func (pc *PriorityClass) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var priorityClass *schedulingv1ac.PriorityClassApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &priorityClass); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &priorityClass); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal priorityclass properties: %w", err)
 	}
 

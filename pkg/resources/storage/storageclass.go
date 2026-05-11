@@ -6,7 +6,6 @@ package storage
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -48,7 +47,7 @@ var _ prov.Provisioner = &StorageClass{}
 
 func (s *StorageClass) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var sc *storagev1ac.StorageClassApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &sc); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &sc); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal storageclass properties: %w", err)
 	}
 
@@ -105,7 +104,7 @@ func (s *StorageClass) Read(ctx context.Context, request *resource.ReadRequest) 
 
 func (s *StorageClass) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var sc *storagev1ac.StorageClassApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &sc); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &sc); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal storageclass properties: %w", err)
 	}
 

@@ -6,7 +6,6 @@ package apps
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -49,7 +48,7 @@ var _ prov.Provisioner = &Deployment{}
 
 func (d *Deployment) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var deploy *appsv1ac.DeploymentApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &deploy); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &deploy); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal deployment properties: %w", err)
 	}
 
@@ -112,7 +111,7 @@ func (d *Deployment) Read(ctx context.Context, request *resource.ReadRequest) (*
 
 func (d *Deployment) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var deploy *appsv1ac.DeploymentApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &deploy); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &deploy); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal deployment properties: %w", err)
 	}
 

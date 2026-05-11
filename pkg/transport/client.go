@@ -29,6 +29,15 @@ func NewClient(cfg *config.Config) (*Client, error) {
 	// that would otherwise be logged to stderr and treated as plugin errors by Formae.
 	restConfig.WarningHandler = rest.NoWarnings{}
 
+	// Disable client-go's local QPS/Burst throttle. Formae core already gates
+	// plugin invocations via Plugin.RateLimit(); a second token bucket inside
+	// client-go just adds redundant client-side delays and emits klog INFO
+	// lines ("Waited before sending request") that Formae mis-classifies as
+	// plugin errors. Apiserver-side APF (429 + Retry-After) remains the
+	// authoritative back-pressure mechanism.
+	restConfig.QPS = -1
+	restConfig.Burst = -1
+
 	clientset, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
 		return nil, err

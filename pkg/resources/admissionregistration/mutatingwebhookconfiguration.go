@@ -6,7 +6,6 @@ package admissionregistration
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -48,7 +47,7 @@ var _ prov.Provisioner = &MutatingWebhookConfiguration{}
 
 func (m *MutatingWebhookConfiguration) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var mwc *admissionregistrationv1ac.MutatingWebhookConfigurationApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &mwc); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &mwc); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal mutatingwebhookconfiguration properties: %w", err)
 	}
 
@@ -105,7 +104,7 @@ func (m *MutatingWebhookConfiguration) Read(ctx context.Context, request *resour
 
 func (m *MutatingWebhookConfiguration) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var mwc *admissionregistrationv1ac.MutatingWebhookConfigurationApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &mwc); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &mwc); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal mutatingwebhookconfiguration properties: %w", err)
 	}
 

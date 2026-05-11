@@ -6,7 +6,6 @@ package batch
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -48,7 +47,7 @@ var _ prov.Provisioner = &CronJob{}
 
 func (cj *CronJob) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var cronjob *batchv1ac.CronJobApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &cronjob); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &cronjob); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal cronjob properties: %w", err)
 	}
 
@@ -110,7 +109,7 @@ func (cj *CronJob) Read(ctx context.Context, request *resource.ReadRequest) (*re
 
 func (cj *CronJob) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var cronjob *batchv1ac.CronJobApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &cronjob); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &cronjob); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal cronjob properties: %w", err)
 	}
 

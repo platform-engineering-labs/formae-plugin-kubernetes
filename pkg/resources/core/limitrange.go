@@ -6,7 +6,6 @@ package core
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -48,7 +47,7 @@ var _ prov.Provisioner = &LimitRange{}
 
 func (l *LimitRange) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var lr *v1coreac.LimitRangeApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &lr); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &lr); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal limitrange properties: %w", err)
 	}
 
@@ -110,7 +109,7 @@ func (l *LimitRange) Read(ctx context.Context, request *resource.ReadRequest) (*
 
 func (l *LimitRange) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var lr *v1coreac.LimitRangeApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &lr); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &lr); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal limitrange properties: %w", err)
 	}
 

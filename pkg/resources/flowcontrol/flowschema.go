@@ -6,7 +6,6 @@ package flowcontrol
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -48,7 +47,7 @@ var _ prov.Provisioner = &FlowSchema{}
 
 func (f *FlowSchema) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var fs *flowcontrolv1ac.FlowSchemaApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &fs); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &fs); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal flowschema properties: %w", err)
 	}
 
@@ -105,7 +104,7 @@ func (f *FlowSchema) Read(ctx context.Context, request *resource.ReadRequest) (*
 
 func (f *FlowSchema) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var fs *flowcontrolv1ac.FlowSchemaApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &fs); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &fs); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal flowschema properties: %w", err)
 	}
 

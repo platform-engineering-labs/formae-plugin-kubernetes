@@ -6,7 +6,6 @@ package rbac
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -48,7 +47,7 @@ var _ prov.Provisioner = &ClusterRoleBinding{}
 
 func (c *ClusterRoleBinding) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	var crb *rbacv1ac.ClusterRoleBindingApplyConfiguration
-	if err := json.Unmarshal(request.Properties, &crb); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.Properties, &crb); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal clusterrolebinding properties: %w", err)
 	}
 
@@ -105,7 +104,7 @@ func (c *ClusterRoleBinding) Read(ctx context.Context, request *resource.ReadReq
 
 func (c *ClusterRoleBinding) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	var crb *rbacv1ac.ClusterRoleBindingApplyConfiguration
-	if err := json.Unmarshal(request.DesiredProperties, &crb); err != nil {
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &crb); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal clusterrolebinding properties: %w", err)
 	}
 
