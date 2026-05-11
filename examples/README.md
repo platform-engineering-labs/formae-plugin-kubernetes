@@ -3,8 +3,7 @@
 End-to-end examples deploying real workloads to Kubernetes using formae and
 the K8s plugin. Each subdirectory targets a different deployment scenario —
 managed cloud K8s (EKS, GKE, AKS, OKE), local or self-managed clusters
-(`vanilla/`), or chart-based deploys via the `formae-helm` Pkl wrapper or
-hand-written PKL charts.
+(`vanilla/`), or chart-based deploys via the `formae-helm` Pkl wrapper.
 
 ## Layout
 
@@ -12,7 +11,6 @@ hand-written PKL charts.
 examples/
 ├── apps/                      # Shared, reusable workload modules
 ├── helm/                      # Helm charts via @formae-helm wrappers
-├── charts/                    # Hand-written PKL charts (no Helm needed)
 ├── vanilla/                   # Any kubeconfig-reachable cluster
 ├── eks/                       # AWS EKS (cross-cloud, single forma)
 ├── eks-full-stack/            # EKS + IAM + VPC + workloads end-to-end
@@ -81,17 +79,6 @@ Drop a new chart by copying one of the existing `*-v1.<minor>.pkl` files
 and updating `chart`, `version`, and `values`. See
 [helm/README.md](../helm/README.md) for what the wrapper does under the
 hood.
-
-## `charts/` — hand-written PKL charts
-
-Bypass Helm entirely. PKL renders the manifests directly using the K8s
-schema types. Useful when a workload is small enough to express as native
-PKL and you want type safety end-to-end without a `helm template` step.
-
-| File | What it deploys |
-|---|---|
-| `nginx.pkl` | Minimal nginx deployment + service |
-| `langfuse.pkl` | Langfuse self-hosted (DB + app) |
 
 ## `vanilla/` — any kubeconfig-reachable cluster
 
