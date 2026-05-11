@@ -22,7 +22,7 @@ function datasourcesConfig(k8sTarget: formae.Target, appNs: ns.Namespace, nsName
   new cm.ConfigMap {
     target = k8sTarget.res
     label = "lgtm-grafana-datasources"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "grafana-datasources"
       namespace = appNs.res.name
       labels = grafanaLabels
@@ -62,7 +62,7 @@ function dashboardProviderConfig(k8sTarget: formae.Target, appNs: ns.Namespace):
   new cm.ConfigMap {
     target = k8sTarget.res
     label = "lgtm-grafana-dashprov"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "grafana-dashboard-provider"
       namespace = appNs.res.name
       labels = grafanaLabels
@@ -92,7 +92,7 @@ function demoDashboardConfig(k8sTarget: formae.Target, appNs: ns.Namespace): cm.
   new cm.ConfigMap {
     target = k8sTarget.res
     label = "lgtm-grafana-dashboard"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "grafana-demo-dashboard"
       namespace = appNs.res.name
       labels = grafanaLabels
@@ -136,7 +136,7 @@ function grafanaDeployment(k8sTarget: formae.Target, appNs: ns.Namespace): dep.D
   new dep.Deployment {
     target = k8sTarget.res
     label = "lgtm-grafana"
-    metadata = new k8s.ObjectMeta { name = appName; namespace = appNs.res.name; labels = grafanaLabels }
+    metadata = new k8s.NamespacedObjectMeta { name = appName; namespace = appNs.res.name; labels = grafanaLabels }
     spec = new dep.DeploymentSpec {
       replicas = 2
       selector = new k8s.LabelSelector { matchLabels = grafanaLabels }
@@ -216,7 +216,7 @@ function grafanaService(k8sTarget: formae.Target, appNs: ns.Namespace): svc.Serv
   new svc.Service {
     target = k8sTarget.res
     label = "lgtm-grafana-svc"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = appName
       namespace = appNs.res.name
       labels = grafanaLabels

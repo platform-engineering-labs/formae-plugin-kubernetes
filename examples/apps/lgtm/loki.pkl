@@ -33,7 +33,7 @@ function lokiConfig(
   new cm.ConfigMap {
     target = k8sTarget.res
     label = "lgtm-loki-config"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = configName
       namespace = appNs.res.name
       labels = commonLabels
@@ -102,7 +102,7 @@ function lokiMemberlistService(k8sTarget: formae.Target, appNs: ns.Namespace): s
   new svc.Service {
     target = k8sTarget.res
     label = "lgtm-loki-memberlist"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = memberlistName
       namespace = appNs.res.name
       labels = commonLabels
@@ -128,7 +128,7 @@ function tierDeployment(
   new dep.Deployment {
     target = k8sTarget.res
     label = "lgtm-loki-\(role)"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "\(appName)-\(role)"
       namespace = appNs.res.name
       labels = (commonLabels) { ["app.kubernetes.io/component"] = role }
@@ -206,7 +206,7 @@ function tierService(k8sTarget: formae.Target, appNs: ns.Namespace, role: String
   new svc.Service {
     target = k8sTarget.res
     label = "lgtm-loki-\(role)-svc"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "\(appName)-\(role)"
       namespace = appNs.res.name
       labels = (commonLabels) { ["app.kubernetes.io/component"] = role }

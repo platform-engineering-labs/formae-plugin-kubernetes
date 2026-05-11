@@ -64,7 +64,7 @@ function crossplaneServiceAccount(k8sTarget: formae.Target, cpNs: ns.Namespace):
   new sa.ServiceAccount {
     target = k8sTarget.res
     label = "\(appName)-sa"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = appName
       namespace = cpNs.res.name
       labels = commonLabels
@@ -174,7 +174,7 @@ function crossplaneLeaderElectionRole(k8sTarget: formae.Target, cpNs: ns.Namespa
   new role.Role {
     target = k8sTarget.res
     label = "\(appName)-leader-election-role"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "\(appName)-leader-election"
       namespace = cpNs.res.name
       labels = commonLabels
@@ -197,7 +197,7 @@ function crossplaneLeaderElectionRoleBinding(k8sTarget: formae.Target, cpNs: ns.
   new rb.RoleBinding {
     target = k8sTarget.res
     label = "\(appName)-leader-election-rb"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "\(appName)-leader-election"
       namespace = cpNs.res.name
       labels = commonLabels
@@ -220,7 +220,7 @@ function crossplaneDeployment(k8sTarget: formae.Target, cpNs: ns.Namespace): dep
   new dep.Deployment {
     target = k8sTarget.res
     label = "\(appName)-deployment"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = appName
       namespace = cpNs.res.name
       labels = commonLabels
@@ -336,7 +336,7 @@ function crossplaneService(k8sTarget: formae.Target, cpNs: ns.Namespace): svc.Se
   new svc.Service {
     target = k8sTarget.res
     label = "\(appName)-service"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = appName
       namespace = cpNs.res.name
       labels = commonLabels

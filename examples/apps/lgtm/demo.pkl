@@ -24,7 +24,7 @@ function generator(
   new dep.Deployment {
     target = k8sTarget.res
     label = "lgtm-telemetrygen-\(signal)"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "telemetrygen-\(signal)"
       namespace = appNs.res.name
       labels = (commonLabels) { ["signal"] = signal }

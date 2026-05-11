@@ -35,7 +35,7 @@ function gatewayConfig(k8sTarget: formae.Target, appNs: ns.Namespace, nsName: St
   new cm.ConfigMap {
     target = k8sTarget.res
     label = "lgtm-otel-gateway-config"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "\(gatewayName)-config"
       namespace = appNs.res.name
       labels = gatewayLabels
@@ -97,7 +97,7 @@ function gatewayDeployment(k8sTarget: formae.Target, appNs: ns.Namespace): dep.D
   new dep.Deployment {
     target = k8sTarget.res
     label = "lgtm-otel-gateway"
-    metadata = new k8s.ObjectMeta { name = gatewayName; namespace = appNs.res.name; labels = gatewayLabels }
+    metadata = new k8s.NamespacedObjectMeta { name = gatewayName; namespace = appNs.res.name; labels = gatewayLabels }
     spec = new dep.DeploymentSpec {
       replicas = 2
       selector = new k8s.LabelSelector { matchLabels = gatewayLabels }
@@ -142,7 +142,7 @@ function gatewayService(k8sTarget: formae.Target, appNs: ns.Namespace): svc.Serv
   new svc.Service {
     target = k8sTarget.res
     label = "lgtm-otel-gateway-svc"
-    metadata = new k8s.ObjectMeta { name = gatewayName; namespace = appNs.res.name; labels = gatewayLabels }
+    metadata = new k8s.NamespacedObjectMeta { name = gatewayName; namespace = appNs.res.name; labels = gatewayLabels }
     spec = new svc.ServiceSpec {
       selector = gatewayLabels
       ports = new Listing {
@@ -159,7 +159,7 @@ function agentServiceAccountRes(k8sTarget: formae.Target, appNs: ns.Namespace): 
   new sa.ServiceAccount {
     target = k8sTarget.res
     label = "lgtm-otel-agent-sa"
-    metadata = new k8s.ObjectMeta { name = agentServiceAccount; namespace = appNs.res.name; labels = agentLabels }
+    metadata = new k8s.NamespacedObjectMeta { name = agentServiceAccount; namespace = appNs.res.name; labels = agentLabels }
   }
 
 function agentClusterRoleRes(k8sTarget: formae.Target): cr.ClusterRole =
@@ -199,7 +199,7 @@ function agentConfig(k8sTarget: formae.Target, appNs: ns.Namespace, nsName: Stri
   new cm.ConfigMap {
     target = k8sTarget.res
     label = "lgtm-otel-agent-config"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "\(agentName)-config"
       namespace = appNs.res.name
       labels = agentLabels
@@ -250,7 +250,7 @@ function agentDaemonSet(k8sTarget: formae.Target, appNs: ns.Namespace): ds.Daemo
   new ds.DaemonSet {
     target = k8sTarget.res
     label = "lgtm-otel-agent"
-    metadata = new k8s.ObjectMeta { name = agentName; namespace = appNs.res.name; labels = agentLabels }
+    metadata = new k8s.NamespacedObjectMeta { name = agentName; namespace = appNs.res.name; labels = agentLabels }
     spec = new ds.DaemonSetSpec {
       selector = new k8s.LabelSelector { matchLabels = agentLabels }
       template = new k8s.PodTemplateSpec {

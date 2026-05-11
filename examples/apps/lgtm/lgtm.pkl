@@ -62,7 +62,7 @@ function minioCredsSecret(k8sTarget: formae.Target, appNs: ns.Namespace): sec.Se
   new sec.Secret {
     target = k8sTarget.res
     label = "lgtm-minio-creds"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = minioCredsSecretName
       namespace = appNs.res.name
       labels = commonLabels

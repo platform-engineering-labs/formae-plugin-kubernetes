@@ -148,7 +148,7 @@ open class PostgreSQL {
     }
 
   hidden _objectMeta: k8s.ObjectMeta = let (_self = this)
-    new k8s.ObjectMeta {
+    new k8s.NamespacedObjectMeta {
       name = _self.name
       namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
       labels = _self._appLabels

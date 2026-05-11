@@ -22,8 +22,8 @@ function makeLabel(prefix: String, kind: String, name: String): String =
 // =============================================================================
 
 /// Map a pkl-k8s ObjectMeta to k8s ObjectMeta (namespaced resource).
-function mapObjectMeta(src: Any, defaultNamespace: String): k8s.ObjectMeta =
-  new k8s.ObjectMeta {
+function mapObjectMeta(src: Any, defaultNamespace: String): k8s.NamespacedObjectMeta =
+  new k8s.NamespacedObjectMeta {
     name = src.name
     namespace = if (src.namespace != null) src.namespace else defaultNamespace
     when (src.labels != null) {

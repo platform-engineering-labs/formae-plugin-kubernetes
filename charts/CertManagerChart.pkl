@@ -180,7 +180,7 @@ open class CertManager {
   // ── Internal: metadata helpers ────────────────────────────────────────────
 
   hidden _objectMeta: (String) -> k8s.ObjectMeta = (n) -> let (_self = this)
-    new k8s.ObjectMeta {
+    new k8s.NamespacedObjectMeta {
       name = n
       namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
       labels = _self._appLabels
@@ -316,7 +316,7 @@ open class CertManager {
   hidden _controllerDeployment: dep.Deployment = let (_self = this)
     new dep.Deployment {
       label = _self.name + "-controller-deployment"
-      metadata = new k8s.ObjectMeta {
+      metadata = new k8s.NamespacedObjectMeta {
         name = _self.name + "-controller"
         namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
         labels = _self._controllerLabels
@@ -368,7 +368,7 @@ open class CertManager {
   hidden _webhookDeployment: dep.Deployment = let (_self = this)
     new dep.Deployment {
       label = _self.name + "-webhook-deployment"
-      metadata = new k8s.ObjectMeta {
+      metadata = new k8s.NamespacedObjectMeta {
         name = _self.name + "-webhook"
         namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
         labels = _self._webhookLabels
@@ -417,7 +417,7 @@ open class CertManager {
   hidden _cainjectorDeployment: dep.Deployment = let (_self = this)
     new dep.Deployment {
       label = _self.name + "-cainjector-deployment"
-      metadata = new k8s.ObjectMeta {
+      metadata = new k8s.NamespacedObjectMeta {
         name = _self.name + "-cainjector"
         namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
         labels = _self._cainjectorLabels
@@ -453,7 +453,7 @@ open class CertManager {
   hidden _webhookService: svc.Service = let (_self = this)
     new svc.Service {
       label = _self.name + "-webhook-service"
-      metadata = new k8s.ObjectMeta {
+      metadata = new k8s.NamespacedObjectMeta {
         name = _self.name + "-webhook"
         namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
         labels = _self._webhookLabels

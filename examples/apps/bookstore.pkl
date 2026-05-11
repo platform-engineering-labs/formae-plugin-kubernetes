@@ -77,7 +77,7 @@ function frontendConfig(k8sTarget: formae.Target, appNs: ns.Namespace): cm.Confi
   new cm.ConfigMap {
     target = k8sTarget.res
     label = "\(appName)-frontend-config"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "\(appName)-frontend-config"
       namespace = appNs.res.name
       labels = frontendLabels
@@ -131,7 +131,7 @@ function backendConfig(k8sTarget: formae.Target, appNs: ns.Namespace): cm.Config
   new cm.ConfigMap {
     target = k8sTarget.res
     label = "\(appName)-backend-config"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "\(appName)-backend-config"
       namespace = appNs.res.name
       labels = backendLabels
@@ -149,7 +149,7 @@ function dbCredentials(k8sTarget: formae.Target, appNs: ns.Namespace): sec.Secre
   new sec.Secret {
     target = k8sTarget.res
     label = "\(appName)-db-credentials"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "\(appName)-db-credentials"
       namespace = appNs.res.name
       labels = backendLabels
@@ -165,7 +165,7 @@ function backendServiceAccount(k8sTarget: formae.Target, appNs: ns.Namespace): s
   new sa.ServiceAccount {
     target = k8sTarget.res
     label = "\(appName)-backend-sa"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "\(appName)-backend"
       namespace = appNs.res.name
       labels = backendLabels
@@ -177,7 +177,7 @@ function frontendDeployment(k8sTarget: formae.Target, appNs: ns.Namespace): dep.
   new dep.Deployment {
     target = k8sTarget.res
     label = "\(appName)-frontend"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "\(appName)-frontend"
       namespace = appNs.res.name
       labels = frontendLabels
@@ -256,7 +256,7 @@ function backendDeployment(k8sTarget: formae.Target, appNs: ns.Namespace): dep.D
   new dep.Deployment {
     target = k8sTarget.res
     label = "\(appName)-backend"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "\(appName)-backend"
       namespace = appNs.res.name
       labels = backendLabels
@@ -311,7 +311,7 @@ function frontendService(k8sTarget: formae.Target, appNs: ns.Namespace): svc.Ser
   new svc.Service {
     target = k8sTarget.res
     label = "\(appName)-frontend-svc"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "\(appName)-frontend"
       namespace = appNs.res.name
       labels = frontendLabels
@@ -337,7 +337,7 @@ function backendService(k8sTarget: formae.Target, appNs: ns.Namespace): svc.Serv
   new svc.Service {
     target = k8sTarget.res
     label = "\(appName)-backend-svc"
-    metadata = new k8s.ObjectMeta {
+    metadata = new k8s.NamespacedObjectMeta {
       name = "\(appName)-backend"
       namespace = appNs.res.name
       labels = backendLabels

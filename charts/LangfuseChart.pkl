@@ -319,7 +319,7 @@ open class Langfuse {
   // ── Internal: metadata helpers ──────────────────────────────────────────────
 
   hidden _metaFor: (String) -> k8s.ObjectMeta = (n) -> let (_self = this)
-    new k8s.ObjectMeta {
+    new k8s.NamespacedObjectMeta {
       name = n
       namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
       labels = _self._appLabels
@@ -495,7 +495,7 @@ open class Langfuse {
   hidden _webDeployment: dep.Deployment = let (_self = this)
     new dep.Deployment {
       label = _self.name + "-web-deployment"
-      metadata = new k8s.ObjectMeta {
+      metadata = new k8s.NamespacedObjectMeta {
         name = _self.name + "-web"
         namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
         labels = _self._webLabels
@@ -544,7 +544,7 @@ open class Langfuse {
   hidden _workerDeployment: dep.Deployment = let (_self = this)
     new dep.Deployment {
       label = _self.name + "-worker-deployment"
-      metadata = new k8s.ObjectMeta {
+      metadata = new k8s.NamespacedObjectMeta {
         name = _self.name + "-worker"
         namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
         labels = _self._workerLabels
@@ -593,7 +593,7 @@ open class Langfuse {
   hidden _webService: svc.Service = let (_self = this)
     new svc.Service {
       label = _self.name + "-web-service"
-      metadata = new k8s.ObjectMeta {
+      metadata = new k8s.NamespacedObjectMeta {
         name = _self.name + "-web"
         namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
         labels = _self._webLabels
