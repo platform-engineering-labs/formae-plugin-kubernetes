@@ -4,8 +4,14 @@
 /// Resolve Pkl dependencies (first time, or after PklProject changes):
 ///   pkl project resolve examples/helm/
 ///
-/// Deploy:
+/// Usage:
+///   pkl eval examples/helm/nginx-v1.31.pkl
 ///   formae apply --mode reconcile --yes --watch examples/helm/nginx-v1.31.pkl
+///
+/// Requires:
+///   - pkl-reader-helm binary on PATH (see helm/README.md "Install pkl-reader-helm")
+///   - helm repos: helm repo add bitnami https://charts.bitnami.com/bitnami
+///                 helm repo update
 amends "@formae/forma.pkl"
 
 import "@formae/formae.pkl"
