@@ -1,0 +1,29 @@
+/// Mappers for policy/v1 K8S resource types.
+module policy
+
+import "../../../k8s.pkl" as k8s
+import "../../../v1.22/policy/PodDisruptionBudget.pkl" as pdb
+import "../../../v1.22/apps/ReplicaSet.pkl" as rs
+
+import "common.pkl"
+
+// =============================================================================
+// PodDisruptionBudget
+// =============================================================================
+
+function mapPodDisruptionBudget(src: Any, prefix: String, namespace: String): pdb.PodDisruptionBudget =
+  new pdb.PodDisruptionBudget {
+    label = common.makeLabel(prefix, "poddisruptionbudget", src.metadata.name)
+    metadata = common.mapObjectMeta(src.metadata, namespace)
+    spec = new pdb.PodDisruptionBudgetSpec {
+      when (src.spec.minAvailable != null) {
+        minAvailable = src.spec.minAvailable
+      }
+      when (src.spec.maxUnavailable != null) {
+        maxUnavailable = src.spec.maxUnavailable
+      }
+      when (src.spec.selector != null) {
+        selector = common.mapLabelSelector(src.spec.selector)
+      }
+    }
+  }

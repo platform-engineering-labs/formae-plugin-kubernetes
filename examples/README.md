@@ -28,8 +28,9 @@ examples/
 ## Resolving Pkl deps
 
 Every subdirectory ships its own `PklProject` declaring the Pkl deps it
-needs (`@formae`, `@k8s`, optional cloud plugins, `@apps`, `@clusters`,
-`@formae-helm`).
+needs (`@formae`, `@k8s`, optional cloud plugins, `@apps`, `@clusters`).
+Helm wrappers live under `@k8s/helm/v<X.Y>/`, so no separate dep is
+required.
 
 **Before evaluating any example, resolve its Pkl deps.** `PklProject.deps.json`
 is git-ignored and must be regenerated on a fresh clone (and any time a

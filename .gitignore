@@ -40,9 +40,9 @@ schema/pkl/VERSION
 /gen-versioned-testdata
 conformance.log
 
-# Note: helm/v<X.Y>/ is committed (not ignored), mirroring
-# schema/pkl/generated/. Regen via `cd helm && make generate`; CI
-# enforces parity via `cd helm && make verify`.
+# Note: schema/pkl/generated/helm/v<X.Y>/ is committed (not ignored).
+# Regen via `cd schema/pkl/generated/helm && make generate`; CI enforces
+# parity via `cd schema/pkl/generated/helm && make verify`.
 
 # Stray codegen binaries.
-helm/tools/gen-versioned-helm/gen-versioned-helm
+schema/pkl/generated/helm/tools/gen-versioned-helm/gen-versioned-helm

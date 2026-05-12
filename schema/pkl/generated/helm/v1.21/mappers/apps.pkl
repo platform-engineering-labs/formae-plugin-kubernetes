@@ -1,0 +1,204 @@
+/// Mappers for apps/v1 K8S resource types.
+module apps
+
+import "../../../k8s.pkl" as k8s
+import "../../../v1.21/apps/Deployment.pkl" as dep
+import "../../../v1.21/apps/ReplicaSet.pkl" as rs
+import "../../../v1.21/apps/StatefulSet.pkl" as sts
+import "../../../v1.21/apps/DaemonSet.pkl" as ds
+
+import "common.pkl"
+
+// =============================================================================
+// Deployment
+// =============================================================================
+
+function mapDeployment(src: Any, prefix: String, namespace: String): dep.Deployment =
+  new dep.Deployment {
+    label = common.makeLabel(prefix, "deployment", src.metadata.name)
+    metadata = common.mapObjectMeta(src.metadata, namespace)
+    spec = mapDeploymentSpec(src.spec, src.metadata.name)
+  }
+
+function mapDeploymentSpec(src: Any, ownerName: String): dep.DeploymentSpec =
+  new dep.DeploymentSpec {
+    when (src.replicas != null) {
+      replicas = src.replicas
+    }
+    selector = common.mapLabelSelector(src.selector)
+    template = common.mapPodTemplateSpec(src.template, ownerName)
+    when (src.minReadySeconds != null) {
+      minReadySeconds = src.minReadySeconds
+    }
+    when (src.progressDeadlineSeconds != null) {
+      progressDeadlineSeconds = src.progressDeadlineSeconds
+    }
+    when (src.revisionHistoryLimit != null) {
+      revisionHistoryLimit = src.revisionHistoryLimit
+    }
+    when (src.strategy != null) {
+      strategy = mapDeploymentStrategy(src.strategy)
+    }
+    when (src.paused != null) {
+      paused = src.paused
+    }
+  }
+
+function mapDeploymentStrategy(src: Any): dep.DeploymentStrategy =
+  new dep.DeploymentStrategy {
+    when (src.type != null) {
+      type = src.type
+    }
+    when (src.rollingUpdate != null) {
+      rollingUpdate = new dep.RollingUpdateDeployment {
+        when (src.rollingUpdate.maxUnavailable != null) {
+          maxUnavailable = src.rollingUpdate.maxUnavailable
+        }
+        when (src.rollingUpdate.maxSurge != null) {
+          maxSurge = src.rollingUpdate.maxSurge
+        }
+      }
+    }
+  }
+
+// =============================================================================
+// ReplicaSet
+// =============================================================================
+
+function mapReplicaSet(src: Any, prefix: String, namespace: String): rs.ReplicaSet =
+  new rs.ReplicaSet {
+    label = common.makeLabel(prefix, "replicaset", src.metadata.name)
+    metadata = common.mapObjectMeta(src.metadata, namespace)
+    spec = new rs.ReplicaSetSpec {
+      when (src.spec.replicas != null) {
+        replicas = src.spec.replicas
+      }
+      when (src.spec.minReadySeconds != null) {
+        minReadySeconds = src.spec.minReadySeconds
+      }
+      selector = common.mapLabelSelector(src.spec.selector)
+      template = common.mapPodTemplateSpec(src.spec.template, src.metadata.name)
+    }
+  }
+
+// =============================================================================
+// StatefulSet
+// =============================================================================
+
+function mapStatefulSet(src: Any, prefix: String, namespace: String): sts.StatefulSet =
+  new sts.StatefulSet {
+    label = common.makeLabel(prefix, "statefulset", src.metadata.name)
+    metadata = common.mapObjectMeta(src.metadata, namespace)
+    spec = mapStatefulSetSpec(src.spec, src.metadata.name)
+  }
+
+function mapStatefulSetSpec(src: Any, ownerName: String): sts.StatefulSetSpec =
+  new sts.StatefulSetSpec {
+    when (src.replicas != null) {
+      replicas = src.replicas
+    }
+    selector = common.mapLabelSelector(src.selector)
+    template = common.mapPodTemplateSpec(src.template, ownerName)
+    serviceName = src.serviceName
+    when (src.volumeClaimTemplates != null) {
+      volumeClaimTemplates = new Listing {
+        for (_vct in src.volumeClaimTemplates) {
+          mapPVCTemplate(_vct)
+        }
+      }
+    }
+    when (src.podManagementPolicy != null) {
+      podManagementPolicy = src.podManagementPolicy
+    }
+    when (src.updateStrategy != null) {
+      updateStrategy = new sts.StatefulSetUpdateStrategy {
+        when (src.updateStrategy.type != null) {
+          type = src.updateStrategy.type
+        }
+        when (src.updateStrategy.rollingUpdate != null) {
+          rollingUpdate = new sts.RollingUpdateStatefulSetStrategy {
+            when (src.updateStrategy.rollingUpdate.partition != null) {
+              partition = src.updateStrategy.rollingUpdate.partition
+            }
+            when (src.updateStrategy.rollingUpdate.maxUnavailable != null) {
+              maxUnavailable = src.updateStrategy.rollingUpdate.maxUnavailable
+            }
+          }
+        }
+      }
+    }
+    when (src.revisionHistoryLimit != null) {
+      revisionHistoryLimit = src.revisionHistoryLimit
+    }
+    when (src.minReadySeconds != null) {
+      minReadySeconds = src.minReadySeconds
+    }
+  }
+
+function mapPVCTemplate(src: Any): sts.PersistentVolumeClaimTemplate =
+  new sts.PersistentVolumeClaimTemplate {
+    when (src.metadata != null) {
+      metadata = common.mapPodTemplateMetadata(src.metadata, src.metadata.name)
+    }
+    spec = new sts.PersistentVolumeClaimSpec {
+      when (src.spec.accessModes != null) {
+        accessModes = common.mapStringListing(src.spec.accessModes)
+      }
+      when (src.spec.resources != null) {
+        resources = new sts.PVCResourceRequirements {
+          when (src.spec.resources.requests != null) {
+            requests = common.mapQuantityMapping(src.spec.resources.requests)
+          }
+          when (src.spec.resources.limits != null) {
+            limits = common.mapQuantityMapping(src.spec.resources.limits)
+          }
+        }
+      }
+      when (src.spec.storageClassName != null) {
+        storageClassName = src.spec.storageClassName
+      }
+      when (src.spec.volumeMode != null) {
+        volumeMode = src.spec.volumeMode
+      }
+    }
+  }
+
+// =============================================================================
+// DaemonSet
+// =============================================================================
+
+function mapDaemonSet(src: Any, prefix: String, namespace: String): ds.DaemonSet =
+  new ds.DaemonSet {
+    label = common.makeLabel(prefix, "daemonset", src.metadata.name)
+    metadata = common.mapObjectMeta(src.metadata, namespace)
+    spec = mapDaemonSetSpec(src.spec, src.metadata.name)
+  }
+
+function mapDaemonSetSpec(src: Any, ownerName: String): ds.DaemonSetSpec =
+  new ds.DaemonSetSpec {
+    selector = common.mapLabelSelector(src.selector)
+    template = common.mapPodTemplateSpec(src.template, ownerName)
+    when (src.minReadySeconds != null) {
+      minReadySeconds = src.minReadySeconds
+    }
+    when (src.revisionHistoryLimit != null) {
+      revisionHistoryLimit = src.revisionHistoryLimit
+    }
+    when (src.updateStrategy != null) {
+      updateStrategy = new ds.DaemonSetUpdateStrategy {
+        when (src.updateStrategy.type != null) {
+          type = src.updateStrategy.type
+        }
+        when (src.updateStrategy.rollingUpdate != null) {
+          rollingUpdate = new ds.RollingUpdateDaemonSet {
+            when (src.updateStrategy.rollingUpdate.maxUnavailable != null) {
+              maxUnavailable = src.updateStrategy.rollingUpdate.maxUnavailable
+            }
+            when (src.updateStrategy.rollingUpdate.maxSurge != null) {
+              maxSurge = src.updateStrategy.rollingUpdate.maxSurge
+            }
+          }
+        }
+      }
+    }
+  }

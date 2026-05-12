@@ -11,4 +11,11 @@ dependencies {
   ["formae"] {
     uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.84.0"
   }
+  // The helm wrappers under schema/pkl/generated/helm/ ship inside
+  // this package and import `@helm/helm.pkl` from pkl-readers/helm.
+  // Pin must match the binary version bundled with formae so the wire
+  // protocol agrees.
+  ["helm"] {
+    uri = "package://pkg.pkl-lang.org/pkl-readers/helm@0.1.2"
+  }
 }

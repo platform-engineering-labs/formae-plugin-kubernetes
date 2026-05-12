@@ -1,0 +1,45 @@
+/// Mappers for coordination.k8s.io/v1 K8S resource types.
+module coordination
+
+import "../../../k8s.pkl" as k8s
+import "../../../v1.24/coordination/Lease.pkl" as lease
+
+import "common.pkl"
+
+// =============================================================================
+// Lease (namespaced)
+// =============================================================================
+
+function mapLease(src: Any, prefix: String, namespace: String): lease.Lease =
+  new lease.Lease {
+    label = common.makeLabel(prefix, "lease", src.metadata.name)
+    metadata = common.mapObjectMeta(src.metadata, namespace)
+    when (src.spec != null) {
+      spec = mapLeaseSpec(src.spec)
+    }
+  }
+
+function mapLeaseSpec(src: Any): lease.LeaseSpec =
+  new lease.LeaseSpec {
+    when (src.holderIdentity != null) {
+      holderIdentity = src.holderIdentity
+    }
+    when (src.leaseDurationSeconds != null) {
+      leaseDurationSeconds = src.leaseDurationSeconds
+    }
+    when (src.leaseTransitions != null) {
+      leaseTransitions = src.leaseTransitions
+    }
+    when (src.renewTime != null) {
+      renewTime = src.renewTime
+    }
+    when (src.acquireTime != null) {
+      acquireTime = src.acquireTime
+    }
+    when (src.preferredHolder != null) {
+      preferredHolder = src.preferredHolder
+    }
+    when (src.strategy != null) {
+      strategy = src.strategy
+    }
+  }

@@ -162,7 +162,7 @@ The pod's ServiceAccount token at
 
 ## Helm charts via formae-helm
 
-The companion `formae-helm` Pkl package ([helm/](helm/)) renders Helm charts
+The companion `formae-helm` Pkl package ([schema/pkl/generated/helm/](schema/pkl/generated/helm/)) renders Helm charts
 at Pkl-eval time and maps the output to typed K8s resources, so you can
 manage Helm releases through the same forma → reconcile → drift loop as
 hand-written resources.
@@ -173,7 +173,7 @@ amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
 import "@k8s/k8s.pkl" as k8s
 import "@k8s/v1.31/core/Namespace.pkl" as ns
-import "@formae-helm/v1.31/HelmChart.pkl"
+import "@k8s/helm/v1.31/HelmChart.pkl"
 
 local chart = new HelmChart {
   chart = "bitnami/nginx"
@@ -212,8 +212,8 @@ the same `@k8s/v<X.Y>/...` schema you'd use for hand-written resources —
 mismatched fields fail at eval, not at apply.
 
 The wrapper version must match the `kubernetesVersion` on the Target —
-`@formae-helm/v1.31` ↔ `@k8s/v1.31` ↔ `kubernetesVersion = "1.31"`. See
-[helm/README.md](helm/README.md) for layout and codegen details.
+`@k8s/helm/v1.31` ↔ `@k8s/v1.31` ↔ `kubernetesVersion = "1.31"`. See
+[schema/pkl/generated/helm/README.md](schema/pkl/generated/helm/README.md) for layout and codegen details.
 
 ## Examples
 

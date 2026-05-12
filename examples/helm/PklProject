@@ -1,17 +1,15 @@
 amends "pkl:Project"
 
+// Helm wrappers live inside the k8s schema package (`@k8s/helm/...`),
+// so a single `["k8s"]` dep is enough.
+//
+// formae auto-registers `pkl-reader-helm` when it is on PATH, so this
+// project does not declare `evaluatorSettings.externalResourceReaders`.
+// Raw `pkl eval` without formae will still need the explicit block —
+// see schema/pkl/generated/helm/README.md.
 dependencies {
   ["formae"] {
     uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.84.0"
   }
   ["k8s"] = import("../../schema/pkl/generated/PklProject")
-  ["formae-helm"] = import("../../helm/PklProject")
-}
-
-evaluatorSettings {
-  externalResourceReaders {
-    ["reader+helm"] {
-      executable = "pkl-reader-helm"
-    }
-  }
 }

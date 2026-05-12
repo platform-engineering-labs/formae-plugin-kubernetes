@@ -114,13 +114,10 @@ jobs:
         with:
           pkl-version: 0.30.0
 
-      # `make verify` regenerates helm/v*/ from helm/shared/ and fails if
-      # the diff isn't empty — catches stale committed trees in PRs.
-      - name: Verify formae-helm generated trees
-        working-directory: helm
-        run: |
-          pkl project resolve .
-          make verify
+      # Regenerates helm/v*/ from helm/shared/ and fails if the diff
+      # isn't empty — catches stale committed trees in PRs.
+      - name: Verify helm generated trees
+        run: make verify-helm-schemas
 
   # Conformance tests are split across per-K8s-version workflow files
   # (.github/workflows/conformance-v1-XX.yml). Each version is chained
