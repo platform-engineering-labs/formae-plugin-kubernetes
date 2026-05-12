@@ -439,7 +439,10 @@ func TestDelete_TransientReadError_ReturnsInProgress(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result.ProgressResult)
 	assert.Equal(t, resource.OperationStatusInProgress, result.ProgressResult.OperationStatus)
-	assert.Contains(t, result.ProgressResult.StatusMessage, "post-delete read failed")
+	// InProgress must not carry a StatusMessage — that surfaces in
+	// Formae's per-resource line as a `reason` row and should be reserved
+	// for actual failures.
+	assert.Empty(t, result.ProgressResult.StatusMessage)
 	assert.Equal(t, "req-1", result.ProgressResult.RequestID)
 }
 
@@ -531,5 +534,7 @@ func TestStatus_TerminatingPreservesRequestIDAndNativeID(t *testing.T) {
 	assert.Equal(t, "req-42", result.ProgressResult.RequestID)
 	assert.Equal(t, "default/dying", result.ProgressResult.NativeID)
 	assert.Equal(t, resource.OperationErrorCodeNotFound, result.ProgressResult.ErrorCode)
-	assert.Equal(t, "resource is terminating", result.ProgressResult.StatusMessage)
+	// Retryable terminating state — no StatusMessage so Formae's
+	// per-resource line doesn't display a `reason` row mid-retry.
+	assert.Empty(t, result.ProgressResult.StatusMessage)
 }

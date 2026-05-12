@@ -51,7 +51,34 @@ func recoverPanic(r any, op resource.Operation) error {
 	return fmt.Errorf("panic in %s: %v\n%s", op, r, debug.Stack())
 }
 
+// clearStatusMessageUnlessFailure blanks StatusMessage on any non-Failure
+// progress result. Formae renders StatusMessage as a `reason` row under the
+// per-resource line, and that row is only meaningful when the operation has
+// actually failed — for Success / InProgress it just adds noise. Individual
+// provisioners are free to compute and pass through informative messages
+// (e.g. "load balancer hostname: ..."); this wrapper enforces "reason only
+// on failure" uniformly so each provisioner doesn't have to gate the field
+// itself. Failure-state messages from inner provisioners are preserved.
+func clearStatusMessageUnlessFailure(p *resource.ProgressResult) {
+	if p == nil {
+		return
+	}
+	if p.OperationStatus == resource.OperationStatusFailure {
+		return
+	}
+	p.StatusMessage = ""
+}
+
 func (l *LifecycleAware) Create(ctx context.Context, req *resource.CreateRequest) (result *resource.CreateResult, err error) {
+	// LIFO: panic defer runs first (may rewrite `result`), then this
+	// sanitize defer runs on the final value — so panic-installed
+	// Failure messages survive while inner Success/InProgress messages
+	// are cleared.
+	defer func() {
+		if result != nil {
+			clearStatusMessageUnlessFailure(result.ProgressResult)
+		}
+	}()
 	defer func() {
 		if r := recover(); r != nil {
 			panicErr := recoverPanic(r, resource.OperationCreate)
@@ -107,6 +134,11 @@ func (l *LifecycleAware) Read(ctx context.Context, req *resource.ReadRequest) (r
 
 func (l *LifecycleAware) Update(ctx context.Context, req *resource.UpdateRequest) (result *resource.UpdateResult, err error) {
 	defer func() {
+		if result != nil {
+			clearStatusMessageUnlessFailure(result.ProgressResult)
+		}
+	}()
+	defer func() {
 		if r := recover(); r != nil {
 			panicErr := recoverPanic(r, resource.OperationUpdate)
 			result = &resource.UpdateResult{
@@ -124,6 +156,11 @@ func (l *LifecycleAware) Update(ctx context.Context, req *resource.UpdateRequest
 }
 
 func (l *LifecycleAware) Delete(ctx context.Context, req *resource.DeleteRequest) (result *resource.DeleteResult, err error) {
+	defer func() {
+		if result != nil {
+			clearStatusMessageUnlessFailure(result.ProgressResult)
+		}
+	}()
 	defer func() {
 		if r := recover(); r != nil {
 			panicErr := recoverPanic(r, resource.OperationDelete)
@@ -168,13 +205,16 @@ func (l *LifecycleAware) Delete(ctx context.Context, req *resource.DeleteRequest
 		}
 		// Transient 5xx/throttle/etc. — don't claim success. Report
 		// InProgress so Formae polls Status until the picture clears.
+		// No StatusMessage on InProgress: Formae's per-resource line
+		// renders that as a `reason` row, and "reason" should appear
+		// only when a delete actually fails. The underlying read error
+		// is still surfaced via logs.
 		return &resource.DeleteResult{
 			ProgressResult: &resource.ProgressResult{
 				Operation:       resource.OperationDelete,
 				OperationStatus: resource.OperationStatusInProgress,
 				NativeID:        req.NativeID,
 				RequestID:       result.ProgressResult.RequestID,
-				StatusMessage:   fmt.Sprintf("post-delete read failed: %v; treating as in-progress", readErr),
 			},
 		}, nil
 	}
@@ -190,18 +230,25 @@ func (l *LifecycleAware) Delete(ctx context.Context, req *resource.DeleteRequest
 		return result, nil
 	}
 
+	// InProgress — finalizers still draining. Intentionally no
+	// StatusMessage: Formae renders that as a `reason` row, and a
+	// reason should appear only when the delete actually fails.
 	return &resource.DeleteResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationDelete,
 			OperationStatus: resource.OperationStatusInProgress,
 			NativeID:        req.NativeID,
 			RequestID:       result.ProgressResult.RequestID,
-			StatusMessage:   "waiting for resource deletion (finalizers pending)",
 		},
 	}, nil
 }
 
 func (l *LifecycleAware) Status(ctx context.Context, req *resource.StatusRequest) (result *resource.StatusResult, err error) {
+	defer func() {
+		if result != nil {
+			clearStatusMessageUnlessFailure(result.ProgressResult)
+		}
+	}()
 	defer func() {
 		if r := recover(); r != nil {
 			panicErr := recoverPanic(r, resource.OperationCheckStatus)
@@ -236,6 +283,10 @@ func (l *LifecycleAware) Status(ctx context.Context, req *resource.StatusRequest
 		if req != nil {
 			requestID = req.RequestID
 		}
+		// Failure+NotFound while finalizers drain. Formae retries this
+		// (attempt N/M); no StatusMessage so the per-resource line
+		// doesn't carry a `reason` row until the delete genuinely
+		// fails or exhausts attempts.
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				Operation:       resource.OperationCheckStatus,
@@ -243,7 +294,6 @@ func (l *LifecycleAware) Status(ctx context.Context, req *resource.StatusRequest
 				ErrorCode:       resource.OperationErrorCodeNotFound,
 				NativeID:        nativeID,
 				RequestID:       requestID,
-				StatusMessage:   "resource is terminating",
 			},
 		}, nil
 	}
