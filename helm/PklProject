@@ -19,8 +19,13 @@ dependencies {
   ["formae"] {
     uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.85.0"
   }
+  // Pin matches the pkl-reader-helm binary version documented in
+  // helm/README.md ("Install pkl-reader-helm"). Keep these two in lock-step
+  // when bumping — the schema package and the binary share a major.minor
+  // wire-protocol contract; a drift between them silently disables Helm
+  // chart evaluation.
   ["helm"] {
-    uri = "package://pkg.pkl-lang.org/pkl-readers/helm@0.1.1"
+    uri = "package://pkg.pkl-lang.org/pkl-readers/helm@0.1.2"
   }
 }
 
