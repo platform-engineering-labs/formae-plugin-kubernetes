@@ -188,7 +188,7 @@ jobs:
           FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-v${{ inputs.k8s_version }}
           FORMAE_TEST_TESTDATA_DIR: testdata/generated/v${{ inputs.k8s_version }}/shared
           FORMAE_K8S_VERSION: ${{ inputs.k8s_version }}
-        uses: nick-fields/retry@v3
+        uses: nick-fields/retry@v4
         with:
           # Total retry budget: 2 × 7min = 14min ≤ 20min job timeout.
           # Covers transient formae plugin-spawn timeouts (5s) under load.
@@ -267,7 +267,7 @@ jobs:
           # automatically by the harness based on the primary name.
           FORMAE_TEST_TESTDATA_DIR: testdata/generated/v${{ inputs.k8s_version }}/features/${{ matrix.feature }}
           FORMAE_K8S_VERSION: ${{ inputs.k8s_version }}
-        uses: nick-fields/retry@v3
+        uses: nick-fields/retry@v4
         with:
           timeout_minutes: 7
           max_attempts: 2
