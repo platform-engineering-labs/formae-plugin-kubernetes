@@ -545,7 +545,12 @@ open class EnvVar extends formae.SubResource {
 
 @SubResourceHint {}
 open class ObjectFieldSelector extends formae.SubResource {
-  @FieldHint {}
+  // kube-apiserver defaults this to "v1" when the user omits it, then echoes
+  // it back on every Get. Without the hasProviderDefault hint, every reconcile
+  // of a Pod-spec-bearing resource (Deployment, StatefulSet, Job, ...) that
+  // uses `env.valueFrom.fieldRef` (a Helm/Crossplane idiom) plans a spurious
+  // container-list remove+add.
+  @FieldHint { hasProviderDefault = true }
   apiVersion: String?
 
   @FieldHint { required = true }
