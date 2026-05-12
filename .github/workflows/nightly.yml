@@ -55,15 +55,22 @@ jobs:
       - name: Discover test cases
         id: discover
         run: |
-          ALL_CASES=$(ls testdata/*.pkl 2>/dev/null \
+          RESOURCE_TESTS=$(ls testdata/main/shared/*.pkl 2>/dev/null \
             | xargs -n1 basename \
             | grep -v '\-update\.pkl$' \
             | grep -v '\-replace\.pkl$' \
-            | sed 's/\.pkl$//')
-
-          RESOURCE_TESTS=$(echo "$ALL_CASES" | grep -v '\-chart$' \
+            | sed 's/\.pkl$//' \
             | jq -R -s -c 'split("\n") | map(select(length > 0))')
-          CHART_TESTS=$(echo "$ALL_CASES" | grep '\-chart$' \
+          # certmanager-formation is excluded: cert-manager's cainjector
+          # Deployment has a webhook/cert bootstrap chicken-and-egg that
+          # rarely settles on cold kind clusters within any reasonable
+          # apply timeout. Re-enable once the K8s plugin supports a
+          # non-blocking Deployment Create or we order the bootstrap
+          # (CRDs + webhook first, cainjector after).
+          CHART_TESTS=$(ls testdata/main/formations/*.pkl 2>/dev/null \
+            | xargs -n1 basename \
+            | grep -v '^certmanager-formation\.pkl$' \
+            | sed 's/\.pkl$//' \
             | jq -R -s -c 'split("\n") | map(select(length > 0))')
 
           echo "Resource tests: ${RESOURCE_TESTS}"
@@ -79,7 +86,7 @@ jobs:
     strategy:
       matrix:
         test-case: ${{ fromJson(needs.discover-tests.outputs.resource-tests) }}
-      max-parallel: 10
+      max-parallel: 20
       fail-fast: false
     steps:
       - name: Checkout plugin
@@ -99,6 +106,7 @@ jobs:
         uses: helm/kind-action@v1
         with:
           cluster_name: formae-test
+          node_image: "kindest/node:v1.34.3@sha256:08497ee19eace7b4b5348db5c6a1591d7752b164530a36f855cb0f2bdcbadd48"
 
       - name: Download formae binary
         uses: actions/download-artifact@v8
@@ -108,7 +116,10 @@ jobs:
 
       - name: Clone formae source for replace directives
         run: |
-          git clone --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          # Match the branch the binary was built from so go.mod replace
+          # directives pick up the same source the binary embeds.
+          BRANCH="${{ inputs.formae_branch || 'main' }}"
+          git clone --branch "${BRANCH}" --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
           cp /tmp/formae-artifact/formae /tmp/formae/formae
           chmod +x /tmp/formae/formae
 
@@ -145,10 +156,14 @@ jobs:
       - name: Install plugin
         run: make install
 
+      - name: Resolve testdata Pkl deps (v1.34)
+        run: pkl project resolve testdata/generated/v1.34/
+
       - name: Run conformance tests (${{ matrix.test-case }})
         env:
           FORMAE_BINARY: /tmp/formae/formae
           FORMAE_TEST_RUN_ID: nightly-main-${{ github.run_id }}-${{ github.run_attempt }}
+          FORMAE_TEST_TESTDATA_DIR: testdata/generated/v1.34/shared
         run: make conformance-test-crud-run conformance-test-discovery-run TEST=${{ matrix.test-case }} PARALLEL=1
 
   # Chart conformance tests deploy full Helm charts (many resources).
@@ -160,7 +175,7 @@ jobs:
     strategy:
       matrix:
         test-case: ${{ fromJson(needs.discover-tests.outputs.chart-tests) }}
-      max-parallel: 10
+      max-parallel: 20
       fail-fast: false
     steps:
       - name: Checkout plugin
@@ -180,6 +195,7 @@ jobs:
         uses: helm/kind-action@v1
         with:
           cluster_name: formae-test
+          node_image: "kindest/node:v1.34.3@sha256:08497ee19eace7b4b5348db5c6a1591d7752b164530a36f855cb0f2bdcbadd48"
 
       - name: Download formae binary
         uses: actions/download-artifact@v8
@@ -189,7 +205,10 @@ jobs:
 
       - name: Clone formae source for replace directives
         run: |
-          git clone --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          # Match the branch the binary was built from so go.mod replace
+          # directives pick up the same source the binary embeds.
+          BRANCH="${{ inputs.formae_branch || 'main' }}"
+          git clone --branch "${BRANCH}" --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
           cp /tmp/formae-artifact/formae /tmp/formae/formae
           chmod +x /tmp/formae/formae
 
@@ -226,11 +245,15 @@ jobs:
       - name: Install plugin
         run: make install
 
+      - name: Resolve testdata Pkl deps
+        run: pkl project resolve testdata/main/
+
       - name: Run chart conformance tests (${{ matrix.test-case }})
         env:
           FORMAE_BINARY: /tmp/formae/formae
           FORMAE_TEST_RUN_ID: nightly-main-${{ github.run_id }}-${{ github.run_attempt }}
           FORMAE_TEST_DISCOVERY_TIMEOUT: "5"
+          FORMAE_TEST_TESTDATA_DIR: testdata/main/formations
         run: make conformance-test-crud-run conformance-test-discovery-run TEST=${{ matrix.test-case }} PARALLEL=1
 
   # Notify when nightly is fixed (was red, now green)

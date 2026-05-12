@@ -1,0 +1,41 @@
+// Azure-side configuration shared by the cluster sub-modules.
+//
+// Holds the `props` Dynamic (cluster knobs, --prop overridable) and the
+// Azure-side `target` (with `azure.Config` carrying the subscription id).
+// Also exposes a few raw module-level values consumed directly by the
+// network sub-module's top-level resource declarations.
+
+import "@azure/azure.pkl"
+import "@formae/formae.pkl"
+
+projectName = "k8s-fullstack"
+location = "eastus"
+vnetCidr = "10.0.0.0/16"
+aksSubnetCidr = "10.0.0.0/22"
+dnsPrefix = "aks"
+
+props = new Dynamic {
+  name = new formae.Prop {
+    flag = "name"
+    default = module.projectName
+  }
+  location = new formae.Prop {
+    flag = "location"
+    default = module.location
+  }
+  subscriptionId = new formae.Prop {
+    flag = "subscription-id"
+    default = read?("env:AZURE_SUBSCRIPTION_ID") ?? "your-subscription-id"
+  }
+  principalId = new formae.Prop {
+    flag = "principal-id"
+    default = read?("env:AZURE_PRINCIPAL_ID") ?? "your-principal-id"
+  }
+}
+
+target: formae.Target = new formae.Target {
+  label = "azure-target"
+  config = new azure.Config {
+    subscriptionId = module.props.subscriptionId.value
+  }
+}

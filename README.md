@@ -217,8 +217,34 @@ The wrapper version must match the `kubernetesVersion` on the Target —
 
 ## Examples
 
-The [examples/](examples/) directory has runnable forma files. The most
-focused subset is [examples/helm/](examples/helm/):
+The [examples/](examples/) directory has runnable forma files covering two
+patterns:
+
+### Cross-cloud workloads
+
+Each workload example accepts a `--provider` flag and runs against any of AWS,
+Azure, GCP, OCI, or a local kubeconfig-accessible cluster.
+
+| Example | Description |
+|---------|-------------|
+| [bookstore](examples/bookstore/) | Frontend + backend webapp on a managed cluster |
+| [crossplane](examples/crossplane/) | Crossplane control plane on a managed cluster |
+| [lgtm](examples/lgtm/) | Grafana + Loki + Tempo + Mimir + OTel + MinIO observability stack |
+
+```bash
+# Pick a cloud at apply time
+formae apply --mode reconcile --watch --provider aws   examples/bookstore/main.pkl
+formae apply --mode reconcile --watch --provider azure examples/lgtm/main.pkl
+formae apply --mode reconcile --watch --provider local examples/crossplane/main.pkl
+```
+
+Each workload example has a per-directory README with prerequisites, smoke
+test commands, and per-provider tear-down steps.
+
+### Helm charts
+
+The [examples/helm/](examples/helm/) directory uses the `formae-helm` Pkl
+wrapper to render Helm charts into typed K8s resources.
 
 | File | What it deploys |
 |---|---|
@@ -228,15 +254,29 @@ focused subset is [examples/helm/](examples/helm/):
 | `postgresql-v1.31.pkl` | bitnami/postgresql primary-only |
 
 ```bash
-# Evaluate
 pkl eval examples/helm/nginx-v1.31.pkl --project-dir examples/helm/
-
-# Apply
 formae apply examples/helm/nginx-v1.31.pkl --mode reconcile --yes --watch
-
-# Destroy
 formae destroy examples/helm/nginx-v1.31.pkl --yes --watch
 ```
+
+## Targets
+
+The `--provider` flag selects one of five managed-cluster bundles:
+
+| Provider | Auth class | Cluster type | Required setup |
+|----------|------------|--------------|----------------|
+| `aws`    | `EKSAuth`  | EKS AutoMode | `aws configure`; defaults to `us-west-2` |
+| `azure`  | `AKSAuth`  | AKS          | `az login`; set `AZURE_SUBSCRIPTION_ID` and `AZURE_PRINCIPAL_ID` (your AAD object id from `az ad signed-in-user show --query id -o tsv`) |
+| `gcp`    | `GKEAuth`  | Standard zonal GKE | `gcloud auth application-default login`; set `GCP_PROJECT=<your-project>` (or `GOOGLE_CLOUD_PROJECT`) |
+| `oci`    | `OCIAuth`  | OKE           | `oci session authenticate`; set `OCI_COMPARTMENT_ID=<ocid>` |
+| `local`  | `KubeconfigAuth` | none — uses your kubectl context | `kubectl config current-context` should resolve to the target cluster |
+
+The cluster-provisioning code lives under [examples/clusters/](examples/clusters/);
+each provider's `bundle.pkl` exposes a top-level `resources` listing and a
+Kubernetes `target` that the workload examples consume via the dispatcher in
+`examples/clusters/dispatch.pkl`. To add a new provider, add
+`examples/clusters/<provider>/bundle.pkl`, then a branch in `dispatch.For`
+and the literal-union `Provider` typealias.
 
 ## License
 

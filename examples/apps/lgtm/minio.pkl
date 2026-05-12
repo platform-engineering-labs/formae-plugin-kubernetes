@@ -10,7 +10,7 @@ import "@k8s/v1.34/apps/StatefulSet.pkl" as ss
 import "@k8s/k8s.pkl" as k8s
 
 local appName = "minio"
-local imageRef = "minio/minio:RELEASE.2024-12-18T13-15-44Z"
+local imageRef = "docker.io/minio/minio:RELEASE.2024-12-18T13-15-44Z"
 
 local minioLabels = new Mapping {
   ["app.kubernetes.io/part-of"] = "lgtm"

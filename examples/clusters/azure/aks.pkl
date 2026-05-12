@@ -1,0 +1,51 @@
+import "@azure/azure.pkl"
+import "@azure/containerservice/managedcluster.pkl" as mc
+
+import "network.pkl"
+import "vars.pkl"
+
+function aksCluster(properties: Dynamic?): mc.ManagedCluster = new mc.ManagedCluster {
+  label = "aks-cluster"
+  name = "\(vars.projectName)-aks"
+  location = vars.location
+  resourceGroupName = network.resourceGroup.res.name
+
+  sku = new mc.ManagedClusterSKU {
+    name = "Base"
+    tier = "Free"
+  }
+
+  identity = new mc.ManagedClusterIdentity {
+    type = "SystemAssigned"
+  }
+
+  dnsPrefix = vars.dnsPrefix
+
+  agentPoolProfiles {
+    new mc.AgentPoolProfile {
+      name = "systempool"
+      count = 1
+      vmSize = "Standard_D2s_v3"
+      mode = "System"
+      osType = "Linux"
+      enableAutoScaling = false
+    }
+  }
+
+  networkProfile = new mc.NetworkProfile {
+    networkPlugin = "azure"
+    loadBalancerSku = "standard"
+  }
+
+  enableRBAC = true
+
+  aadProfile = new mc.AADProfile {
+    managed = true
+    enableAzureRBAC = true
+  }
+
+  tags {
+    new azure.Tag { key = "project"; value = vars.projectName }
+    new azure.Tag { key = "environment"; value = "demo" }
+  }
+}

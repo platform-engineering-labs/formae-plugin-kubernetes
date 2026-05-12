@@ -1,29 +1,35 @@
 # Examples
 
 End-to-end examples deploying real workloads to Kubernetes using formae and
-the K8s plugin. Each subdirectory targets a different deployment scenario —
-managed cloud K8s (EKS, GKE, AKS, OKE), local or self-managed clusters
-(`vanilla/`), or chart-based deploys via the `formae-helm` Pkl wrapper.
-
-## Layout
+the K8S plugin. Each workload entry is **one forma file that runs on any
+provider** — pick AWS, Azure, GCP, OCI, or a local kubeconfig-accessible
+cluster at apply time with `--provider`.
 
 ```
 examples/
-├── apps/                      # Shared, reusable workload modules
-├── helm/                      # Helm charts via @formae-helm wrappers
-├── vanilla/                   # Any kubeconfig-reachable cluster
-├── eks/                       # AWS EKS (cross-cloud, single forma)
-├── eks-full-stack/            # EKS + IAM + VPC + workloads end-to-end
-├── gke/                       # GCP GKE Autopilot
-├── aks/                       # Azure AKS
-├── oke/                       # Oracle OKE
-├── orbstack-target.pkl        # Snippet: KubeconfigAuth for OrbStack
-├── PklProject.deps.json       # Resolved Pkl deps shared by sub-projects
-└── README.md
+├── apps/                       # Reusable workload modules (target-parameterized)
+│   ├── bookstore.pkl
+│   ├── crossplane.pkl
+│   └── lgtm/                   # Sub-modules: minio, loki, tempo, mimir, otel, grafana, demo
+├── clusters/                   # Per-provider managed-cluster bundles
+│   ├── dispatch.pkl            # Provider picker (typealias Provider, function For)
+│   ├── aws/                    # VPC, subnets, IAM, EKS
+│   ├── azure/                  # Resource group, VNet, AKS, RBAC
+│   ├── gcp/                    # VPC, subnet, GKE
+│   ├── oci/                    # VCN, subnets, gateways, security list, OKE
+│   └── local/                  # KubeconfigAuth (no provisioning)
+├── bookstore/                  # Workload entry: frontend + backend webapp
+├── crossplane/                 # Workload entry: Crossplane control plane
+├── lgtm/                       # Workload entry: observability stack
+├── formations/                 # Native Pkl charts (no Helm)
+└── helm/                       # Helm bridge examples
 ```
 
+## Resolving Pkl deps
+
 Every subdirectory ships its own `PklProject` declaring the Pkl deps it
-needs (`@formae`, `@k8s`, optional cloud plugins, `@formae-helm`).
+needs (`@formae`, `@k8s`, optional cloud plugins, `@apps`, `@clusters`,
+`@formae-helm`).
 
 **Before evaluating any example, resolve its Pkl deps.** `PklProject.deps.json`
 is git-ignored and must be regenerated on a fresh clone (and any time a
@@ -35,147 +41,72 @@ import chain must be resolved individually.
 # Generate the versioned K8s schemas under schema/pkl/generated (one-time).
 make install
 
-# Resolve shared workload modules used by all cloud examples + vanilla.
+# Resolve shared modules once — all workload entries consume these.
 pkl project resolve examples/apps/
+pkl project resolve examples/clusters/
 
-# Resolve the per-example project you are about to run, e.g.:
-pkl project resolve examples/vanilla/
-pkl project resolve examples/eks/
-pkl project resolve examples/helm/         # depends on ../../helm too
-pkl project resolve examples/apps/lgtm/
-```
+# Resolve the workload entry you are about to run, e.g.:
+pkl project resolve examples/bookstore/
+pkl project resolve examples/crossplane/
+pkl project resolve examples/lgtm/
 
-Each example file's doc-block lists the exact resolve commands it
-needs.
-
-## How to read these examples
-
-A typical forma in this directory has four parts:
-
-1. **Imports** — pull in `@formae/forma.pkl`, the K8s plugin schema (or a
-   versioned subtree under `@k8s/v<X.Y>/`), any cloud plugin, and shared
-   workload modules from `@apps/`.
-2. **Stack** — names the unit of work (`new formae.Stack { ... }`).
-3. **Target** — declares a K8s cluster with auth and `kubernetesVersion`.
-   For cloud providers the cluster is also created in the same forma.
-4. **Resources** — typed K8s objects, either hand-written, spread from a
-   shared `@apps/` module, or rendered from a Helm chart via `@formae-helm`.
-
-## `apps/` — shared workload modules
-
-Reusable workloads parameterised by the K8s target. The cloud-specific
-forma files (eks, gke, aks, …) all import from `@apps/` so the workload
-is written once and deployed everywhere.
-
-| App | Description |
-|---|---|
-| `bookstore.pkl` | Frontend (nginx) + backend (Node.js API): ConfigMaps, Secrets, ServiceAccount, Deployments, Services |
-| `crossplane.pkl` | Crossplane control plane (Namespace, RBAC, Deployment, Service); CRDs are installed by Crossplane itself at startup |
-
-## `helm/` — Helm charts via `@formae-helm`
-
-Renders a Helm chart at Pkl-eval time and maps the output to typed K8s
-resources via the `@formae-helm/v<X.Y>/HelmChart.pkl` wrapper. Same
-forma → reconcile → drift loop as hand-written resources.
-
-| File | What it deploys | K8s wrapper |
-|---|---|---|
-| `nginx-v1.31.pkl` | bitnami/nginx, 2 replicas, ClusterIP service | v1.31 |
-| `nginx-v1.34.pkl` | same, latest supported minor | v1.34 |
-| `nginx.pkl` | nginx pinned to v1.34 (legacy unsuffixed name) | v1.34 |
-| `memcached-v1.31.pkl` | bitnami/memcached standalone | v1.31 |
-| `postgresql-v1.31.pkl` | bitnami/postgresql primary-only | v1.31 |
-
-Prerequisites: `pkl-reader-helm` on `PATH`; `helm repo add bitnami
-https://charts.bitnami.com/bitnami && helm repo update`. The
-`kubernetesVersion` on the Target must match the `@formae-helm/v<X.Y>`
-import (`v1.31` ↔ `v1.31`).
-
-```bash
+# Helm bridge examples need their own resolve (also pulls in ../../helm).
 pkl project resolve examples/helm/
-formae apply examples/helm/nginx-v1.31.pkl --mode reconcile --yes --watch
-formae destroy examples/helm/nginx-v1.31.pkl --yes --watch
 ```
 
-Drop a new chart by copying one of the existing `*-v1.<minor>.pkl` files
-and updating `chart`, `version`, and `values`. See
-[helm/README.md](../helm/README.md) for what the wrapper does under the
-hood.
+Each example file's doc-block lists the exact resolve commands it needs.
 
-## `vanilla/` — any kubeconfig-reachable cluster
+## How it fits together
 
-No cloud provider plugin required. Targets whatever `kubectl
-config current-context` points at — kind, OrbStack, k3s, a remote
-cluster, etc.
+Workload `main.pkl` files declare a `provider` `formae.Prop` and call
+`dispatch.For(provider)` to pick a cluster bundle. The bundle exposes
+`resources` (everything needed to provision the cluster, including its
+cloud-side target) and `target` (the Kubernetes target authenticated against
+the just-provisioned cluster). The workload's resources reference that K8S
+target; the `forma { }` block spreads everything into a single deploy.
 
-```bash
-pkl project resolve examples/apps/
-pkl project resolve examples/vanilla/
-formae apply examples/vanilla/vanilla.pkl
-kubectl -n bookstore port-forward svc/bookstore-frontend 8080:80
-open http://localhost:8080
-formae destroy examples/vanilla/vanilla.pkl
-```
+A typo like `--provider awz` is rejected at evaluation time by the
+literal-union `Provider` typealias — no runtime throw, real Pkl type error
+pointing at the allowed values.
 
-`vanilla/crossplane.pkl` deploys the Crossplane control plane the same
-way; Crossplane installs its own CRDs on first start, so formae doesn't
-manage them.
+## Workloads
 
-`orbstack-target.pkl` is a minimal Target snippet you can `import` from
-your own forma when working with OrbStack's Kubernetes.
+| Example | Provisions | Reusable module |
+|---------|------------|-----------------|
+| [bookstore](bookstore/) | Namespace, ConfigMaps, Secret, ServiceAccount, two Deployments + Services | `apps/bookstore.pkl` |
+| [crossplane](crossplane/) | Namespace, RBAC, Crossplane core Deployment + Service | `apps/crossplane.pkl` |
+| [lgtm](lgtm/) | MinIO + Loki + Tempo + Mimir + OTel + Grafana (~25 pods) | `apps/lgtm/lgtm.pkl` |
 
-## `eks/`, `gke/`, `aks/`, `oke/` — managed cloud K8s
+Each workload has a per-directory README with prerequisites, exact deploy
+commands per provider, smoke test, and tear-down.
 
-Each subdirectory provisions a managed cluster (VPC, IAM, control plane)
-and deploys the bookstore in a single forma. No manual `kubeconfig`
-plumbing — provider-agnostic auth handles the token refresh
-(STS / OAuth2 / Azure AD / OCI signed requests).
+## Providers
 
-Prerequisites per provider:
-- **eks** — AWS credentials, `formae-plugin-aws` installed.
-- **gke** — `gcloud auth application-default login`, `formae-plugin-gcp` installed.
-- **aks** — Azure credentials, `formae-plugin-azure` installed.
-- **oke** — OCI credentials, `formae-plugin-oci` installed.
+| Provider | Cluster | Required setup |
+|----------|---------|----------------|
+| `aws`    | EKS AutoMode (VPC + IAM + cluster) | `aws configure` |
+| `azure`  | AKS (RG + VNet + cluster + RBAC role assignment) | `az login`; `AZURE_SUBSCRIPTION_ID`, `AZURE_PRINCIPAL_ID` env vars |
+| `gcp`    | Standard zonal GKE (VPC + subnet + private-node cluster) | `gcloud auth application-default login`; set `GCP_PROJECT=...` |
+| `oci`    | OKE (VCN + subnets + gateways + security + cluster + node pool) | `oci session authenticate`; set `OCI_COMPARTMENT_ID=ocid1...` |
+| `local`  | None — uses your current kubectl context | kubectl configured locally |
 
-```bash
-# Resolve shared workload module once — all cloud examples consume it.
-pkl project resolve examples/apps/
+Cluster-side knobs (region, cidrs, cluster name, etc.) live in
+`examples/clusters/<provider>/vars.pkl` (or `clusters/aws/bundle.pkl`).
+A subset have env-var fallbacks; for everything else, edit the
+`vars.pkl` file directly.
 
-# EKS
-pkl project resolve examples/eks/
-formae apply --mode reconcile --yes --watch examples/eks/eks.pkl
+## Adding a new provider
 
-# GKE
-pkl project resolve examples/gke/
-formae apply --mode reconcile --yes --watch \
-  --prop project=my-gcp-project examples/gke/gke.pkl
+1. Create `examples/clusters/<provider>/bundle.pkl` exposing top-level
+   `resources: Listing` and `target: formae.Target`.
+2. Add `<provider>` to the `Provider` typealias in
+   `examples/clusters/dispatch.pkl`.
+3. Add an `else if` branch to `dispatch.For` returning the new bundle.
+4. Add the provider's plugin to `examples/clusters/PklProject` and to each
+   workload's `PklProject` under `dependencies`.
 
-# AKS
-pkl project resolve examples/aks/
-formae apply --mode reconcile --yes --watch examples/aks/aks.pkl
+## Formations and Helm
 
-# OKE
-pkl project resolve examples/oke/
-formae apply --mode reconcile --yes --watch examples/oke/oke.pkl
-```
-
-The frontend service gets a cloud-native LoadBalancer; use the printed
-external IP / hostname to reach it.
-
-`eks-full-stack/` is a heavier EKS example that wires IAM Roles for
-Service Accounts, AWS Load Balancer Controller, and additional infra
-beyond the minimum cluster.
-
-## Adding a new cloud provider example
-
-1. Create `examples/<provider>/`.
-2. Add a `PklProject` with deps on `@formae`, `@k8s`, `@<cloud>`, and `@apps`.
-3. Write `<provider>.pkl` that:
-   - Provisions cloud infrastructure (cluster + networking).
-   - Creates a K8s `Target` with the provider's auth class
-     (`GKEAuth`, `EKSAuth`, `AKSAuth`, `OKEAuth`).
-   - Sets `kubernetesVersion` on the `Config` to match the cluster minor.
-   - Imports `@apps/bookstore.pkl` and spreads
-     `bookstore.allResources(target)` into the `forma {}` block.
-4. The bookstore module handles all K8s resources — you only write the
-   infra + auth.
+See [formations/](formations/) and [helm/](helm/) for deploying workloads via
+native Pkl charts or the Helm bridge. These predate the shared `apps/` pattern
+and will be migrated over time.

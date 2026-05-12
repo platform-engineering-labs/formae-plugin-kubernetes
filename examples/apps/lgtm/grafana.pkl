@@ -8,7 +8,7 @@ import "@k8s/v1.34/apps/Deployment.pkl" as dep
 import "@k8s/k8s.pkl" as k8s
 
 local appName = "grafana"
-local imageRef = "grafana/grafana:11.4.0"
+local imageRef = "docker.io/grafana/grafana:11.4.0"
 
 local grafanaLabels = new Mapping {
   ["app.kubernetes.io/part-of"] = "lgtm"

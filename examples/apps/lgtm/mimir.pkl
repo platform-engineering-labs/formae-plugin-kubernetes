@@ -10,7 +10,7 @@ import "@k8s/v1.34/apps/Deployment.pkl" as dep
 import "@k8s/k8s.pkl" as k8s
 
 local appName = "mimir"
-local imageRef = "grafana/mimir:2.14.3"
+local imageRef = "docker.io/grafana/mimir:2.14.3"
 local configName = "\(appName)-config"
 local memberlistName = "\(appName)-memberlist"
 local httpPort = 8080

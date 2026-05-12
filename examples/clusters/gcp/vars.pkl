@@ -1,0 +1,49 @@
+// GCP-side configuration shared by the cluster sub-modules.
+//
+// Holds the `props` Dynamic (cluster knobs, --prop overridable) and the
+// GCP-side `target` (with `gcp.Config` carrying project / region / zone).
+// Sub-modules in this directory reference `vars.target.res` because GCP
+// resources explicitly bind to the project + region for provisioning.
+
+import "@formae/formae.pkl"
+import "@gcp/gcp.pkl"
+
+props = new Dynamic {
+  name = new formae.Prop {
+    flag = "name"
+    default = "k8s-fullstack"
+  }
+  project = new formae.Prop {
+    flag = "project"
+    default = read?("env:GCP_PROJECT") ?? read?("env:GOOGLE_CLOUD_PROJECT") ?? "your-gcp-project"
+  }
+  region = new formae.Prop {
+    flag = "region"
+    default = "europe-west4"
+  }
+  zone = new formae.Prop {
+    flag = "zone"
+    default = "europe-west4-a"
+  }
+  subnetCidr = new formae.Prop {
+    flag = "subnetCidr"
+    default = "10.2.1.0/24"
+  }
+  podsCidr = new formae.Prop {
+    flag = "podsCidr"
+    default = "10.2.16.0/20"
+  }
+  servicesCidr = new formae.Prop {
+    flag = "servicesCidr"
+    default = "10.2.32.0/20"
+  }
+}
+
+target: formae.Target = new formae.Target {
+  label = "gcp-target"
+  config = new gcp.Config {
+    project = module.props.project.value
+    region = module.props.region.value
+    zone = module.props.zone.value
+  }
+}

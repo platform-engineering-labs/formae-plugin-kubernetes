@@ -1,0 +1,46 @@
+// Provider dispatcher for the workload examples.
+//
+// Each workload entry (`bookstore`, `crossplane`, `lgtm`) declares a
+// `provider` `formae.Prop` and calls `dispatch.For(...)` to pick a managed
+// cluster bundle. Pkl evaluates lazily, so only the chosen provider's
+// resources get instantiated.
+//
+// Adding a new provider:
+//   1. Create `examples/clusters/<provider>/bundle.pkl` exposing top-level
+//      `resources: Listing<formae.Resource>` and `target: formae.Target`.
+//   2. Add `<provider>` to the `Provider` typealias below.
+//   3. Add a branch to `For`.
+//
+// A typo like `--provider awz` fails at evaluation with a real Pkl type
+// error — no runtime throw needed.
+
+import "@formae/formae.pkl"
+
+import "aws/bundle.pkl" as aws
+import "azure/bundle.pkl" as azure
+import "gcp/bundle.pkl" as gcp
+import "local/bundle.pkl" as kubeconfig
+import "oci/bundle.pkl" as oci
+
+typealias Provider = "aws"|"azure"|"gcp"|"local"|"oci"
+
+/// A bundle returned by `For(provider)` — everything needed to provision a
+/// managed Kubernetes cluster on a given cloud.
+///
+/// [resources] is an untyped Listing because it carries both cloud-provider
+/// resources (VPC, IAM, cluster, ...) and the cloud-side `formae.Target` they
+/// implicitly bind to. The K8S-side target (with `EKSAuth` / `GKEAuth` /
+/// `AKSAuth` / `OCIAuth` referencing the just-provisioned cluster's outputs)
+/// is exposed separately as [target] so workloads can pass it to their
+/// `allResources(...)` calls.
+class Bundle {
+  resources: Listing
+  target: formae.Target
+}
+
+function For(provider: Provider): Bundle =
+  if      (provider == "aws")   new Bundle { resources = aws.resources;   target = aws.target   }
+  else if (provider == "azure") new Bundle { resources = azure.resources; target = azure.target }
+  else if (provider == "gcp")   new Bundle { resources = gcp.resources;   target = gcp.target   }
+  else if (provider == "local") new Bundle { resources = kubeconfig.resources; target = kubeconfig.target }
+  else                          new Bundle { resources = oci.resources;   target = oci.target   }

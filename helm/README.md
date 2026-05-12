@@ -40,10 +40,8 @@ The result: Helm releases manageable through the same forma → reconcile → dr
 
 Pre-built binaries are published on the [`apple/pkl-readers` releases page](https://github.com/apple/pkl-readers/releases) under the `helm@<ver>` tags. Pick the asset for your OS/arch, drop it on your `PATH` as `pkl-reader-helm`, and make it executable.
 
-The binary version must match the `pkl-readers/helm@<ver>` dependency pinned in [`PklProject`](PklProject) — the schema package and the binary share a major.minor wire-protocol contract.
-
 ```bash
-# Match the version pinned in helm/PklProject — currently helm@0.1.2.
+# Pick the latest helm@<ver> tag from https://github.com/apple/pkl-readers/releases
 VER=0.1.2
 
 # Asset name by platform:
@@ -67,7 +65,7 @@ pkl-reader-helm version   # sanity check
 
 Use `~/.local/bin` (or any other directory on your `PATH`) if you don't want to write to `/usr/local/bin`.
 
-When bumping the reader, change **both** the `VER` above and the `["helm"]` URI in [`PklProject`](PklProject) in the same commit.
+> Match the binary major version to the `pkl-readers/helm@<ver>` package version pinned in [`PklProject`](PklProject). A different patch version (e.g. binary `0.1.2` against package `0.1.1`) is normally fine — the wire protocol is stable within a minor.
 
 ## Usage
 

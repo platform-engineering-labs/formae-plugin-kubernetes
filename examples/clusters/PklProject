@@ -1,0 +1,19 @@
+amends "pkl:Project"
+
+package {
+  name = "clusters"
+  baseUri = "package://hub.platform.engineering/plugins/k8s/examples/clusters"
+  version = "0.1.0"
+  packageZipUrl = "https://hub.platform.engineering/plugins/k8s/examples/clusters@0.1.0.zip"
+}
+
+dependencies {
+  ["formae"] {
+    uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.84.0"
+  }
+  ["aws"] = import("../../../formae-plugin-aws/schema/pkl/PklProject")
+  ["azure"] = import("../../../formae-plugin-azure/schema/pkl/PklProject")
+  ["gcp"] = import("../../../formae-plugin-gcp/schema/pkl/PklProject")
+  ["oci"] = import("../../../formae-plugin-oci/schema/pkl/PklProject")
+  ["k8s"] = import("../../schema/pkl/generated/PklProject")
+}
