@@ -83,10 +83,52 @@ func (p *Plugin) DiscoveryFilters() []model.MatchFilter {
 				{PropertyPath: "$.metadata.name", PropertyValue: "default"},
 			},
 		},
+		// Exclude kube-root-ca.crt ConfigMap. The kube-apiserver's
+		// root-ca-cert-publisher controller creates one in every namespace
+		// automatically, and a fresh cluster shows hundreds of identical
+		// instances (one per namespace) as "unmanaged" in formae inventory.
+		// Not user-managed; cannot be removed without recreating itself.
+		{
+			ResourceTypes: []string{"K8S::Core::ConfigMap"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "kube-root-ca.crt"},
+			},
+		},
+		// Exclude the local-path-storage namespace and its child resources.
+		// kind / k3s preinstall a local-path-provisioner under this
+		// namespace; the operator owns it, not the user. Filtering the
+		// parent Namespace short-circuits discovery for every namespaced
+		// child (ConfigMap, ServiceAccount, Role, RoleBinding, ...).
+		{
+			ResourceTypes: []string{"K8S::Core::Namespace"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "local-path-storage"},
+			},
+		},
+		// Cluster-scoped companion of the local-path-provisioner — exists
+		// even though the namespace filter above already hides everything
+		// under local-path-storage/.
+		{
+			ResourceTypes: []string{"K8S::Rbac::ClusterRoleBinding"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "local-path-provisioner-bind"},
+			},
+		},
 		// Exclude default kubernetes API service
 		{
 			ResourceTypes: []string{"K8S::Core::Service"},
 			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "kubernetes"},
+			},
+		},
+		// Exclude the Endpoints object backing the default `kubernetes`
+		// Service. The Service controller maintains it without setting
+		// ownerReferences, so the generic owner-based Endpoints filter
+		// below misses it. Match by exact namespace + name.
+		{
+			ResourceTypes: []string{"K8S::Core::Endpoints"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.namespace", PropertyValue: "default"},
 				{PropertyPath: "$.metadata.name", PropertyValue: "kubernetes"},
 			},
 		},
@@ -228,6 +270,14 @@ func (p *Plugin) DiscoveryFilters() []model.MatchFilter {
 		// Exclude additional bootstrap PriorityLevelConfigurations without
 		// the 'system-' prefix (catch-all/exempt are bootstrap, workload-low
 		// is bootstrap on older versions; same removal recipe as above).
+		{
+			// Bare `system` PriorityLevelConfiguration — apiserver-managed,
+			// doesn't match the `^system-` regex because there's no dash.
+			ResourceTypes: []string{"K8S::Flowcontrol::PriorityLevelConfiguration"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "system"},
+			},
+		},
 		{
 			ResourceTypes: []string{"K8S::Flowcontrol::PriorityLevelConfiguration"},
 			Conditions: []model.FilterCondition{
@@ -387,6 +437,60 @@ func (p *Plugin) DiscoveryFilters() []model.MatchFilter {
 			ResourceTypes: []string{"K8S::Rbac::ClusterRoleBinding"},
 			Conditions: []model.FilterCondition{
 				{PropertyPath: `$.metadata[?search(@, '^system:')]`},
+			},
+		},
+		// kubeadm: bootstrap RBAC. kubeadm installs a fixed set of
+		// ClusterRoleBindings, Roles, and RoleBindings prefixed
+		// `kubeadm:` to wire up the control plane during cluster
+		// bringup. Matches what `system:*` covers for kube-apiserver.
+		{
+			ResourceTypes: []string{"K8S::Rbac::ClusterRoleBinding"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: `$.metadata[?search(@, '^kubeadm:')]`},
+			},
+		},
+		{
+			ResourceTypes: []string{"K8S::Rbac::ClusterRole"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: `$.metadata[?search(@, '^kubeadm:')]`},
+			},
+		},
+		{
+			ResourceTypes: []string{"K8S::Rbac::RoleBinding"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: `$.metadata[?search(@, '^kubeadm:')]`},
+			},
+		},
+		{
+			ResourceTypes: []string{"K8S::Rbac::Role"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: `$.metadata[?search(@, '^kubeadm:')]`},
+			},
+		},
+		// Well-known bootstrap ClusterRoleBindings without a system: /
+		// kubeadm: prefix. `cluster-admin` is shipped by the apiserver;
+		// `kindnet` is installed by kind for its CNI. Operators who
+		// genuinely want to manage these can drop the corresponding
+		// filter entry.
+		{
+			ResourceTypes: []string{"K8S::Rbac::ClusterRoleBinding"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "cluster-admin"},
+			},
+		},
+		{
+			ResourceTypes: []string{"K8S::Rbac::ClusterRoleBinding"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "kindnet"},
+			},
+		},
+		// kube-system-service-accounts is a kube-apiserver-managed
+		// FlowSchema whose name doesn't fit the `system-` prefix the
+		// generic regex above matches. List it explicitly.
+		{
+			ResourceTypes: []string{"K8S::Flowcontrol::FlowSchema"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.metadata.name", PropertyValue: "kube-system-service-accounts"},
 			},
 		},
 	}
