@@ -24,7 +24,8 @@ nodePoolSize = 2
 props = new Dynamic {
   compartmentId = new formae.Prop {
     flag = "compartmentId"
-    default = read?("env:OCI_COMPARTMENT_ID") ?? "ocid1.compartment.oc1..example"
+    default = read?("env:OCI_COMPARTMENT_ID")
+      ?? throw("OCI compartment not set. Pass --compartmentId=<ocid> or set OCI_COMPARTMENT_ID.")
   }
 
   availabilityDomain = new formae.Prop {

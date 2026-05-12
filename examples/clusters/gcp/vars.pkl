@@ -15,7 +15,8 @@ props = new Dynamic {
   }
   project = new formae.Prop {
     flag = "project"
-    default = read?("env:GCP_PROJECT") ?? read?("env:GOOGLE_CLOUD_PROJECT") ?? "your-gcp-project"
+    default = read?("env:GCP_PROJECT") ?? read?("env:GOOGLE_CLOUD_PROJECT")
+      ?? throw("GCP project not set. Pass --project=<project-id> or set GCP_PROJECT / GOOGLE_CLOUD_PROJECT.")
   }
   region = new formae.Prop {
     flag = "region"

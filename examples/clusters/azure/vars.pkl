@@ -25,11 +25,13 @@ props = new Dynamic {
   }
   subscriptionId = new formae.Prop {
     flag = "subscription-id"
-    default = read?("env:AZURE_SUBSCRIPTION_ID") ?? "your-subscription-id"
+    default = read?("env:AZURE_SUBSCRIPTION_ID")
+      ?? throw("Azure subscription not set. Pass --subscription-id=<sub-id> or set AZURE_SUBSCRIPTION_ID.")
   }
   principalId = new formae.Prop {
     flag = "principal-id"
-    default = read?("env:AZURE_PRINCIPAL_ID") ?? "your-principal-id"
+    default = read?("env:AZURE_PRINCIPAL_ID")
+      ?? throw("Azure principal id not set. Pass --principal-id=<object-id> or set AZURE_PRINCIPAL_ID (`az ad signed-in-user show --query id -o tsv`).")
   }
 }
 
