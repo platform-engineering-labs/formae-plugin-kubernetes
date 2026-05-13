@@ -25,7 +25,7 @@ jobs:
   v1_34:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/dispatch-conformance
         with:
           workflow: conformance-v1-34.yml
@@ -35,7 +35,7 @@ jobs:
     needs: [v1_34]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/dispatch-conformance
         with:
           workflow: conformance-v1-33.yml
@@ -45,7 +45,7 @@ jobs:
     needs: [v1_33]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/dispatch-conformance
         with:
           workflow: conformance-v1-32.yml
@@ -55,7 +55,7 @@ jobs:
     needs: [v1_32]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/dispatch-conformance
         with:
           workflow: conformance-v1-31.yml
@@ -65,7 +65,7 @@ jobs:
     needs: [v1_31]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/dispatch-conformance
         with:
           workflow: conformance-v1-30.yml
@@ -75,7 +75,7 @@ jobs:
     needs: [v1_30]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/dispatch-conformance
         with:
           workflow: conformance-v1-29.yml
@@ -85,7 +85,7 @@ jobs:
     needs: [v1_29]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/dispatch-conformance
         with:
           workflow: conformance-v1-28.yml
@@ -95,7 +95,7 @@ jobs:
     needs: [v1_28]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/dispatch-conformance
         with:
           workflow: conformance-v1-27.yml
@@ -105,7 +105,7 @@ jobs:
     needs: [v1_27]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/dispatch-conformance
         with:
           workflow: conformance-v1-26.yml
@@ -115,7 +115,7 @@ jobs:
     needs: [v1_26]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/dispatch-conformance
         with:
           workflow: conformance-v1-25.yml
@@ -125,7 +125,7 @@ jobs:
     needs: [v1_25]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/dispatch-conformance
         with:
           workflow: conformance-v1-24.yml
@@ -135,7 +135,7 @@ jobs:
     needs: [v1_24]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/dispatch-conformance
         with:
           workflow: conformance-v1-23.yml
@@ -145,7 +145,7 @@ jobs:
     needs: [v1_23]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/dispatch-conformance
         with:
           workflow: conformance-v1-22.yml
@@ -155,7 +155,7 @@ jobs:
     needs: [v1_22]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/dispatch-conformance
         with:
           workflow: conformance-v1-21.yml
