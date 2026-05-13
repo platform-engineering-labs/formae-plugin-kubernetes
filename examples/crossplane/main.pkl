@@ -4,19 +4,9 @@ import "@formae/formae.pkl"
 
 import "@clusters/dispatch.pkl"
 
-properties {
-  provider = new formae.Prop {
-    flag = "provider"
-    default = "aws"
-  }
-}
-
-local providerName = properties.provider.value as String
-
-local stack: formae.Stack = new {
-  label = "k8s-crossplane-\(providerName)"
-  description = """
-    Crossplane control plane on a managed Kubernetes cluster (\(providerName)).
+description {
+  text = """
+    Crossplane control plane on a managed Kubernetes cluster.
 
     Pick a cloud at apply time with `--provider`:
 
@@ -41,6 +31,21 @@ local stack: formae.Stack = new {
     Teardown:
       formae destroy --yes --provider <p> examples/crossplane/main.pkl
     """
+  confirm = true
+}
+
+properties {
+  provider = new formae.Prop {
+    flag = "provider"
+    default = "aws"
+  }
+}
+
+local providerName = properties.provider.value as String
+
+local stack: formae.Stack = new {
+  label = "k8s-crossplane-\(providerName)"
+  description = "Crossplane control plane on a managed Kubernetes cluster (\(providerName))."
 }
 
 local cloud = dispatch.For(providerName)

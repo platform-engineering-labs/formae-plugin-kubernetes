@@ -4,19 +4,9 @@ import "@formae/formae.pkl"
 
 import "@clusters/dispatch.pkl"
 
-properties {
-  provider = new formae.Prop {
-    flag = "provider"
-    default = read?("env:FORMAE_PROVIDER") ?? "aws"
-  }
-}
-
-local providerName = properties.provider.value as String
-
-local stack: formae.Stack = new {
-  label = "k8s-bookstore-\(providerName)"
-  description = """
-    Bookstore on a managed Kubernetes cluster (\(providerName)).
+description {
+  text = """
+    Bookstore on a managed Kubernetes cluster.
 
     Pick a cloud at apply time with `--provider`:
 
@@ -33,6 +23,21 @@ local stack: formae.Stack = new {
     Teardown:
       formae destroy --yes --provider <p> examples/bookstore/main.pkl
     """
+  confirm = true
+}
+
+properties {
+  provider = new formae.Prop {
+    flag = "provider"
+    default = read?("env:FORMAE_PROVIDER") ?? "aws"
+  }
+}
+
+local providerName = properties.provider.value as String
+
+local stack: formae.Stack = new {
+  label = "k8s-bookstore-\(providerName)"
+  description = "Bookstore on a managed Kubernetes cluster (\(providerName))."
 }
 
 local cloud = dispatch.For(providerName)
