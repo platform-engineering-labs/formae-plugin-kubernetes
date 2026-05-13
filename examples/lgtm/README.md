@@ -23,7 +23,7 @@ Total ~25 pods when fully wired. Fits a 4 CPU / 8Gi cluster.
 ## Prerequisites
 
 Same as [bookstore](../bookstore/README.md#prerequisites). Cloud CLI auth +
-matching `formae-plugin-<provider>` + `formae-plugin-k8s`.
+matching `formae-plugin-<provider>` + `formae-plugin-kubernetes`.
 
 ## Configuration
 

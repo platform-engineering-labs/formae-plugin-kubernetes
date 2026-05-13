@@ -34,7 +34,7 @@ OCI, or any kubeconfig-accessible cluster.
 | `oci`    | `oci session authenticate`; `OCI_COMPARTMENT_ID=<ocid>` (and friends, see Configuration) | `formae-plugin-oci` |
 | `local`  | kubectl configured (`kubectl config current-context` returns your target) | none |
 
-`formae-plugin-k8s` is required for all providers.
+`formae-plugin-kubernetes` is required for all providers.
 
 ## Configuration
 

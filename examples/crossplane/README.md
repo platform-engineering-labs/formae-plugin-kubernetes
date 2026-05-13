@@ -24,7 +24,7 @@ would fight those mutations.
 
 Same as [bookstore](../bookstore/README.md#prerequisites). Each provider needs
 its cloud CLI authenticated and the matching `formae-plugin-<provider>`
-installed; `formae-plugin-k8s` is required for all providers.
+installed; `formae-plugin-kubernetes` is required for all providers.
 
 ## Configuration
 

@@ -189,7 +189,7 @@ Editing workflow:
 - Run `make test` to catch broken imports immediately.
 - Commit the diff under `v*/` together with the `shared/` change — `make verify` fails CI on stale trees.
 
-The `k8s` Pkl dependency in `PklProject` points at the local `formae-plugin-k8s` checkout for development. Release builds resolve it against the published `package://hub.platform.engineering/.../k8s@<min>` URI.
+The `k8s` Pkl dependency in `PklProject` points at the local `formae-plugin-kubernetes` checkout for development. Release builds resolve it against the published `package://hub.platform.engineering/.../k8s@<min>` URI.
 
 ## Releasing
 
