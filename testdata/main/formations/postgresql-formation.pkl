@@ -1,0 +1,23 @@
+/*
+ * Conformance Test: PostgreSQLFormation (Create)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@formae-formations/PostgreSQLFormation.pkl"
+import "../shared/config/vars.pkl" as v
+
+local chart = new PostgreSQLFormation.PostgreSQL {
+  name = "test-pg-\(v.testRunID)"
+  namespace = "formae-test-\(v.testRunID)"
+  createNamespace = true
+  replicas = 1
+  password = "test-pg-pass"
+  database = "testdb"
+  storageSize = "100Mi"
+}
+
+forma {
+  new formae.Stack { label = "postgresql-chart-test"; description = "PostgreSQL chart conformance test" }
+  v.target
+  for (r in chart.resources) { r }
+}

@@ -1,0 +1,25 @@
+/*
+ * Conformance Test: Namespace (Update)
+ * Changes: added "updated" label (mutable field)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.29/core/Namespace.pkl" as ns
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new ns.Namespace {
+    label = "test-namespace"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+        ["updated"] = "true"
+      }
+    }
+  }
+}

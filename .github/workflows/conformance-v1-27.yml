@@ -1,0 +1,12 @@
+name: Conformance K8s 1.27
+
+on:
+  workflow_dispatch:
+
+jobs:
+  conformance:
+    uses: ./.github/workflows/conformance-version.yml
+    with:
+      k8s_version: "1.27"
+      kind_version: "v0.25.0"
+      kind_image: "kindest/node:v1.27.16@sha256:2d21a61643eafc439905e18705b8186f3296384750a835ad7a005dceb9546d20"

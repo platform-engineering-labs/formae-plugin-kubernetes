@@ -1,0 +1,24 @@
+/*
+ * Conformance Test: CSIDriver (Create)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.25/storage/CSIDriver.pkl" as cd
+import "@k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new cd.CSIDriver {
+    label = "test-csidriver"
+    metadata = new k8s.ObjectMeta {
+      name = "test-csidriver-\(v.testRunID)"
+    }
+    spec = new cd.CSIDriverSpec {
+      attachRequired = false
+      podInfoOnMount = false
+    }
+  }
+}

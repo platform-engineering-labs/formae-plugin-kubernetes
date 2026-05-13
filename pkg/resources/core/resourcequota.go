@@ -1,0 +1,238 @@
+// © 2025 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+
+package core
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/prov"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/registry"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/transport"
+	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	v1coreac "k8s.io/client-go/applyconfigurations/core/v1"
+)
+
+const ResourceTypeResourceQuota = "K8S::Core::ResourceQuota"
+
+func init() {
+	registry.Register(
+		ResourceTypeResourceQuota,
+		[]resource.Operation{
+			resource.OperationCreate,
+			resource.OperationRead,
+			resource.OperationUpdate,
+			resource.OperationDelete,
+			resource.OperationList,
+		},
+		func(client *transport.Client, cfg *config.Config) prov.Provisioner {
+			return &ResourceQuota{Client: client, Config: cfg}
+		},
+	)
+}
+
+// ResourceQuota implements the provisioner for K8S::Core::ResourceQuota resources.
+type ResourceQuota struct {
+	Client *transport.Client
+	Config *config.Config
+}
+
+var _ prov.Provisioner = &ResourceQuota{}
+
+func (r *ResourceQuota) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
+	var rq *v1coreac.ResourceQuotaApplyConfiguration
+	if err := prov.UnmarshalApplyConfig(request.Properties, &rq); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal resourcequota properties: %w", err)
+	}
+
+	namespace, err := prov.ResolveCreateNamespace(rq.Namespace, ResourceTypeResourceQuota)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := r.Client.CoreV1().ResourceQuotas(namespace).Apply(ctx, rq, metav1.ApplyOptions{
+		FieldManager: prov.FieldManager,
+		Force:        true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply resourcequota: %w", err)
+	}
+
+	properties, err := prov.LiveState[v1coreac.ResourceQuotaApplyConfiguration](result, "ResourceQuota", "v1")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get resourcequota live state: %w", err)
+	}
+
+	return &resource.CreateResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:          resource.OperationCreate,
+			OperationStatus:    resource.OperationStatusSuccess,
+			RequestID:          result.ResourceVersion,
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
+			ResourceProperties: properties,
+		},
+	}, nil
+}
+
+func (r *ResourceQuota) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
+	result, err := r.Client.CoreV1().ResourceQuotas(ns).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return &resource.ReadResult{
+				ResourceType: request.ResourceType,
+				ErrorCode:    resource.OperationErrorCodeNotFound,
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to get resourcequota: %w", err)
+	}
+
+	properties, err := prov.LiveState[v1coreac.ResourceQuotaApplyConfiguration](result, "ResourceQuota", "v1")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get resourcequota live state: %w", err)
+	}
+
+	return &resource.ReadResult{
+		ResourceType: request.ResourceType,
+		Properties:   string(properties),
+	}, nil
+}
+
+func (r *ResourceQuota) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
+	var rq *v1coreac.ResourceQuotaApplyConfiguration
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &rq); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal resourcequota properties: %w", err)
+	}
+
+	namespace, err := prov.ResolveCreateNamespace(rq.Namespace, ResourceTypeResourceQuota)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := r.Client.CoreV1().ResourceQuotas(namespace).Apply(ctx, rq, metav1.ApplyOptions{
+		FieldManager: prov.FieldManager,
+		Force:        true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply resourcequota: %w", err)
+	}
+
+	// Reconcile metadata: remove labels/annotations not in desired state.
+	if err := prov.ReconcileMetadata(result, rq, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := r.Client.CoreV1().ResourceQuotas(namespace).Patch(ctx, name, types.MergePatchType, patch, opts)
+		return err
+	}); err != nil {
+		return nil, fmt.Errorf("failed to reconcile resourcequota metadata: %w", err)
+	}
+
+	properties, err := prov.LiveState[v1coreac.ResourceQuotaApplyConfiguration](result, "ResourceQuota", "v1")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get resourcequota live state: %w", err)
+	}
+
+	return &resource.UpdateResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:          resource.OperationUpdate,
+			OperationStatus:    resource.OperationStatusSuccess,
+			RequestID:          result.ResourceVersion,
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
+			ResourceProperties: properties,
+		},
+	}, nil
+}
+
+func (r *ResourceQuota) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
+	err = r.Client.CoreV1().ResourceQuotas(ns).Delete(ctx, name, metav1.DeleteOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return &resource.DeleteResult{
+				ProgressResult: &resource.ProgressResult{
+					Operation:       resource.OperationDelete,
+					OperationStatus: resource.OperationStatusSuccess,
+				},
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to delete resourcequota: %w", err)
+	}
+
+	return &resource.DeleteResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:       resource.OperationDelete,
+			OperationStatus: resource.OperationStatusSuccess,
+		},
+	}, nil
+}
+
+func (r *ResourceQuota) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
+	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
+	result, err := r.Client.CoreV1().ResourceQuotas(ns).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return &resource.StatusResult{
+				ProgressResult: &resource.ProgressResult{
+					Operation:       resource.OperationCheckStatus,
+					OperationStatus: resource.OperationStatusFailure,
+					ErrorCode:       resource.OperationErrorCodeNotFound,
+				},
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to get resourcequota status: %w", err)
+	}
+
+	properties, err := prov.LiveState[v1coreac.ResourceQuotaApplyConfiguration](result, "ResourceQuota", "v1")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get resourcequota live state: %w", err)
+	}
+
+	return &resource.StatusResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:          resource.OperationCheckStatus,
+			OperationStatus:    resource.OperationStatusSuccess,
+			RequestID:          request.RequestID,
+			NativeID:           prov.NativeID(result.Namespace, result.Name),
+			ResourceProperties: properties,
+		},
+	}, nil
+}
+
+func (r *ResourceQuota) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
+	namespace, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypeResourceQuota)
+	if err != nil {
+		return nil, err
+	}
+
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := r.Client.CoreV1().ResourceQuotas(namespace).List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, rq := range page.Items {
+			nativeIDs = append(nativeIDs, prov.NativeID(rq.Namespace, rq.Name))
+		}
+		return page.Continue, nil
+	}); err != nil {
+		return nil, fmt.Errorf("failed to list resourcequotas: %w", err)
+	}
+
+
+	return &resource.ListResult{
+		NativeIDs: nativeIDs,
+	}, nil
+}

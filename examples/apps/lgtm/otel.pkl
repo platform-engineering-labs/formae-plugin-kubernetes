@@ -1,0 +1,312 @@
+// OTel Collector: gateway Deployment (central routing) + agent DaemonSet
+// (per-node telemetry collection). Agent forwards to gateway, gateway
+// fans out to Loki/Tempo/Mimir write tiers.
+
+import "@formae/formae.pkl"
+import "@k8s/v1.34/core/Namespace.pkl" as ns
+import "@k8s/v1.34/core/ConfigMap.pkl" as cm
+import "@k8s/v1.34/core/Service.pkl" as svc
+import "@k8s/v1.34/core/ServiceAccount.pkl" as sa
+import "@k8s/v1.34/apps/Deployment.pkl" as dep
+import "@k8s/v1.34/apps/DaemonSet.pkl" as ds
+import "@k8s/v1.34/rbac/ClusterRole.pkl" as cr
+import "@k8s/v1.34/rbac/ClusterRoleBinding.pkl" as crb
+import "@k8s/k8s.pkl" as k8s
+
+local imageRef = "docker.io/otel/opentelemetry-collector-contrib:0.115.1"
+
+local gatewayName = "otel-gateway"
+local agentName = "otel-agent"
+local agentServiceAccount = "otel-agent"
+local agentClusterRole = "otel-agent"
+
+local commonLabels = new Mapping {
+  ["app.kubernetes.io/part-of"] = "lgtm"
+  ["managed-by"] = "formae"
+}
+
+local gatewayLabels = (commonLabels) { ["app.kubernetes.io/name"] = gatewayName }
+local agentLabels   = (commonLabels) { ["app.kubernetes.io/name"] = agentName }
+
+// ---------------------------------------------------------------------------
+// Gateway
+// ---------------------------------------------------------------------------
+function gatewayConfig(k8sTarget: formae.Target, appNs: ns.Namespace, nsName: String): cm.ConfigMap =
+  new cm.ConfigMap {
+    target = k8sTarget.res
+    label = "lgtm-otel-gateway-config"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "\(gatewayName)-config"
+      namespace = appNs.res.name
+      labels = gatewayLabels
+    }
+    data = new Mapping {
+      ["config-yaml"] = (new YamlRenderer {}).renderValue(new Dynamic {
+        receivers {
+          otlp {
+            protocols {
+              grpc { endpoint = "0.0.0.0:4317" }
+              http { endpoint = "0.0.0.0:4318" }
+            }
+          }
+        }
+        processors {
+          batch {}
+          memory_limiter {
+            check_interval = "5s"
+            limit_percentage = 80
+            spike_limit_percentage = 25
+          }
+        }
+        exporters {
+          ["otlphttp/loki"] {
+            endpoint = "http://loki-write.\(nsName).svc.cluster.local:3100/otlp"
+          }
+          ["otlp/tempo"] {
+            endpoint = "tempo-write.\(nsName).svc.cluster.local:4317"
+            tls { insecure = true }
+          }
+          ["otlphttp/mimir"] {
+            endpoint = "http://mimir-write.\(nsName).svc.cluster.local:8080/otlp"
+          }
+        }
+        service {
+          pipelines {
+            logs {
+              receivers = new Listing { "otlp" }
+              processors = new Listing { "memory_limiter"; "batch" }
+              exporters = new Listing { "otlphttp/loki" }
+            }
+            traces {
+              receivers = new Listing { "otlp" }
+              processors = new Listing { "memory_limiter"; "batch" }
+              exporters = new Listing { "otlp/tempo" }
+            }
+            metrics {
+              receivers = new Listing { "otlp" }
+              processors = new Listing { "memory_limiter"; "batch" }
+              exporters = new Listing { "otlphttp/mimir" }
+            }
+          }
+        }
+      })
+    }
+  }
+
+function gatewayDeployment(k8sTarget: formae.Target, appNs: ns.Namespace): dep.Deployment =
+  new dep.Deployment {
+    target = k8sTarget.res
+    label = "lgtm-otel-gateway"
+    metadata = new k8s.NamespacedObjectMeta { name = gatewayName; namespace = appNs.res.name; labels = gatewayLabels }
+    spec = new dep.DeploymentSpec {
+      replicas = 2
+      selector = new k8s.LabelSelector { matchLabels = gatewayLabels }
+      template = new k8s.PodTemplateSpec {
+        metadata = new k8s.ObjectMeta { name = gatewayName; labels = gatewayLabels }
+        spec = new k8s.PodSpec {
+          containers = new Listing {
+            new k8s.Container {
+              name = "otel-collector"
+              image = imageRef
+              args = new Listing { "--config=/etc/otel/config.yaml" }
+              ports = new Listing {
+                new k8s.ContainerPort { name = "otlp-grpc"; containerPort = 4317 }
+                new k8s.ContainerPort { name = "otlp-http"; containerPort = 4318 }
+              }
+              volumeMounts = new Listing {
+                new k8s.VolumeMount { name = "config"; mountPath = "/etc/otel"; readOnly = true }
+              }
+              resources = new k8s.ResourceRequirements {
+                requests = new Mapping { ["cpu"] = "100m"; ["memory"] = "128Mi" }
+                limits = new Mapping { ["cpu"] = "500m"; ["memory"] = "512Mi" }
+              }
+            }
+          }
+          volumes = new Listing {
+            new k8s.Volume {
+              name = "config"
+              configMap = new k8s.ConfigMapVolumeSource {
+                name = "\(gatewayName)-config"
+                items = new Listing {
+                  new k8s.KeyToPath { key = "config-yaml"; path = "config.yaml" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+function gatewayService(k8sTarget: formae.Target, appNs: ns.Namespace): svc.Service =
+  new svc.Service {
+    target = k8sTarget.res
+    label = "lgtm-otel-gateway-svc"
+    metadata = new k8s.NamespacedObjectMeta { name = gatewayName; namespace = appNs.res.name; labels = gatewayLabels }
+    spec = new svc.ServiceSpec {
+      selector = gatewayLabels
+      ports = new Listing {
+        new svc.ServicePort { name = "otlp-grpc"; port = 4317; targetPort = 4317 }
+        new svc.ServicePort { name = "otlp-http"; port = 4318; targetPort = 4318 }
+      }
+    }
+  }
+
+// ---------------------------------------------------------------------------
+// Agent — DaemonSet with kubelet scrape + pod log tailing
+// ---------------------------------------------------------------------------
+function agentServiceAccountRes(k8sTarget: formae.Target, appNs: ns.Namespace): sa.ServiceAccount =
+  new sa.ServiceAccount {
+    target = k8sTarget.res
+    label = "lgtm-otel-agent-sa"
+    metadata = new k8s.NamespacedObjectMeta { name = agentServiceAccount; namespace = appNs.res.name; labels = agentLabels }
+  }
+
+function agentClusterRoleRes(k8sTarget: formae.Target): cr.ClusterRole =
+  new cr.ClusterRole {
+    target = k8sTarget.res
+    label = "lgtm-otel-agent-cr"
+    metadata = new k8s.ObjectMeta { name = agentClusterRole; labels = agentLabels }
+    rules = new Listing {
+      new k8s.PolicyRule {
+        apiGroups = new Listing { "" }
+        resources = new Listing { "nodes"; "nodes/stats"; "nodes/proxy"; "pods"; "namespaces" }
+        verbs = new Listing { "get"; "list"; "watch" }
+      }
+    }
+  }
+
+function agentClusterRoleBindingRes(k8sTarget: formae.Target, appNs: ns.Namespace): crb.ClusterRoleBinding =
+  new crb.ClusterRoleBinding {
+    target = k8sTarget.res
+    label = "lgtm-otel-agent-crb"
+    metadata = new k8s.ObjectMeta { name = agentClusterRole; labels = agentLabels }
+    roleRef = new k8s.RoleRef {
+      apiGroup = "rbac.authorization.k8s.io"
+      kind = "ClusterRole"
+      name = agentClusterRole
+    }
+    subjects = new Listing {
+      new k8s.Subject {
+        kind = "ServiceAccount"
+        name = agentServiceAccount
+        namespace = appNs.res.name
+      }
+    }
+  }
+
+function agentConfig(k8sTarget: formae.Target, appNs: ns.Namespace, nsName: String): cm.ConfigMap =
+  new cm.ConfigMap {
+    target = k8sTarget.res
+    label = "lgtm-otel-agent-config"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "\(agentName)-config"
+      namespace = appNs.res.name
+      labels = agentLabels
+    }
+    data = new Mapping {
+      ["config-yaml"] = (new YamlRenderer {}).renderValue(new Dynamic {
+        receivers {
+          kubeletstats {
+            collection_interval = "30s"
+            auth_type = "serviceAccount"
+            endpoint = "https://${env:K8S_NODE_NAME}:10250"
+            insecure_skip_verify = true
+          }
+          filelog {
+            include = new Listing { "/var/log/pods/*/*/*.log" }
+            start_at = "end"
+            include_file_path = true
+          }
+        }
+        processors {
+          batch {}
+        }
+        exporters {
+          otlp {
+            endpoint = "\(gatewayName).\(nsName).svc.cluster.local:4317"
+            tls { insecure = true }
+          }
+        }
+        service {
+          pipelines {
+            metrics {
+              receivers = new Listing { "kubeletstats" }
+              processors = new Listing { "batch" }
+              exporters = new Listing { "otlp" }
+            }
+            logs {
+              receivers = new Listing { "filelog" }
+              processors = new Listing { "batch" }
+              exporters = new Listing { "otlp" }
+            }
+          }
+        }
+      })
+    }
+  }
+
+function agentDaemonSet(k8sTarget: formae.Target, appNs: ns.Namespace): ds.DaemonSet =
+  new ds.DaemonSet {
+    target = k8sTarget.res
+    label = "lgtm-otel-agent"
+    metadata = new k8s.NamespacedObjectMeta { name = agentName; namespace = appNs.res.name; labels = agentLabels }
+    spec = new ds.DaemonSetSpec {
+      selector = new k8s.LabelSelector { matchLabels = agentLabels }
+      template = new k8s.PodTemplateSpec {
+        metadata = new k8s.ObjectMeta { name = agentName; labels = agentLabels }
+        spec = new k8s.PodSpec {
+          serviceAccountName = agentServiceAccount
+          containers = new Listing {
+            new k8s.Container {
+              name = "otel-agent"
+              image = imageRef
+              args = new Listing { "--config=/etc/otel/config.yaml" }
+              env = new Listing {
+                new k8s.EnvVar {
+                  name = "K8S_NODE_NAME"
+                  valueFrom = new k8s.EnvVarSource {
+                    fieldRef = new k8s.ObjectFieldSelector { fieldPath = "spec.nodeName" }
+                  }
+                }
+              }
+              volumeMounts = new Listing {
+                new k8s.VolumeMount { name = "config"; mountPath = "/etc/otel"; readOnly = true }
+                new k8s.VolumeMount { name = "varlogpods"; mountPath = "/var/log/pods"; readOnly = true }
+              }
+              resources = new k8s.ResourceRequirements {
+                requests = new Mapping { ["cpu"] = "50m"; ["memory"] = "128Mi" }
+                limits = new Mapping { ["cpu"] = "200m"; ["memory"] = "256Mi" }
+              }
+            }
+          }
+          volumes = new Listing {
+            new k8s.Volume {
+              name = "config"
+              configMap = new k8s.ConfigMapVolumeSource {
+                name = "\(agentName)-config"
+                items = new Listing {
+                  new k8s.KeyToPath { key = "config-yaml"; path = "config.yaml" }
+                }
+              }
+            }
+            new k8s.Volume {
+              name = "varlogpods"
+              hostPath = new Mapping { ["path"] = "/var/log/pods" }
+            }
+          }
+        }
+      }
+    }
+  }
+
+function allResources(k8sTarget: formae.Target, appNs: ns.Namespace, nsName: String) = new Listing {
+  gatewayConfig(k8sTarget, appNs, nsName)
+  gatewayDeployment(k8sTarget, appNs)
+  gatewayService(k8sTarget, appNs)
+  agentServiceAccountRes(k8sTarget, appNs)
+  agentClusterRoleRes(k8sTarget)
+  agentClusterRoleBindingRes(k8sTarget, appNs)
+  agentConfig(k8sTarget, appNs, nsName)
+  agentDaemonSet(k8sTarget, appNs)
+}

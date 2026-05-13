@@ -1,0 +1,332 @@
+// NginxChart: A native Formae chart for deploying nginx.
+//
+// Pure PKL — no Helm, no pkl-reader-helm, no external tools.
+//
+// Usage:
+//
+//   ```pkl
+//   amends "@formae/forma.pkl"
+//
+//   import "@formae-formations/NginxFormation.pkl"
+//   import "@formae/formae.pkl"
+//
+//   local nginx = new NginxChart.Nginx {
+//     name = "my-nginx"
+//     namespace = "production"
+//     replicas = 3
+//     serviceType = "LoadBalancer"
+//   }
+//
+//   forma {
+//     new formae.Stack { label = "my-app" }
+//     new formae.Target {
+//       label = "prod"
+//       config { ["context"] = "my-cluster"; ["namespace"] = "production" }
+//     }
+//     for (r in nginx.resources) { r }
+//   }
+//   ```
+module NginxFormation
+
+import "@k8s/k8s.pkl"
+import "@k8s/apps/Deployment.pkl" as dep
+import "@k8s/core/Service.pkl" as svc
+import "@k8s/core/ServiceAccount.pkl" as sa
+import "@k8s/core/ConfigMap.pkl" as cm
+import "@k8s/core/Namespace.pkl" as ns
+import "@k8s/networking/Ingress.pkl" as ing
+
+/// Nginx deployment chart.
+open class Nginx {
+
+  // ── Identity ────────────────────────────────────────────────────────────────
+
+  /// Application name. Used for resource names, labels, and formae label prefixes.
+  name: String
+
+  /// Target namespace.
+  namespace: String = "default"
+
+  // ── Container ───────────────────────────────────────────────────────────────
+
+  /// Nginx image.
+  image: String = "nginx:latest"
+
+  /// Port nginx listens on inside the container.
+  containerPort: Int = 80
+
+  /// Extra environment variables.
+  env: Listing<k8s.EnvVar>?
+
+  // ── Scaling ─────────────────────────────────────────────────────────────────
+
+  /// Number of replicas.
+  replicas: Int = 1
+
+  /// Deployment strategy type: "RollingUpdate" or "Recreate".
+  strategyType: String = "RollingUpdate"
+
+  // ── Resources ───────────────────────────────────────────────────────────────
+
+  /// CPU request (e.g., "100m").
+  cpuRequest: String?
+
+  /// CPU limit (e.g., "200m").
+  cpuLimit: String?
+
+  /// Memory request (e.g., "128Mi").
+  memoryRequest: String?
+
+  /// Memory limit (e.g., "256Mi").
+  memoryLimit: String?
+
+  // ── Service ─────────────────────────────────────────────────────────────────
+
+  /// Service type: "ClusterIP", "NodePort", or "LoadBalancer".
+  serviceType: String = "ClusterIP"
+
+  /// External service port.
+  servicePort: Int = 80
+
+  /// NodePort number (only for serviceType = "NodePort").
+  nodePort: Int?
+
+  // ── Scheduling ──────────────────────────────────────────────────────────────
+
+  /// Node selector labels for pod scheduling.
+  nodeSelector: Mapping<String, String>?
+
+  // ── Optional features ───────────────────────────────────────────────────────
+
+  /// Create a dedicated ServiceAccount.
+  createServiceAccount: Boolean = true
+
+  /// Automount the service account token.
+  automountServiceAccountToken: Boolean = false
+
+  /// Create a Namespace resource.
+  createNamespace: Boolean = false
+
+  /// ConfigMap data (key → value). Creates a ConfigMap alongside the deployment.
+  configData: Mapping<String, String>?
+
+  // ── Ingress ─────────────────────────────────────────────────────────────────
+
+  /// Ingress hostname. When set, creates an Ingress resource.
+  ingressHost: String?
+
+  /// Ingress path.
+  ingressPath: String = "/"
+
+  /// Ingress path type.
+  ingressPathType: String = "Prefix"
+
+  /// Ingress class name.
+  ingressClassName: String?
+
+  /// Ingress TLS secret name. When set with ingressHost, enables TLS.
+  ingressTLSSecret: String?
+
+  // ── Labels ──────────────────────────────────────────────────────────────────
+
+  /// Extra labels added to all resources.
+  extraLabels: Mapping<String, String>?
+
+  /// Extra annotations added to all resources.
+  extraAnnotations: Mapping<String, String>?
+
+  // ── Output ──────────────────────────────────────────────────────────────────
+
+  /// All generated Formae resources. Use in a `forma { }` block:
+  ///
+  ///   for (r in nginx.resources) { r }
+  resources: Listing = let (_self = this)
+    new Listing {
+      when (_self.createNamespace) { _self._namespace }
+      when (_self.createServiceAccount) { _self._serviceAccount }
+      when (_self.configData != null) { _self._configMap }
+      _self._service
+      _self._deployment
+      when (_self.ingressHost != null) { _self._ingress }
+    }
+
+  // ── Internal: computed labels ───────────────────────────────────────────────
+
+  hidden _appLabels: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      ["app.kubernetes.io/name"] = "nginx"
+      ["app.kubernetes.io/instance"] = _self.name
+      when (_self.extraLabels != null) {
+        for (_k, _v in _self.extraLabels) {
+          [_k] = _v
+        }
+      }
+    }
+
+  hidden _selectorLabels: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      ["app.kubernetes.io/name"] = "nginx"
+      ["app.kubernetes.io/instance"] = _self.name
+    }
+
+  hidden _objectMeta: k8s.ObjectMeta = let (_self = this)
+    new k8s.NamespacedObjectMeta {
+      name = _self.name
+      namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
+      labels = _self._appLabels
+      when (_self.extraAnnotations != null) {
+        annotations = _self.extraAnnotations
+      }
+    }
+
+  // ── Internal: resource builders ─────────────────────────────────────────────
+
+  hidden _namespace: ns.Namespace = let (_self = this)
+    new ns.Namespace {
+      label = _self.name + "-namespace"
+      metadata = new ns.NamespaceMetadata {
+        name = _self.namespace
+      }
+    }
+
+  hidden _serviceAccount: sa.ServiceAccount = let (_self = this)
+    new sa.ServiceAccount {
+      label = _self.name + "-serviceaccount"
+      metadata = _self._objectMeta
+      automountServiceAccountToken = _self.automountServiceAccountToken
+    }
+
+  hidden _configMap: cm.ConfigMap = let (_self = this)
+    new cm.ConfigMap {
+      label = _self.name + "-configmap"
+      metadata = _self._objectMeta
+      data = _self.configData
+    }
+
+  hidden _resourceReqs: k8s.ResourceRequirements? = let (_self = this)
+    if (_self.cpuRequest == null && _self.cpuLimit == null && _self.memoryRequest == null && _self.memoryLimit == null) null
+    else new k8s.ResourceRequirements {
+      when (_self.cpuRequest != null || _self.memoryRequest != null) {
+        requests {
+          when (_self.cpuRequest != null) { ["cpu"] = _self.cpuRequest }
+          when (_self.memoryRequest != null) { ["memory"] = _self.memoryRequest }
+        }
+      }
+      when (_self.cpuLimit != null || _self.memoryLimit != null) {
+        limits {
+          when (_self.cpuLimit != null) { ["cpu"] = _self.cpuLimit }
+          when (_self.memoryLimit != null) { ["memory"] = _self.memoryLimit }
+        }
+      }
+    }
+
+  hidden _container: k8s.Container = let (_self = this)
+    new k8s.Container {
+      name = "nginx"
+      image = _self.image
+      ports {
+        new {
+          name = "http"
+          containerPort = _self.containerPort
+        }
+      }
+      when (_self.env != null) {
+        env = _self.env
+      }
+      when (_self._resourceReqs != null) {
+        resources = _self._resourceReqs
+      }
+    }
+
+  hidden _deployment: dep.Deployment = let (_self = this)
+    new dep.Deployment {
+      label = _self.name + "-deployment"
+      metadata = _self._objectMeta
+      spec = new dep.DeploymentSpec {
+        replicas = _self.replicas
+        selector = new k8s.LabelSelector {
+          matchLabels = _self._selectorLabels
+        }
+        strategy = new dep.DeploymentStrategy {
+          type = _self.strategyType
+        }
+        template = new k8s.PodTemplateSpec {
+          metadata = new k8s.ObjectMeta {
+            name = _self.name
+            labels = _self._appLabels
+          }
+          spec = new k8s.PodSpec {
+            containers {
+              _self._container
+            }
+            when (_self.createServiceAccount) {
+              serviceAccountName = _self._serviceAccount.res.name
+            }
+            when (_self.nodeSelector != null) {
+              nodeSelector = _self.nodeSelector
+            }
+          }
+        }
+      }
+    }
+
+  hidden _service: svc.Service = let (_self = this)
+    new svc.Service {
+      label = _self.name + "-service"
+      metadata = _self._objectMeta
+      spec = new svc.ServiceSpec {
+        type = _self.serviceType
+        selector = _self._selectorLabels
+        ports {
+          new {
+            name = "http"
+            port = _self.servicePort
+            targetPort = "http"
+            when (_self.nodePort != null) {
+              nodePort = _self.nodePort
+            }
+          }
+        }
+      }
+    }
+
+  hidden _ingress: ing.Ingress = let (_self = this)
+    new ing.Ingress {
+      label = _self.name + "-ingress"
+      metadata = _self._objectMeta
+      spec = new ing.IngressSpec {
+        when (_self.ingressClassName != null) {
+          ingressClassName = _self.ingressClassName
+        }
+        when (_self.ingressTLSSecret != null) {
+          tls {
+            new {
+              hosts { _self.ingressHost }
+              secretName = _self.ingressTLSSecret
+            }
+          }
+        }
+        rules {
+          new {
+            host = _self.ingressHost
+            http = new ing.HTTPIngressRuleValue {
+              paths {
+                new {
+                  path = _self.ingressPath
+                  pathType = _self.ingressPathType
+                  backend = new ing.IngressBackend {
+                    service = new ing.IngressServiceBackend {
+                      name = _self.name
+                      port = new ing.ServiceBackendPort {
+                        number = _self.servicePort
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+}

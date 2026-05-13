@@ -1,0 +1,23 @@
+/*
+ * Conformance Test: PrometheusFormation (Create)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@formae-formations/PrometheusFormation.pkl"
+import "../shared/config/vars.pkl" as v
+
+local chart = new PrometheusFormation.Prometheus {
+  name = "test-prom-\(v.testRunID)"
+  namespace = "formae-test-\(v.testRunID)"
+  createNamespace = true
+  createServiceAccount = true
+  createClusterRole = true
+  replicas = 1
+  image = "prom/prometheus:latest"
+}
+
+forma {
+  new formae.Stack { label = "prometheus-chart-test"; description = "Prometheus chart conformance test" }
+  v.target
+  for (r in chart.resources) { r }
+}

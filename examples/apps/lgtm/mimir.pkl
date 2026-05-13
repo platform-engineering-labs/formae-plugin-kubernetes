@@ -1,0 +1,214 @@
+// Mimir Simple Scalable — write/read/backend Deployments all sharing one
+// ConfigMap. Mimir natively supports -target=read/write/backend, so the
+// role IS the target — no mapping needed.
+
+import "@formae/formae.pkl"
+import "@k8s/v1.34/core/Namespace.pkl" as ns
+import "@k8s/v1.34/core/ConfigMap.pkl" as cm
+import "@k8s/v1.34/core/Service.pkl" as svc
+import "@k8s/v1.34/apps/Deployment.pkl" as dep
+import "@k8s/k8s.pkl" as k8s
+
+local appName = "mimir"
+local imageRef = "docker.io/grafana/mimir:2.14.3"
+local configName = "\(appName)-config"
+local memberlistName = "\(appName)-memberlist"
+local httpPort = 8080
+local grpcPort = 9095
+local memberlistPort = 7946
+
+local commonLabels = new Mapping {
+  ["app.kubernetes.io/part-of"] = "lgtm"
+  ["app.kubernetes.io/name"] = appName
+  ["managed-by"] = "formae"
+}
+
+function mimirConfig(
+  k8sTarget: formae.Target,
+  appNs: ns.Namespace,
+  nsName: String,
+  minioEndpoint: String,
+  bucketName: String
+): cm.ConfigMap =
+  new cm.ConfigMap {
+    target = k8sTarget.res
+    label = "lgtm-mimir-config"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = configName
+      namespace = appNs.res.name
+      labels = commonLabels
+    }
+    data = new Mapping {
+      ["config-yaml"] = (new YamlRenderer {}).renderValue(new Dynamic {
+        multitenancy_enabled = false
+        server {
+          http_listen_port = httpPort
+          grpc_listen_port = grpcPort
+        }
+        common {
+          storage {
+            backend = "s3"
+            s3 {
+              endpoint = minioEndpoint
+              bucket_name = bucketName
+              access_key_id = "${MINIO_ROOT_USER}"
+              secret_access_key = "${MINIO_ROOT_PASSWORD}"
+              insecure = true
+            }
+          }
+        }
+        memberlist {
+          join_members = new Listing { "\(memberlistName).\(nsName).svc.cluster.local:\(memberlistPort)" }
+        }
+        blocks_storage { storage_prefix = "blocks" }
+        ruler_storage { storage_prefix = "ruler" }
+        alertmanager_storage { storage_prefix = "alertmanager" }
+        limits {
+          ingestion_rate = 100000
+          max_global_series_per_user = 1000000
+        }
+      })
+    }
+  }
+
+function mimirMemberlistService(k8sTarget: formae.Target, appNs: ns.Namespace): svc.Service =
+  new svc.Service {
+    target = k8sTarget.res
+    label = "lgtm-mimir-memberlist"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = memberlistName
+      namespace = appNs.res.name
+      labels = commonLabels
+    }
+    spec = new svc.ServiceSpec {
+      clusterIP = "None"
+      publishNotReadyAddresses = true
+      selector = commonLabels
+      ports = new Listing {
+        new svc.ServicePort { name = "memberlist"; port = memberlistPort; targetPort = memberlistPort }
+      }
+    }
+  }
+
+function tierDeployment(
+  k8sTarget: formae.Target,
+  appNs: ns.Namespace,
+  role: String,
+  replicaCount: Int,
+  credsSecret: String
+): dep.Deployment =
+  new dep.Deployment {
+    target = k8sTarget.res
+    label = "lgtm-mimir-\(role)"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "\(appName)-\(role)"
+      namespace = appNs.res.name
+      labels = (commonLabels) { ["app.kubernetes.io/component"] = role }
+    }
+    spec = new dep.DeploymentSpec {
+      replicas = replicaCount
+      selector = new k8s.LabelSelector {
+        matchLabels = (commonLabels) { ["app.kubernetes.io/component"] = role }
+      }
+      template = new k8s.PodTemplateSpec {
+        metadata = new k8s.ObjectMeta {
+          name = "\(appName)-\(role)"
+          labels = (commonLabels) { ["app.kubernetes.io/component"] = role }
+        }
+        spec = new k8s.PodSpec {
+          containers = new Listing {
+            new k8s.Container {
+              name = appName
+              image = imageRef
+              args = new Listing {
+                "-config.file=/etc/mimir/config.yaml"
+                "-config.expand-env=true"
+                "-target=\(role)"
+              }
+              env = new Listing {
+                new k8s.EnvVar {
+                  name = "MINIO_ROOT_USER"
+                  valueFrom = new k8s.EnvVarSource {
+                    secretKeyRef = new k8s.SecretKeySelector { name = credsSecret; key = "MINIO_ROOT_USER" }
+                  }
+                }
+                new k8s.EnvVar {
+                  name = "MINIO_ROOT_PASSWORD"
+                  valueFrom = new k8s.EnvVarSource {
+                    secretKeyRef = new k8s.SecretKeySelector { name = credsSecret; key = "MINIO_ROOT_PASSWORD" }
+                  }
+                }
+              }
+              ports = new Listing {
+                new k8s.ContainerPort { name = "http"; containerPort = httpPort }
+                new k8s.ContainerPort { name = "grpc"; containerPort = grpcPort }
+                new k8s.ContainerPort { name = "memberlist"; containerPort = memberlistPort }
+              }
+              volumeMounts = new Listing {
+                new k8s.VolumeMount { name = "config"; mountPath = "/etc/mimir"; readOnly = true }
+                new k8s.VolumeMount { name = "data"; mountPath = "/var/mimir" }
+              }
+              resources = new k8s.ResourceRequirements {
+                requests = new Mapping { ["cpu"] = "50m"; ["memory"] = "128Mi" }
+                limits = new Mapping { ["cpu"] = "500m"; ["memory"] = "512Mi" }
+              }
+            }
+          }
+          volumes = new Listing {
+            new k8s.Volume {
+              name = "config"
+              configMap = new k8s.ConfigMapVolumeSource {
+                name = configName
+                items = new Listing {
+                  new k8s.KeyToPath { key = "config-yaml"; path = "config.yaml" }
+                }
+              }
+            }
+            new k8s.Volume {
+              name = "data"
+              emptyDir = new k8s.EmptyDirVolumeSource {}
+            }
+          }
+        }
+      }
+    }
+  }
+
+function tierService(k8sTarget: formae.Target, appNs: ns.Namespace, role: String): svc.Service =
+  new svc.Service {
+    target = k8sTarget.res
+    label = "lgtm-mimir-\(role)-svc"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "\(appName)-\(role)"
+      namespace = appNs.res.name
+      labels = (commonLabels) { ["app.kubernetes.io/component"] = role }
+    }
+    spec = new svc.ServiceSpec {
+      selector = (commonLabels) { ["app.kubernetes.io/component"] = role }
+      ports = new Listing {
+        new svc.ServicePort { name = "http"; port = httpPort; targetPort = httpPort }
+        new svc.ServicePort { name = "grpc"; port = grpcPort; targetPort = grpcPort }
+      }
+    }
+  }
+
+function allResources(
+  k8sTarget: formae.Target,
+  appNs: ns.Namespace,
+  nsName: String,
+  credsSecret: String,
+  minioEndpoint: String,
+  bucketName: String
+) = new Listing {
+  mimirConfig(k8sTarget, appNs, nsName, minioEndpoint, bucketName)
+  mimirMemberlistService(k8sTarget, appNs)
+
+  tierDeployment(k8sTarget, appNs, "write",   2, credsSecret)
+  tierService(k8sTarget, appNs, "write")
+
+  tierDeployment(k8sTarget, appNs, "read",    2, credsSecret)
+  tierService(k8sTarget, appNs, "read")
+
+  tierDeployment(k8sTarget, appNs, "backend", 1, credsSecret)
+  tierService(k8sTarget, appNs, "backend")
+}

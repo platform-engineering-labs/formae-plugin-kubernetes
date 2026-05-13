@@ -1,0 +1,79 @@
+/// Mappers for storage.k8s.io/v1 K8S resource types.
+module storage
+
+import "../../../k8s.pkl" as k8s
+import "../../../v1.27/storage/StorageClass.pkl" as sc
+import "../../../v1.27/storage/CSIDriver.pkl" as csi
+
+import "common.pkl"
+
+// =============================================================================
+// StorageClass (cluster-scoped)
+// =============================================================================
+
+function mapStorageClass(src: Any, prefix: String, _namespace: String): sc.StorageClass =
+  new sc.StorageClass {
+    label = common.makeLabel(prefix, "storageclass", src.metadata.name)
+    metadata = common.mapClusterMeta(src.metadata)
+    provisioner = src.provisioner
+    when (src.parameters != null) {
+      parameters = common.mapStringMapping(src.parameters)
+    }
+    when (src.reclaimPolicy != null) {
+      reclaimPolicy = src.reclaimPolicy
+    }
+    when (src.volumeBindingMode != null) {
+      volumeBindingMode = src.volumeBindingMode
+    }
+    when (src.allowVolumeExpansion != null) {
+      allowVolumeExpansion = src.allowVolumeExpansion
+    }
+  }
+
+// =============================================================================
+// CSIDriver (cluster-scoped)
+// =============================================================================
+
+function mapCSIDriver(src: Any, prefix: String, _namespace: String): csi.CSIDriver =
+  new csi.CSIDriver {
+    label = common.makeLabel(prefix, "csidriver", src.metadata.name)
+    metadata = common.mapClusterMeta(src.metadata)
+    spec = mapCSIDriverSpec(src.spec)
+  }
+
+function mapCSIDriverSpec(src: Any): csi.CSIDriverSpec =
+  new csi.CSIDriverSpec {
+    when (src.attachRequired != null) {
+      attachRequired = src.attachRequired
+    }
+    when (src.podInfoOnMount != null) {
+      podInfoOnMount = src.podInfoOnMount
+    }
+    when (src.fsGroupPolicy != null) {
+      fsGroupPolicy = src.fsGroupPolicy
+    }
+    when (src.requiresRepublish != null) {
+      requiresRepublish = src.requiresRepublish
+    }
+    when (src.storageCapacity != null) {
+      storageCapacity = src.storageCapacity
+    }
+    when (src.seLinuxMount != null) {
+      seLinuxMount = src.seLinuxMount
+    }
+    when (src.volumeLifecycleModes != null) {
+      volumeLifecycleModes = common.mapStringListing(src.volumeLifecycleModes)
+    }
+    when (src.tokenRequests != null) {
+      tokenRequests = new Listing {
+        for (_tr in src.tokenRequests) {
+          new csi.TokenRequest {
+            audience = _tr.audience
+            when (_tr.expirationSeconds != null) {
+              expirationSeconds = _tr.expirationSeconds
+            }
+          }
+        }
+      }
+    }
+  }

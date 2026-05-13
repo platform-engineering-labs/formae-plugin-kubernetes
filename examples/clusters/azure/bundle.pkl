@@ -1,0 +1,56 @@
+// Azure managed-Kubernetes bundle for the dispatcher.
+//
+// Provisions an AKS cluster (resource group, VNet, subnet, managed cluster)
+// plus an Azure RBAC role assignment that grants the calling user
+// `Azure Kubernetes Service RBAC Cluster Admin` against the new cluster
+// (required when `aadProfile.enableAzureRBAC = true`). Exposes a Kubernetes
+// target authenticated via `AKSAuth` (Azure AD token refresh through the
+// K8S plugin's WrapTransport).
+//
+// Used by the workload entrypoints under `examples/<workload>/main.pkl` via
+// the dispatcher in `examples/clusters/dispatch.pkl`.
+//
+// Required env vars (or override with `--prop`):
+//   AZURE_SUBSCRIPTION_ID — your Azure subscription id
+//   AZURE_PRINCIPAL_ID    — your Azure AD object id (`az ad signed-in-user show --query id -o tsv`)
+
+import "@azure/authorization/roleassignment.pkl"
+import "@formae/formae.pkl"
+import "@k8s/k8s.pkl" as k8s
+
+import "aks.pkl"
+import "network.pkl"
+import "vars.pkl"
+
+local aksCluster = aks.aksCluster(vars.props)
+
+local rbacAdmin = new roleassignment.RoleAssignment {
+  label = "aks-rbac-admin"
+  scope = aksCluster.res.id
+  principalId = vars.props.principalId.value
+  // Azure Kubernetes Service RBAC Cluster Admin
+  roleDefinitionId = "/subscriptions/\(vars.props.subscriptionId.value)/providers/Microsoft.Authorization/roleDefinitions/b1ff04bb-8a4e-4dc4-8eb5-8693973ce19b"
+  principalType = "User"
+}
+
+resources: Listing = new {
+  vars.target
+  network.resourceGroup
+  network.virtualNetwork
+  network.aksSubnet
+  aksCluster
+  rbacAdmin
+}
+
+target: formae.Target = new formae.Target {
+  label = "k8s-target-azure"
+  config = new k8s.Config {
+    kubernetesVersion = "1.34"
+    auth = new k8s.AKSAuth {
+      endpoint = aksCluster.res.fqdn
+      certificateAuthority = aksCluster.res.certificateAuthority
+      resourceGroup = network.resourceGroup.res.name
+      clusterName = aksCluster.res.name
+    }
+  }
+}

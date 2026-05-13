@@ -1,0 +1,21 @@
+/*
+ * Conformance Test: KeycloakFormation (Create)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@formae-formations/KeycloakFormation.pkl"
+import "../shared/config/vars.pkl" as v
+
+local chart = new KeycloakFormation.Keycloak {
+  name = "test-kc-\(v.testRunID)"
+  namespace = "formae-test-\(v.testRunID)"
+  createNamespace = true
+  replicas = 1
+  adminPassword = "test-admin-pass"
+}
+
+forma {
+  new formae.Stack { label = "keycloak-chart-test"; description = "Keycloak chart conformance test" }
+  v.target
+  for (r in chart.resources) { r }
+}

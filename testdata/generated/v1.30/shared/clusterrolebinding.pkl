@@ -1,0 +1,32 @@
+/*
+ * Conformance Test: ClusterRoleBinding (Create)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.30/rbac/ClusterRoleBinding.pkl" as crb
+import "@k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new crb.ClusterRoleBinding {
+    label = "test-clusterrolebinding"
+    metadata = new k8s.ObjectMeta {
+      name = "test-crb-\(v.testRunID)"
+    }
+    roleRef = new k8s.RoleRef {
+      apiGroup = "rbac.authorization.k8s.io"
+      kind = "ClusterRole"
+      name = "test-cr-\(v.testRunID)"
+    }
+    subjects = new Listing {
+      new k8s.Subject {
+        kind = "ServiceAccount"
+        name = "default"
+        namespace = "default"
+      }
+    }
+  }
+}

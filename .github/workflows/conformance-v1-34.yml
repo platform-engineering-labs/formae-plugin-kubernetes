@@ -1,0 +1,17 @@
+name: Conformance K8s 1.34
+
+# Per-version conformance. Triggered by conformance-main.yml via
+# workflow_dispatch (which has no chain-depth cap, unlike workflow_run).
+# Manual workflow_dispatch is also kept for one-off runs and so the
+# README badge URL has a workflow to attach to.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  conformance:
+    uses: ./.github/workflows/conformance-version.yml
+    with:
+      k8s_version: "1.34"
+      kind_version: "v0.31.0"
+      kind_image: "kindest/node:v1.34.3@sha256:08497ee19eace7b4b5348db5c6a1591d7752b164530a36f855cb0f2bdcbadd48"

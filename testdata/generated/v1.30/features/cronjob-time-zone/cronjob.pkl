@@ -1,0 +1,64 @@
+/*
+ * Conformance Test: CronJob with IANA time zone.
+ *
+ * Exercises spec.timeZone (KEP-3140). Schedule fires at the specified
+ * time in the named TZ, not the cluster's local time.
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.30/core/Namespace.pkl" as ns
+import "@k8s/v1.30/batch/CronJob.pkl" as cj
+import "@k8s/k8s.pkl" as k8s
+import "../../shared/config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local ns = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  ns
+
+  new cj.CronJob {
+    label = "test-cronjob-tz"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "test-cronjob-tz-\(v.testRunID)"
+      namespace = ns.res.name
+    }
+    spec = new cj.CronJobSpec {
+      schedule = "0 9 * * *"
+      timeZone = "Europe/Berlin"
+      jobTemplate = new cj.JobTemplateSpec {
+        metadata = new k8s.ObjectMeta {
+          name = "test-cronjob-tz-\(v.testRunID)"
+        }
+        spec = new k8s.JobSpec {
+          template = new k8s.PodTemplateSpec {
+            metadata = new k8s.ObjectMeta {
+              name = "test-cronjob-tz-pod-\(v.testRunID)"
+            }
+            spec = new k8s.PodSpec {
+              containers = new Listing {
+                new k8s.Container {
+                  name = "worker"
+                  image = "busybox:latest"
+                  command = new Listing { "true" }
+                }
+              }
+              restartPolicy = "Never"
+            }
+          }
+        }
+      }
+    }
+  }
+}

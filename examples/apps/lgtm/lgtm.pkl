@@ -1,0 +1,111 @@
+// Reusable LGTM observability stack — Grafana + Loki + Tempo + Mimir + OTel + MinIO.
+//
+// Each data-plane service (Loki, Tempo, Mimir) runs in Simple Scalable mode:
+// 3 independently-scaled Deployments (write / read / backend).
+//
+// Fits a 4 CPU / 8Gi OrbStack VM. ~48 K8S resources when fully wired.
+//
+// Usage:
+//   import "./lgtm.pkl" as lgtm
+//   forma {
+//     for (r in lgtm.allResources(_k8sTarget)) { r }
+//   }
+
+import "@formae/formae.pkl"
+import "@k8s/v1.34/core/Namespace.pkl" as ns
+import "@k8s/v1.34/core/Secret.pkl" as sec
+import "@k8s/k8s.pkl" as k8s
+
+import "./minio.pkl" as minio
+import "./loki.pkl" as loki
+import "./tempo.pkl" as tempo
+import "./mimir.pkl" as mimir
+import "./otel.pkl" as otel
+import "./grafana.pkl" as grafana
+import "./demo.pkl" as demo
+
+// ---------------------------------------------------------------------------
+// Shared configuration
+// ---------------------------------------------------------------------------
+local namespaceName = "observability"
+
+local commonLabels = new Mapping {
+  ["app.kubernetes.io/part-of"] = "lgtm"
+  ["managed-by"] = "formae"
+}
+
+local minioCredsSecretName = "minio-credentials"
+local minioRootUser = "minioadmin"
+local minioRootPassword = "minioadmin-change-me"
+
+local buckets = new Mapping {
+  ["loki"] = "loki-data"
+  ["tempo"] = "tempo-traces"
+  ["mimir"] = "mimir-blocks"
+}
+
+// ---------------------------------------------------------------------------
+// Resource functions
+// ---------------------------------------------------------------------------
+
+function appNamespace(k8sTarget: formae.Target): ns.Namespace =
+  new ns.Namespace {
+    target = k8sTarget.res
+    label = "lgtm-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = namespaceName
+      labels = commonLabels
+    }
+  }
+
+function minioCredsSecret(k8sTarget: formae.Target, appNs: ns.Namespace): sec.Secret =
+  new sec.Secret {
+    target = k8sTarget.res
+    label = "lgtm-minio-creds"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = minioCredsSecretName
+      namespace = appNs.res.name
+      labels = commonLabels
+    }
+    type = "Opaque"
+    stringData = new Mapping {
+      ["MINIO_ROOT_USER"] = minioRootUser
+      ["MINIO_ROOT_PASSWORD"] = minioRootPassword
+    }
+  }
+
+local minioEndpoint = "minio.\(namespaceName).svc.cluster.local:9000"
+local bucketsCsv = "\(buckets["loki"]),\(buckets["tempo"]),\(buckets["mimir"])"
+
+/// Build all LGTM stack resources for a given K8S target.
+///
+/// [enableDemoTraffic] — when true, also deploys three `telemetrygen`
+/// Deployments that continuously emit synthetic logs, metrics, and traces
+/// to the OTel gateway. Set to `false` when pointing the stack at real
+/// workloads, so dashboards show only genuine traffic.
+function allResources(k8sTarget: formae.Target, enableDemoTraffic: Boolean) =
+  let (_ns = appNamespace(k8sTarget))
+  let (_creds = minioCredsSecret(k8sTarget, _ns))
+    new Listing {
+      _ns
+      _creds
+
+      // Storage
+      for (r in minio.allResources(k8sTarget, _ns, minioCredsSecretName, bucketsCsv)) { r }
+
+      // Data plane (9 Deployments total)
+      for (r in loki.allResources(k8sTarget, _ns, namespaceName, minioCredsSecretName, minioEndpoint, buckets["loki"])) { r }
+      for (r in tempo.allResources(k8sTarget, _ns, namespaceName, minioCredsSecretName, minioEndpoint, buckets["tempo"])) { r }
+      for (r in mimir.allResources(k8sTarget, _ns, namespaceName, minioCredsSecretName, minioEndpoint, buckets["mimir"])) { r }
+
+      // Telemetry ingest
+      for (r in otel.allResources(k8sTarget, _ns, namespaceName)) { r }
+
+      // Viz
+      for (r in grafana.allResources(k8sTarget, _ns, namespaceName)) { r }
+
+      // Demo traffic — opt-out for real-workload deployments
+      when (enableDemoTraffic) {
+        for (r in demo.allResources(k8sTarget, _ns, namespaceName)) { r }
+      }
+    }

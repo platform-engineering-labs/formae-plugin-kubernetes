@@ -1,0 +1,2 @@
+minK8sVersion = "1.27"
+description = "CronJob with IANA time zone (KEP-3140). GA in 1.27."

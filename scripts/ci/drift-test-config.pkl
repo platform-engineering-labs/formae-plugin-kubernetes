@@ -1,0 +1,29 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Formae agent config for drift detection CI test.
+ * Uses a short sync interval so drift is detected quickly.
+ */
+
+amends "formae:/Config.pkl"
+
+agent {
+  synchronization {
+    enabled = true
+    interval = 5.s
+  }
+  logging {
+    consoleLogLevel = "info"
+  }
+  discovery {
+    enabled = false
+  }
+  retry {
+    maxRetries = 1
+  }
+}
+cli {
+  disableUsageReporting = true
+}

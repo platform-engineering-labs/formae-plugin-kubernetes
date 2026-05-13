@@ -1,0 +1,80 @@
+/*
+ * Conformance Test: Ingress (Create)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/core/Namespace.pkl" as ns
+import "@k8s/core/Service.pkl" as svc
+import "@k8s/networking/Ingress.pkl" as ing
+import "@k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local ns = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  ns
+
+  new svc.Service {
+    label = "backend-svc"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "backend-\(v.testRunID)"
+      namespace = ns.res.name
+    }
+    spec = new svc.ServiceSpec {
+      type = "ClusterIP"
+      selector = new Mapping {
+        ["app"] = "backend"
+      }
+      ports = new Listing {
+        new svc.ServicePort {
+          port = 80
+          targetPort = 8080
+          protocol = "TCP"
+        }
+      }
+    }
+  }
+
+  new ing.Ingress {
+    label = "test-ingress"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "test-ing-\(v.testRunID)"
+      namespace = ns.res.name
+    }
+    spec = new ing.IngressSpec {
+      rules = new Listing {
+        new ing.IngressRule {
+          host = "test-\(v.testRunID).example.com"
+          http = new ing.HTTPIngressRuleValue {
+            paths = new Listing {
+              new ing.HTTPIngressPath {
+                path = "/"
+                pathType = "Prefix"
+                backend = new ing.IngressBackend {
+                  service = new ing.IngressServiceBackend {
+                    name = "backend-\(v.testRunID)"
+                    port = new ing.ServiceBackendPort {
+                      number = 80
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

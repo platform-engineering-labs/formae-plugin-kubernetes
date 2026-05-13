@@ -1,0 +1,51 @@
+amends "@formae/forma.pkl"
+import "@apps/bookstore.pkl" as bookstoreApp
+import "@formae/formae.pkl"
+
+import "@clusters/dispatch.pkl"
+
+properties {
+  provider = new formae.Prop {
+    flag = "provider"
+    default = read?("env:FORMAE_PROVIDER") ?? "aws"
+  }
+}
+
+local providerName = properties.provider.value as String
+
+local stack: formae.Stack = new {
+  label = "k8s-bookstore-\(providerName)"
+  description = """
+    Bookstore on a managed Kubernetes cluster (\(providerName)).
+
+    Pick a cloud at apply time with `--provider`:
+
+      formae apply --mode reconcile --provider aws   examples/bookstore/main.pkl
+      formae apply --mode reconcile --provider azure examples/bookstore/main.pkl
+      formae apply --mode reconcile --provider gcp   examples/bookstore/main.pkl
+      formae apply --mode reconcile --provider oci   examples/bookstore/main.pkl
+      formae apply --mode reconcile --provider local examples/bookstore/main.pkl
+
+    `local` skips cluster provisioning and deploys to whatever your kubeconfig is pointing at (OrbStack, kind, minikube, ...). The other providers each provision a full-stack managed cluster (VPC + IAM + cluster).
+
+    See `examples/bookstore/README.md` for prerequisites per provider.
+
+    Teardown:
+      formae destroy --yes --provider <p> examples/bookstore/main.pkl
+    """
+}
+
+local cloud = dispatch.For(providerName)
+
+local bookstore = new {
+  resources = bookstoreApp.allResources(cloud.target)
+}
+
+forma {
+  stack
+
+  ...cloud.resources
+  cloud.target
+
+  ...bookstore.resources
+}

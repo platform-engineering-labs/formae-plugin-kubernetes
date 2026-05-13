@@ -1,0 +1,291 @@
+// PostgreSQLChart: A native Formae chart for deploying PostgreSQL.
+//
+// Pure PKL — no Helm, no pkl-reader-helm, no external tools.
+//
+// Deploys a PostgreSQL StatefulSet with persistent storage, a headless Service,
+// and a Secret for credentials. Optionally creates a ConfigMap for custom
+// postgresql.conf and a Namespace resource.
+//
+// Usage:
+//
+//   ```pkl
+//   amends "@formae/forma.pkl"
+//
+//   import "@formae/formae.pkl"
+//   import "@formae-formations/PostgreSQLFormation.pkl"
+//
+//   local pg = new PostgreSQLChart.PostgreSQL {
+//     name = "my-postgres"
+//     namespace = "databases"
+//     password = "supersecret"
+//     database = "myapp"
+//     storageSize = "20Gi"
+//   }
+//
+//   forma {
+//     new formae.Stack { label = "my-app" }
+//     new formae.Target {
+//       label = "prod"
+//       config { ["context"] = "my-cluster"; ["namespace"] = "databases" }
+//     }
+//     for (r in pg.resources) { r }
+//   }
+//   ```
+module PostgreSQLFormation
+
+import "@k8s/k8s.pkl"
+import "@k8s/apps/StatefulSet.pkl" as sts
+import "@k8s/core/Service.pkl" as svc
+import "@k8s/core/Secret.pkl" as secret
+import "@k8s/core/ConfigMap.pkl" as cm
+import "@k8s/core/Namespace.pkl" as ns
+
+/// PostgreSQL StatefulSet chart.
+open class PostgreSQL {
+
+  // ── Identity ────────────────────────────────────────────────────────────────
+
+  /// Application name. Used for resource names, labels, and formae label prefixes.
+  name: String
+
+  /// Target namespace.
+  namespace: String = "default"
+
+  // ── Container ───────────────────────────────────────────────────────────────
+
+  /// PostgreSQL image.
+  image: String = "postgres:17"
+
+  /// PostgreSQL port.
+  port: Int = 5432
+
+  // ── Scaling ─────────────────────────────────────────────────────────────────
+
+  /// Number of replicas.
+  replicas: Int = 1
+
+  // ── Storage ─────────────────────────────────────────────────────────────────
+
+  /// PVC storage size for the data volume.
+  storageSize: String = "10Gi"
+
+  /// Storage class name. Null uses the cluster default.
+  storageClassName: String?
+
+  // ── Credentials ─────────────────────────────────────────────────────────────
+
+  /// PostgreSQL password (POSTGRES_PASSWORD). Required.
+  password: String
+
+  /// PostgreSQL database name (POSTGRES_DB).
+  database: String = "postgres"
+
+  /// PostgreSQL username (POSTGRES_USER).
+  username: String = "postgres"
+
+  // ── Resources ─────────────────────────────────────────────────────────────
+
+  /// CPU request (e.g., "250m").
+  cpuRequest: String?
+
+  /// CPU limit (e.g., "1000m").
+  cpuLimit: String?
+
+  /// Memory request (e.g., "256Mi").
+  memoryRequest: String?
+
+  /// Memory limit (e.g., "1Gi").
+  memoryLimit: String?
+
+  // ── Optional features ───────────────────────────────────────────────────────
+
+  /// ConfigMap data for custom postgresql.conf or other configuration files.
+  configData: Mapping<String, String>?
+
+  /// Create a Namespace resource.
+  createNamespace: Boolean = false
+
+  // ── Labels ──────────────────────────────────────────────────────────────────
+
+  /// Extra labels added to all resources.
+  extraLabels: Mapping<String, String>?
+
+  /// Extra annotations added to all resources.
+  extraAnnotations: Mapping<String, String>?
+
+  // ── Output ──────────────────────────────────────────────────────────────────
+
+  /// All generated Formae resources. Use in a `forma { }` block:
+  ///
+  ///   for (r in pg.resources) { r }
+  resources: Listing = let (_self = this)
+    new Listing {
+      when (_self.createNamespace) { _self._namespace }
+      _self._secret
+      when (_self.configData != null) { _self._configMap }
+      _self._service
+      _self._statefulSet
+    }
+
+  // ── Internal: computed labels ───────────────────────────────────────────────
+
+  hidden _appLabels: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      ["app.kubernetes.io/name"] = "postgresql"
+      ["app.kubernetes.io/instance"] = _self.name
+      when (_self.extraLabels != null) {
+        for (_k, _v in _self.extraLabels) {
+          [_k] = _v
+        }
+      }
+    }
+
+  hidden _selectorLabels: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      ["app.kubernetes.io/name"] = "postgresql"
+      ["app.kubernetes.io/instance"] = _self.name
+    }
+
+  hidden _objectMeta: k8s.NamespacedObjectMeta = let (_self = this)
+    new k8s.NamespacedObjectMeta {
+      name = _self.name
+      namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
+      labels = _self._appLabels
+      when (_self.extraAnnotations != null) {
+        annotations = _self.extraAnnotations
+      }
+    }
+
+  // ── Internal: resource builders ─────────────────────────────────────────────
+
+  hidden _namespace: ns.Namespace = let (_self = this)
+    new ns.Namespace {
+      label = _self.name + "-namespace"
+      metadata = new ns.NamespaceMetadata {
+        name = _self.namespace
+      }
+    }
+
+  hidden _secret: secret.Secret = let (_self = this)
+    new secret.Secret {
+      label = _self.name + "-secret"
+      metadata = _self._objectMeta
+      type = "Opaque"
+      stringData {
+        ["postgres-password"] = _self.password
+      }
+    }
+
+  hidden _configMap: cm.ConfigMap = let (_self = this)
+    new cm.ConfigMap {
+      label = _self.name + "-configmap"
+      metadata = _self._objectMeta
+      data = _self.configData
+    }
+
+  hidden _resourceReqs: k8s.ResourceRequirements? = let (_self = this)
+    if (_self.cpuRequest == null && _self.cpuLimit == null && _self.memoryRequest == null && _self.memoryLimit == null) null
+    else new k8s.ResourceRequirements {
+      when (_self.cpuRequest != null || _self.memoryRequest != null) {
+        requests {
+          when (_self.cpuRequest != null) { ["cpu"] = _self.cpuRequest }
+          when (_self.memoryRequest != null) { ["memory"] = _self.memoryRequest }
+        }
+      }
+      when (_self.cpuLimit != null || _self.memoryLimit != null) {
+        limits {
+          when (_self.cpuLimit != null) { ["cpu"] = _self.cpuLimit }
+          when (_self.memoryLimit != null) { ["memory"] = _self.memoryLimit }
+        }
+      }
+    }
+
+  hidden _container: k8s.Container = let (_self = this)
+    new k8s.Container {
+      name = "postgresql"
+      image = _self.image
+      ports {
+        new {
+          name = "postgresql"
+          containerPort = _self.port
+        }
+      }
+      env {
+        new k8s.EnvVar { name = "POSTGRES_PASSWORD"; value = _self.password }
+        new k8s.EnvVar { name = "POSTGRES_DB"; value = _self.database }
+        new k8s.EnvVar { name = "POSTGRES_USER"; value = _self.username }
+      }
+      volumeMounts {
+        new k8s.VolumeMount {
+          name = "data"
+          mountPath = "/var/lib/postgresql/data"
+          subPath = "pgdata"
+        }
+      }
+      when (_self._resourceReqs != null) {
+        resources = _self._resourceReqs
+      }
+    }
+
+  hidden _statefulSet: sts.StatefulSet = let (_self = this)
+    new sts.StatefulSet {
+      label = _self.name + "-statefulset"
+      metadata = _self._objectMeta
+      spec = new sts.StatefulSetSpec {
+        replicas = _self.replicas
+        serviceName = _self.name
+        selector = new k8s.LabelSelector {
+          matchLabels = _self._selectorLabels
+        }
+        template = new k8s.PodTemplateSpec {
+          metadata = new k8s.ObjectMeta {
+            name = _self.name
+            labels = _self._appLabels
+          }
+          spec = new k8s.PodSpec {
+            containers {
+              _self._container
+            }
+          }
+        }
+        volumeClaimTemplates {
+          new {
+            metadata {
+              name = "data"
+            }
+            spec {
+              accessModes {
+                "ReadWriteOnce"
+              }
+              resources {
+                requests {
+                  ["storage"] = _self.storageSize
+                }
+              }
+              volumeMode = "Filesystem"
+              when (_self.storageClassName != null) {
+                storageClassName = _self.storageClassName
+              }
+            }
+          }
+        }
+      }
+    }
+
+  hidden _service: svc.Service = let (_self = this)
+    new svc.Service {
+      label = _self.name + "-service"
+      metadata = _self._objectMeta
+      spec = new svc.ServiceSpec {
+        type = "ClusterIP"
+        selector = _self._selectorLabels
+        ports {
+          new {
+            name = "postgresql"
+            port = _self.port
+            targetPort = "postgresql"
+          }
+        }
+      }
+    }
+}

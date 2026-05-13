@@ -1,0 +1,44 @@
+/*
+ * Conformance Test: PodDisruptionBudget (Update)
+ * Changes: minAvailable 1 -> 2 (mutable)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.34/core/Namespace.pkl" as ns
+import "@k8s/v1.34/policy/PodDisruptionBudget.pkl" as pdb
+import "@k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local ns = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  ns
+
+  new pdb.PodDisruptionBudget {
+    label = "test-pdb"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "test-pdb-\(v.testRunID)"
+      namespace = ns.res.name
+    }
+    spec = new pdb.PodDisruptionBudgetSpec {
+      minAvailable = 2
+      selector = new k8s.LabelSelector {
+        matchLabels = new Mapping {
+          ["app"] = "test"
+        }
+      }
+    }
+  }
+}

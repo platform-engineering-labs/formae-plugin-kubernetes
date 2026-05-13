@@ -1,0 +1,56 @@
+/*
+ * Conformance Test: Service (Update)
+ * Changes: added second port (mutable)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.21/core/Namespace.pkl" as ns
+import "@k8s/v1.21/core/Service.pkl" as svc
+import "@k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local ns = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  ns
+
+  new svc.Service {
+    label = "test-service"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "test-svc-\(v.testRunID)"
+      namespace = ns.res.name
+    }
+    spec = new svc.ServiceSpec {
+      type = "ClusterIP"
+      selector = new Mapping {
+        ["app"] = "test"
+      }
+      ports = new Listing {
+        new svc.ServicePort {
+          name = "http"
+          port = 80
+          targetPort = 8080
+          protocol = "TCP"
+        }
+        new svc.ServicePort {
+          name = "https"
+          port = 443
+          targetPort = 8443
+          protocol = "TCP"
+        }
+      }
+    }
+  }
+}

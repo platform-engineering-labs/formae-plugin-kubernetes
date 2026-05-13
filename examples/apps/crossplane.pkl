@@ -1,0 +1,381 @@
+// Reusable Crossplane control-plane install module.
+//
+// Deploys Crossplane core (Namespace, RBAC, Deployment, Service).
+// Crossplane's own init container installs the required CRDs
+// (Provider, Configuration, Composition, etc.) on first start — they
+// are NOT managed by formae, since Crossplane mutates them at runtime
+// and any drift-reconcile loop would fight those mutations.
+//
+// Does NOT install any specific provider (provider-aws, provider-gcp,
+// ...). Install those separately via `kubectl apply` of a Provider CR
+// once Crossplane is running.
+//
+// Usage:
+//   import "@apps/crossplane.pkl" as crossplane
+//   forma {
+//     for (r in crossplane.allResources(_k8sTarget)) { r }
+//   }
+
+import "@formae/formae.pkl"
+import "@k8s/v1.34/core/Namespace.pkl" as ns
+import "@k8s/v1.34/core/ServiceAccount.pkl" as sa
+import "@k8s/v1.34/core/Service.pkl" as svc
+import "@k8s/v1.34/apps/Deployment.pkl" as dep
+import "@k8s/v1.34/rbac/ClusterRole.pkl" as cr
+import "@k8s/v1.34/rbac/ClusterRoleBinding.pkl" as crb
+import "@k8s/v1.34/rbac/Role.pkl" as role
+import "@k8s/v1.34/rbac/RoleBinding.pkl" as rb
+import "@k8s/k8s.pkl" as k8s
+
+// ---------------------------------------------------------------------------
+// Configuration
+// ---------------------------------------------------------------------------
+local appName = "crossplane"
+local namespaceName = "crossplane-system"
+local crossplaneVersion = "v1.19.0"
+local crossplaneImage = "crossplane/crossplane:\(crossplaneVersion)"
+local crossplaneReplicas = 1
+
+// ---------------------------------------------------------------------------
+// Labels
+// ---------------------------------------------------------------------------
+// Dotted label keys (e.g. `app.kubernetes.io/name`) are intentionally
+// omitted — Formae's JSON property comparator treats `.` as a path
+// separator, so `labels."app.kubernetes.io/name"` round-trips through
+// live-state as nested `labels.app.kubernetes.io.name`, collides with
+// the flat `labels.app` string, and triggers spurious drift on every
+// reconcile.
+local commonLabels = new Mapping {
+  ["app"] = appName
+  ["managed-by"] = "formae"
+}
+
+// ---------------------------------------------------------------------------
+// Resources
+// ---------------------------------------------------------------------------
+
+function crossplaneNamespace(k8sTarget: formae.Target): ns.Namespace =
+  new ns.Namespace {
+    target = k8sTarget.res
+    label = "\(appName)-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = namespaceName
+      labels = commonLabels
+    }
+  }
+
+function crossplaneServiceAccount(k8sTarget: formae.Target, cpNs: ns.Namespace): sa.ServiceAccount =
+  new sa.ServiceAccount {
+    target = k8sTarget.res
+    label = "\(appName)-sa"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = appName
+      namespace = cpNs.res.name
+      labels = commonLabels
+    }
+  }
+
+function crossplaneClusterRole(k8sTarget: formae.Target): cr.ClusterRole =
+  new cr.ClusterRole {
+    target = k8sTarget.res
+    label = "\(appName)-cluster-role"
+    metadata = new k8s.ObjectMeta {
+      name = appName
+      labels = commonLabels
+    }
+    rules = new Listing {
+      new k8s.PolicyRule {
+        apiGroups = new Listing { "" }
+        resources = new Listing {
+          "secrets"
+          "configmaps"
+          "events"
+          "services"
+          "serviceaccounts"
+          "namespaces"
+        }
+        verbs = new Listing { "*" }
+      }
+      new k8s.PolicyRule {
+        apiGroups = new Listing { "rbac.authorization.k8s.io" }
+        resources = new Listing {
+          "clusterroles"
+          "roles"
+          "clusterrolebindings"
+          "rolebindings"
+        }
+        verbs = new Listing { "*" }
+      }
+      new k8s.PolicyRule {
+        apiGroups = new Listing { "apiextensions.k8s.io" }
+        resources = new Listing { "customresourcedefinitions"; "customresourcedefinitions/status" }
+        verbs = new Listing { "*" }
+      }
+      new k8s.PolicyRule {
+        apiGroups = new Listing { "apiregistration.k8s.io" }
+        resources = new Listing { "apiservices" }
+        verbs = new Listing { "*" }
+      }
+      new k8s.PolicyRule {
+        apiGroups = new Listing { "coordination.k8s.io" }
+        resources = new Listing { "leases" }
+        verbs = new Listing { "*" }
+      }
+      new k8s.PolicyRule {
+        apiGroups = new Listing { "admissionregistration.k8s.io" }
+        resources = new Listing {
+          "validatingwebhookconfigurations"
+          "mutatingwebhookconfigurations"
+        }
+        verbs = new Listing { "*" }
+      }
+      new k8s.PolicyRule {
+        apiGroups = new Listing { "apps" }
+        resources = new Listing { "deployments" }
+        verbs = new Listing { "*" }
+      }
+      new k8s.PolicyRule {
+        apiGroups = new Listing { "pkg.crossplane.io" }
+        resources = new Listing { "*" }
+        verbs = new Listing { "*" }
+      }
+      new k8s.PolicyRule {
+        apiGroups = new Listing { "apiextensions.crossplane.io" }
+        resources = new Listing { "*" }
+        verbs = new Listing { "*" }
+      }
+      new k8s.PolicyRule {
+        apiGroups = new Listing { "secrets.crossplane.io" }
+        resources = new Listing { "*" }
+        verbs = new Listing { "*" }
+      }
+    }
+  }
+
+function crossplaneClusterRoleBinding(k8sTarget: formae.Target, cpNs: ns.Namespace): crb.ClusterRoleBinding =
+  new crb.ClusterRoleBinding {
+    target = k8sTarget.res
+    label = "\(appName)-cluster-role-binding"
+    metadata = new k8s.ObjectMeta {
+      name = appName
+      labels = commonLabels
+    }
+    roleRef = new k8s.RoleRef {
+      apiGroup = "rbac.authorization.k8s.io"
+      kind = "ClusterRole"
+      name = appName
+    }
+    subjects = new Listing {
+      new k8s.Subject {
+        kind = "ServiceAccount"
+        name = appName
+        namespace = cpNs.res.name
+      }
+    }
+  }
+
+function crossplaneLeaderElectionRole(k8sTarget: formae.Target, cpNs: ns.Namespace): role.Role =
+  new role.Role {
+    target = k8sTarget.res
+    label = "\(appName)-leader-election-role"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "\(appName)-leader-election"
+      namespace = cpNs.res.name
+      labels = commonLabels
+    }
+    rules = new Listing {
+      new k8s.PolicyRule {
+        apiGroups = new Listing { "coordination.k8s.io" }
+        resources = new Listing { "leases" }
+        verbs = new Listing { "get"; "list"; "watch"; "create"; "update"; "patch"; "delete" }
+      }
+      new k8s.PolicyRule {
+        apiGroups = new Listing { "" }
+        resources = new Listing { "events" }
+        verbs = new Listing { "create"; "patch" }
+      }
+    }
+  }
+
+function crossplaneLeaderElectionRoleBinding(k8sTarget: formae.Target, cpNs: ns.Namespace): rb.RoleBinding =
+  new rb.RoleBinding {
+    target = k8sTarget.res
+    label = "\(appName)-leader-election-rb"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "\(appName)-leader-election"
+      namespace = cpNs.res.name
+      labels = commonLabels
+    }
+    roleRef = new k8s.RoleRef {
+      apiGroup = "rbac.authorization.k8s.io"
+      kind = "Role"
+      name = "\(appName)-leader-election"
+    }
+    subjects = new Listing {
+      new k8s.Subject {
+        kind = "ServiceAccount"
+        name = appName
+        namespace = cpNs.res.name
+      }
+    }
+  }
+
+function crossplaneDeployment(k8sTarget: formae.Target, cpNs: ns.Namespace): dep.Deployment =
+  new dep.Deployment {
+    target = k8sTarget.res
+    label = "\(appName)-deployment"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = appName
+      namespace = cpNs.res.name
+      labels = commonLabels
+    }
+    spec = new dep.DeploymentSpec {
+      replicas = crossplaneReplicas
+      selector = new k8s.LabelSelector {
+        matchLabels = new Mapping {
+          ["app"] = appName
+        }
+      }
+      template = new k8s.PodTemplateSpec {
+        metadata = new k8s.ObjectMeta {
+          name = appName
+          labels = commonLabels
+        }
+        spec = new k8s.PodSpec {
+          serviceAccountName = appName
+          initContainers = new Listing {
+            new k8s.Container {
+              name = "\(appName)-init"
+              image = crossplaneImage
+              args = new Listing { "core"; "init" }
+              env = new Listing {
+                new k8s.EnvVar { name = "TLS_CA_SECRET_NAME"; value = "\(appName)-root-ca" }
+                new k8s.EnvVar { name = "TLS_SERVER_SECRET_NAME"; value = "\(appName)-tls-server" }
+                new k8s.EnvVar { name = "TLS_CLIENT_SECRET_NAME"; value = "\(appName)-tls-client" }
+                new k8s.EnvVar { name = "ESS_TLS_SERVER_SECRET_NAME"; value = "\(appName)-ess-server-tls" }
+                new k8s.EnvVar { name = "WEBHOOK_ENABLED"; value = "true" }
+                new k8s.EnvVar { name = "WEBHOOK_SERVICE_NAME"; value = appName }
+                new k8s.EnvVar { name = "WEBHOOK_SERVICE_NAMESPACE"; value = namespaceName }
+                new k8s.EnvVar { name = "WEBHOOK_SERVICE_PORT"; value = "9443" }
+                new k8s.EnvVar { name = "POD_SERVICE_ACCOUNT"; value = appName }
+                new k8s.EnvVar {
+                  name = "POD_NAMESPACE"
+                  valueFrom = new k8s.EnvVarSource {
+                    fieldRef = new k8s.ObjectFieldSelector { fieldPath = "metadata.namespace" }
+                  }
+                }
+              }
+            }
+          }
+          containers = new Listing {
+            new k8s.Container {
+              name = appName
+              image = crossplaneImage
+              args = new Listing {
+                "core"
+                "start"
+                "--leader-election"
+                "--tls-server-secret-name=\(appName)-tls-server"
+                "--tls-server-certs-dir=/certs/webhook"
+                "--tls-client-secret-name=\(appName)-tls-client"
+                "--tls-client-certs-dir=/certs/ess"
+              }
+              ports = new Listing {
+                new k8s.ContainerPort {
+                  name = "metrics"
+                  containerPort = 8080
+                }
+                new k8s.ContainerPort {
+                  name = "webhooks"
+                  containerPort = 9443
+                }
+              }
+              env = new Listing {
+                new k8s.EnvVar {
+                  name = "POD_NAMESPACE"
+                  valueFrom = new k8s.EnvVarSource {
+                    fieldRef = new k8s.ObjectFieldSelector { fieldPath = "metadata.namespace" }
+                  }
+                }
+                new k8s.EnvVar { name = "LEADER_ELECTION"; value = "true" }
+              }
+              volumeMounts = new Listing {
+                new k8s.VolumeMount {
+                  name = "webhook-tls"
+                  mountPath = "/certs/webhook"
+                  readOnly = true
+                }
+                new k8s.VolumeMount {
+                  name = "ess-tls"
+                  mountPath = "/certs/ess"
+                  readOnly = true
+                }
+              }
+            }
+          }
+          volumes = new Listing {
+            new k8s.Volume {
+              name = "webhook-tls"
+              secret = new k8s.SecretVolumeSource {
+                secretName = "\(appName)-tls-server"
+                defaultMode = 420
+                optional = true
+              }
+            }
+            new k8s.Volume {
+              name = "ess-tls"
+              secret = new k8s.SecretVolumeSource {
+                secretName = "\(appName)-tls-client"
+                defaultMode = 420
+                optional = true
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+function crossplaneService(k8sTarget: formae.Target, cpNs: ns.Namespace): svc.Service =
+  new svc.Service {
+    target = k8sTarget.res
+    label = "\(appName)-service"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = appName
+      namespace = cpNs.res.name
+      labels = commonLabels
+    }
+    spec = new svc.ServiceSpec {
+      selector = new Mapping {
+        ["app"] = appName
+      }
+      ports = new Listing {
+        new svc.ServicePort {
+          name = "metrics"
+          port = 8080
+          targetPort = 8080
+        }
+        new svc.ServicePort {
+          name = "webhooks"
+          port = 9443
+          targetPort = 9443
+        }
+      }
+    }
+  }
+
+// ---------------------------------------------------------------------------
+// Convenience: all resources as a listing
+// ---------------------------------------------------------------------------
+
+function allResources(k8sTarget: formae.Target) = new Listing {
+  local _ns = crossplaneNamespace(k8sTarget)
+  _ns
+  crossplaneServiceAccount(k8sTarget, _ns)
+  crossplaneClusterRole(k8sTarget)
+  crossplaneClusterRoleBinding(k8sTarget, _ns)
+  crossplaneLeaderElectionRole(k8sTarget, _ns)
+  crossplaneLeaderElectionRoleBinding(k8sTarget, _ns)
+  crossplaneDeployment(k8sTarget, _ns)
+  crossplaneService(k8sTarget, _ns)
+}

@@ -1,0 +1,33 @@
+/*
+ * Conformance Test: PersistentVolume (Create)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/core/PersistentVolume.pkl" as pv
+import "@k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new pv.PersistentVolume {
+    label = "test-persistentvolume"
+    metadata = new k8s.ObjectMeta {
+      name = "test-pv-\(v.testRunID)"
+    }
+    spec = new Mapping {
+      ["capacity"] = new Mapping {
+        ["storage"] = "1Gi"
+      }
+      ["accessModes"] = new Listing {
+        "ReadWriteOnce"
+      }
+      ["persistentVolumeReclaimPolicy"] = "Retain"
+      ["volumeMode"] = "Filesystem"
+      ["hostPath"] = new Mapping {
+        ["path"] = "/tmp/test-pv"
+      }
+    }
+  }
+}

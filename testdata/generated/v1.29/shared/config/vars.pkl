@@ -1,0 +1,23 @@
+import "@formae/formae.pkl"
+import "@k8s/k8s.pkl"
+
+local stackName = "plugin-sdk-test-stack"
+
+testRunID = read("env:FORMAE_TEST_RUN_ID")
+
+/// K8s minor under test. CI exports FORMAE_K8S_VERSION per matrix
+/// entry; locally falls back to the latest supported minor.
+local k8sMinor = "1.29"
+
+stack = new formae.Stack {
+  label = stackName
+  description = "Plugin SDK conformance test stack"
+}
+
+target = new formae.Target {
+  label = "k8s-target"
+  config = new k8s.Config {
+    kubernetesVersion = k8sMinor
+    auth = new k8s.KubeconfigAuth {}
+  }
+}

@@ -1,0 +1,83 @@
+// AWS managed-Kubernetes bundle for the dispatcher.
+//
+// Provisions a full-stack EKS cluster (VPC, subnets, IAM, security groups,
+// EKS AutoMode cluster) and exposes a Kubernetes target authenticated via
+// `EKSAuth` (STS-token refresh through the K8S plugin's WrapTransport).
+//
+// Used by the workload entrypoints under `examples/<workload>/main.pkl` via
+// the dispatcher in `examples/clusters/dispatch.pkl`. Cloud-specific knobs
+// (cluster name, region, CIDRs, K8S version) are read from properties with
+// safe defaults; override with `--prop <name>=<value>` at apply time.
+
+import "@aws/aws.pkl"
+import "@formae/formae.pkl"
+import "@k8s/k8s.pkl" as k8s
+
+import "eks.pkl"
+import "iam.pkl"
+import "network.pkl"
+import "security_groups.pkl"
+import "vpc.pkl"
+
+local props = new Dynamic {
+  name = new formae.Prop {
+    flag = "name"
+    default = "k8s-fullstack"
+  }
+  region = new formae.Prop {
+    flag = "region"
+    default = "us-west-2"
+  }
+  vpcCidr = new formae.Prop {
+    flag = "vpcCidr"
+    default = "10.1.0.0/16"
+  }
+  subnetCidr1 = new formae.Prop {
+    flag = "subnetCidr1"
+    default = "10.1.1.0/24"
+  }
+  subnetCidr2 = new formae.Prop {
+    flag = "subnetCidr2"
+    default = "10.1.2.0/24"
+  }
+  clusterVersion = new formae.Prop {
+    flag = "cluster-version"
+    default = "1.31"
+  }
+}
+
+local awsTarget: formae.Target = new formae.Target {
+  label = "aws-target"
+  config = new aws.Config {
+    region = props.region.value
+  }
+}
+
+local eksCluster = eks.eksCluster(props)
+
+resources: Listing = new {
+  awsTarget
+  vpc.nvpc(props)
+  network.igw(props)
+  network.attachIgw(props)
+  ...network.subnets(props)
+  network.routeTable(props)
+  network.publicRoute(props)
+  ...network.subnetAssocs(props)
+  ...security_groups.securityGroups(props)
+  iam.clusterRole(props)
+  iam.nodeRole(props)
+  eksCluster
+}
+
+target: formae.Target = new formae.Target {
+  label = "k8s-target-aws"
+  config = new k8s.Config {
+    kubernetesVersion = "1.34"
+    auth = new k8s.EKSAuth {
+      endpoint = eksCluster.res.endpoint
+      certificateAuthority = eksCluster.res.certificateAuthorityData
+      clusterName = eksCluster.res.name
+    }
+  }
+}

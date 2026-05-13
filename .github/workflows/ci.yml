@@ -1,0 +1,231 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_conformance:
+        description: 'Run conformance tests'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Set up Pkl
+        uses: pkl-community/setup-pkl@v0
+        with:
+          pkl-version: 0.30.0
+
+      - name: Build
+        run: make build
+
+  test-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Run unit tests
+        run: make test-unit
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9.2.0
+        with:
+          version: latest
+
+  pkl-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Pkl
+        uses: pkl-community/setup-pkl@v0
+        with:
+          pkl-version: 0.30.0
+
+      - name: Validate Pkl manifest
+        run: |
+          pkl eval formae-plugin.pkl --format json > /dev/null
+          echo "Manifest validated successfully"
+
+  verify-schema:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Set up Pkl
+        uses: pkl-community/setup-pkl@v0
+        with:
+          pkl-version: 0.30.0
+
+      - name: Verify schema
+        run: make verify-schema
+
+  verify-helm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Set up Pkl
+        uses: pkl-community/setup-pkl@v0
+        with:
+          pkl-version: 0.30.0
+
+      # Regenerates helm/v*/ from helm/shared/ and fails if the diff
+      # isn't empty — catches stale committed trees in PRs.
+      - name: Verify helm generated trees
+        run: make verify-helm-schemas
+
+  # Conformance tests are split across per-K8s-version workflow files
+  # (.github/workflows/conformance-v1-XX.yml). Each version is chained
+  # via workflow_run (older versions only run after the newer one has
+  # passed on `main`). Splitting workflows gives each K8s version its
+  # own status-badge URL.
+
+  # TODO: Re-enable drift test after fixing examples/drift-demo.pkl path
+  # (removed during examples restructure in be695fc)
+
+  # Notify when build is fixed (was red, now green)
+  notify-fixed:
+    needs: [build, test-unit, lint, pkl-validate, verify-schema, verify-helm]
+    runs-on: ubuntu-latest
+    if: success() && github.event_name == 'push'
+    permissions:
+      actions: read
+    steps:
+      - name: Check if previous run failed
+        id: check_previous
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const runs = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'ci.yml',
+              branch: context.ref.replace('refs/heads/', ''),
+              per_page: 2,
+              status: 'completed'
+            });
+
+            // Get previous run (skip current which isn't completed yet)
+            const previousRun = runs.data.workflow_runs.find(run => run.id !== context.runId);
+
+            if (previousRun && previousRun.conclusion === 'failure') {
+              return 'true';
+            }
+            return 'false';
+          result-encoding: string
+
+      - name: Notify Slack (Fixed)
+        if: steps.check_previous.outputs.result == 'true'
+        uses: slackapi/slack-github-action@v3.0.3
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": ":white_check_mark: CI fixed on ${{ github.repository }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":white_check_mark: *CI fixed* on `${{ github.repository }}`\n*Branch:* `${{ github.ref_name }}`\n*Commit:* `${{ github.sha }}`\n*Author:* ${{ github.actor }}"
+                  }
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "View Run"
+                      },
+                      "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    }
+                  ]
+                }
+              ]
+            }
+
+  # Notify on failure
+  notify-failure:
+    needs: [build, test-unit, lint, pkl-validate, verify-schema, verify-helm]
+    runs-on: ubuntu-latest
+    if: failure() && github.event_name == 'push'
+    steps:
+      - name: Notify Slack
+        uses: slackapi/slack-github-action@v3.0.3
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": ":x: CI failed on ${{ github.repository }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":x: *CI failed* on `${{ github.repository }}`\n*Branch:* `${{ github.ref_name }}`\n*Commit:* `${{ github.sha }}`\n*Author:* ${{ github.actor }}"
+                  }
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "View Run"
+                      },
+                      "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    }
+                  ]
+                }
+              ]
+            }

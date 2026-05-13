@@ -1,0 +1,44 @@
+/*
+ * Conformance Test: FlowSchema (Create)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/flowcontrol/FlowSchema.pkl" as fs
+import "@k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new fs.FlowSchema {
+    label = "test-flowschema"
+    metadata = new k8s.ObjectMeta {
+      name = "test-fs-\(v.testRunID)"
+    }
+    spec = new fs.FlowSchemaSpec {
+      matchingPrecedence = 1000
+      priorityLevelConfiguration = new fs.PriorityLevelConfigurationReference {
+        name = "catch-all"
+      }
+      rules = new Listing {
+        new fs.PolicyRulesWithSubjects {
+          subjects = new Listing {
+            new fs.Subject {
+              kind = "Group"
+              group = new fs.GroupSubject {
+                name = "formae-test-group"
+              }
+            }
+          }
+          nonResourceRules = new Listing {
+            new fs.NonResourcePolicyRule {
+              verbs = new Listing { "get" }
+              nonResourceURLs = new Listing { "/healthz" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

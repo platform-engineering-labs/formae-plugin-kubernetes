@@ -1,0 +1,87 @@
+/*
+ * Conformance Test: StatefulSet with custom ordinal start.
+ *
+ * Exercises spec.ordinals.start (KEP-3335). Pods are named
+ * test-sts-3, test-sts-4 instead of test-sts-0, test-sts-1.
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.32/core/Namespace.pkl" as ns
+import "@k8s/v1.32/core/Service.pkl" as svc
+import "@k8s/v1.32/apps/StatefulSet.pkl" as sts
+import "@k8s/k8s.pkl" as k8s
+import "../../shared/config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local ns = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  ns
+
+  new svc.Service {
+    label = "test-sts-svc-ord"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "test-sts-svc-ord-\(v.testRunID)"
+      namespace = ns.res.name
+    }
+    spec = new svc.ServiceSpec {
+      clusterIP = "None"
+      selector = new Mapping {
+        ["app"] = "test-sts-ord"
+      }
+      ports = new Listing {
+        new svc.ServicePort {
+          port = 80
+          name = "http"
+        }
+      }
+    }
+  }
+
+  new sts.StatefulSet {
+    label = "test-sts-ord"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "test-sts-ord-\(v.testRunID)"
+      namespace = ns.res.name
+    }
+    spec = new sts.StatefulSetSpec {
+      replicas = 2
+      serviceName = "test-sts-svc-ord-\(v.testRunID)"
+      ordinals = new sts.StatefulSetOrdinals {
+        start = 3
+      }
+      selector = new k8s.LabelSelector {
+        matchLabels = new Mapping {
+          ["app"] = "test-sts-ord"
+        }
+      }
+      template = new k8s.PodTemplateSpec {
+        metadata = new k8s.ObjectMeta {
+          name = "test-sts-ord-\(v.testRunID)"
+          labels = new Mapping {
+            ["app"] = "test-sts-ord"
+          }
+        }
+        spec = new k8s.PodSpec {
+          containers = new Listing {
+            new k8s.Container {
+              name = "main"
+              image = "registry.k8s.io/pause:3.10"
+            }
+          }
+        }
+      }
+    }
+  }
+}

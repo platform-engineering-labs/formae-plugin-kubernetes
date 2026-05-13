@@ -1,0 +1,345 @@
+// PrometheusChart: A native Formae chart for deploying Prometheus.
+//
+// Pure PKL — no Helm, no pkl-reader-helm, no external tools.
+//
+// Usage:
+//
+//   ```pkl
+//   amends "@formae/forma.pkl"
+//
+//   import "@formae-formations/PrometheusFormation.pkl"
+//   import "@formae/formae.pkl"
+//
+//   local prometheus = new PrometheusChart.Prometheus {
+//     name = "my-prometheus"
+//     namespace = "monitoring"
+//     createNamespace = true
+//     serviceType = "LoadBalancer"
+//   }
+//
+//   forma {
+//     new formae.Stack { label = "monitoring" }
+//     new formae.Target {
+//       label = "prod"
+//       config { ["context"] = "my-cluster"; ["namespace"] = "monitoring" }
+//     }
+//     for (r in prometheus.resources) { r }
+//   }
+//   ```
+module PrometheusFormation
+
+import "@k8s/k8s.pkl"
+import "@k8s/apps/Deployment.pkl" as dep
+import "@k8s/core/Service.pkl" as svc
+import "@k8s/core/ServiceAccount.pkl" as sa
+import "@k8s/core/ConfigMap.pkl" as cm
+import "@k8s/core/Namespace.pkl" as ns
+import "@k8s/rbac/ClusterRole.pkl" as cr
+import "@k8s/rbac/ClusterRoleBinding.pkl" as crb
+
+/// Prometheus deployment chart.
+open class Prometheus {
+
+  // ── Identity ────────────────────────────────────────────────────────────────
+
+  /// Application name. Used for resource names, labels, and formae label prefixes.
+  name: String
+
+  /// Target namespace.
+  namespace: String = "default"
+
+  // ── Container ───────────────────────────────────────────────────────────────
+
+  /// Prometheus image.
+  image: String = "prom/prometheus:latest"
+
+  /// Number of replicas.
+  replicas: Int = 1
+
+  // ── Storage ───────────────────────────────────────────────────────────────
+
+  /// Storage size for Prometheus data.
+  storageSize: String = "10Gi"
+
+  /// Storage class name for the data volume.
+  storageClassName: String?
+
+  // ── Prometheus Configuration ──────────────────────────────────────────────
+
+  /// Global scrape interval.
+  scrapeInterval: String = "15s"
+
+  /// Global evaluation interval.
+  evaluationInterval: String = "15s"
+
+  /// Prometheus web/API port.
+  port: Int = 9090
+
+  /// Extra scrape configs YAML to append to scrape_configs.
+  extraScrapeConfigs: String?
+
+  // ── Service ───────────────────────────────────────────────────────────────
+
+  /// Service type: "ClusterIP", "NodePort", or "LoadBalancer".
+  serviceType: String = "ClusterIP"
+
+  // ── Resources ─────────────────────────────────────────────────────────────
+
+  /// CPU request (e.g., "250m").
+  cpuRequest: String?
+
+  /// CPU limit (e.g., "500m").
+  cpuLimit: String?
+
+  /// Memory request (e.g., "512Mi").
+  memoryRequest: String?
+
+  /// Memory limit (e.g., "1Gi").
+  memoryLimit: String?
+
+  // ── Optional features ───────────────────────────────────────────────────────
+
+  /// Create a Namespace resource.
+  createNamespace: Boolean = false
+
+  /// Create a dedicated ServiceAccount.
+  createServiceAccount: Boolean = true
+
+  /// Create a ClusterRole and ClusterRoleBinding for K8S service discovery.
+  createClusterRole: Boolean = true
+
+  // ── Labels ──────────────────────────────────────────────────────────────────
+
+  /// Extra labels added to all resources.
+  extraLabels: Mapping<String, String>?
+
+  /// Extra annotations added to all resources.
+  extraAnnotations: Mapping<String, String>?
+
+  // ── Output ──────────────────────────────────────────────────────────────────
+
+  /// All generated Formae resources. Use in a `forma { }` block:
+  ///
+  ///   for (r in prometheus.resources) { r }
+  resources: Listing = let (_self = this)
+    new Listing {
+      when (_self.createNamespace) { _self._namespace }
+      when (_self.createServiceAccount) { _self._serviceAccount }
+      when (_self.createClusterRole) { _self._clusterRole }
+      when (_self.createClusterRole) { _self._clusterRoleBinding }
+      _self._configMap
+      _self._service
+      _self._deployment
+    }
+
+  // ── Internal: computed labels ───────────────────────────────────────────────
+
+  hidden _appLabels: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      ["app.kubernetes.io/name"] = "prometheus"
+      ["app.kubernetes.io/instance"] = _self.name
+      when (_self.extraLabels != null) {
+        for (_k, _v in _self.extraLabels) {
+          [_k] = _v
+        }
+      }
+    }
+
+  hidden _selectorLabels: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      ["app.kubernetes.io/name"] = "prometheus"
+      ["app.kubernetes.io/instance"] = _self.name
+    }
+
+  hidden _objectMeta: k8s.ObjectMeta = let (_self = this)
+    new k8s.NamespacedObjectMeta {
+      name = _self.name
+      namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
+      labels = _self._appLabels
+      when (_self.extraAnnotations != null) {
+        annotations = _self.extraAnnotations
+      }
+    }
+
+  hidden _clusterMeta: k8s.ObjectMeta = let (_self = this)
+    new k8s.ObjectMeta {
+      name = _self.name
+      labels = _self._appLabels
+    }
+
+  // ── Internal: resource builders ─────────────────────────────────────────────
+
+  hidden _namespace: ns.Namespace = let (_self = this)
+    new ns.Namespace {
+      label = _self.name + "-namespace"
+      metadata = new ns.NamespaceMetadata {
+        name = _self.namespace
+      }
+    }
+
+  hidden _serviceAccount: sa.ServiceAccount = let (_self = this)
+    new sa.ServiceAccount {
+      label = _self.name + "-serviceaccount"
+      metadata = _self._objectMeta
+    }
+
+  hidden _clusterRole: cr.ClusterRole = let (_self = this)
+    new cr.ClusterRole {
+      label = _self.name + "-clusterrole"
+      metadata = _self._clusterMeta
+      rules {
+        new {
+          apiGroups { "" }
+          resources { "nodes"; "nodes/metrics"; "services"; "endpoints"; "pods" }
+          verbs { "get"; "list"; "watch" }
+        }
+        new {
+          nonResourceURLs { "/metrics" }
+          verbs { "get" }
+        }
+      }
+    }
+
+  hidden _clusterRoleBinding: crb.ClusterRoleBinding = let (_self = this)
+    new crb.ClusterRoleBinding {
+      label = _self.name + "-clusterrolebinding"
+      metadata = _self._clusterMeta
+      roleRef = new k8s.RoleRef {
+        apiGroup = "rbac.authorization.k8s.io"
+        kind = "ClusterRole"
+        name = _self.name
+      }
+      subjects {
+        new {
+          kind = "ServiceAccount"
+          name = _self.name
+          namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
+        }
+      }
+    }
+
+  hidden _configMap: cm.ConfigMap = let (_self = this)
+    new cm.ConfigMap {
+      label = _self.name + "-configmap"
+      metadata = _self._objectMeta
+      data {
+        ["prometheus.yml"] = new Listing {
+          "global:"
+          "  scrape_interval: \(_self.scrapeInterval)"
+          "  evaluation_interval: \(_self.evaluationInterval)"
+          ""
+          "scrape_configs:"
+          "  - job_name: 'prometheus'"
+          "    static_configs:"
+          "      - targets: ['localhost:\(_self.port)']"
+          when (_self.extraScrapeConfigs != null) {
+            _self.extraScrapeConfigs
+          }
+        }.toList().join("\n")
+      }
+    }
+
+  hidden _resourceReqs: k8s.ResourceRequirements? = let (_self = this)
+    if (_self.cpuRequest == null && _self.cpuLimit == null && _self.memoryRequest == null && _self.memoryLimit == null) null
+    else new k8s.ResourceRequirements {
+      when (_self.cpuRequest != null || _self.memoryRequest != null) {
+        requests {
+          when (_self.cpuRequest != null) { ["cpu"] = _self.cpuRequest }
+          when (_self.memoryRequest != null) { ["memory"] = _self.memoryRequest }
+        }
+      }
+      when (_self.cpuLimit != null || _self.memoryLimit != null) {
+        limits {
+          when (_self.cpuLimit != null) { ["cpu"] = _self.cpuLimit }
+          when (_self.memoryLimit != null) { ["memory"] = _self.memoryLimit }
+        }
+      }
+    }
+
+  hidden _container: k8s.Container = let (_self = this)
+    new k8s.Container {
+      name = "prometheus"
+      image = _self.image
+      args {
+        "--config.file=/etc/prometheus/prometheus.yml"
+        "--storage.tsdb.path=/prometheus"
+        "--storage.tsdb.retention.time=15d"
+      }
+      ports {
+        new {
+          name = "http"
+          containerPort = _self.port
+        }
+      }
+      volumeMounts {
+        new {
+          name = "config"
+          mountPath = "/etc/prometheus"
+        }
+        new {
+          name = "data"
+          mountPath = "/prometheus"
+        }
+      }
+      when (_self._resourceReqs != null) {
+        resources = _self._resourceReqs
+      }
+    }
+
+  hidden _deployment: dep.Deployment = let (_self = this)
+    new dep.Deployment {
+      label = _self.name + "-deployment"
+      metadata = _self._objectMeta
+      spec = new dep.DeploymentSpec {
+        replicas = _self.replicas
+        selector = new k8s.LabelSelector {
+          matchLabels = _self._selectorLabels
+        }
+        template = new k8s.PodTemplateSpec {
+          metadata = new k8s.ObjectMeta {
+            name = _self.name
+            labels = _self._appLabels
+          }
+          spec = new k8s.PodSpec {
+            containers {
+              _self._container
+            }
+            when (_self.createServiceAccount) {
+              serviceAccountName = _self._serviceAccount.res.name
+            }
+            volumes {
+              new {
+                name = "config"
+                configMap = new k8s.ConfigMapVolumeSource {
+                  name = _self.name
+                }
+              }
+              new {
+                name = "data"
+                emptyDir = new k8s.EmptyDirVolumeSource {
+                  sizeLimit = "1Gi"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+  hidden _service: svc.Service = let (_self = this)
+    new svc.Service {
+      label = _self.name + "-service"
+      metadata = _self._objectMeta
+      spec = new svc.ServiceSpec {
+        type = _self.serviceType
+        selector = _self._selectorLabels
+        ports {
+          new {
+            name = "http"
+            port = _self.port
+            targetPort = "http"
+          }
+        }
+      }
+    }
+}

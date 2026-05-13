@@ -1,0 +1,22 @@
+/*
+ * Conformance Test: RedisFormation (Create)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@formae-formations/RedisFormation.pkl"
+import "../shared/config/vars.pkl" as v
+
+local chart = new RedisFormation.Redis {
+  name = "test-redis-\(v.testRunID)"
+  namespace = "formae-test-\(v.testRunID)"
+  createNamespace = true
+  replicas = 1
+  password = "test-redis-pass"
+  storageSize = "100Mi"
+}
+
+forma {
+  new formae.Stack { label = "redis-chart-test"; description = "Redis chart conformance test" }
+  v.target
+  for (r in chart.resources) { r }
+}

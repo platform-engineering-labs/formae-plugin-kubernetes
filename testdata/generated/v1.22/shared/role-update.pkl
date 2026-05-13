@@ -1,0 +1,43 @@
+/*
+ * Conformance Test: Role (Update)
+ * Changes: added "create" verb, added "services" to resources (mutable)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.22/core/Namespace.pkl" as ns
+import "@k8s/v1.22/rbac/Role.pkl" as role
+import "@k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local ns = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  ns
+
+  new role.Role {
+    label = "test-role"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "test-role-\(v.testRunID)"
+      namespace = ns.res.name
+    }
+    rules = new Listing {
+      new k8s.PolicyRule {
+        apiGroups = new Listing { "" }
+        resources = new Listing { "pods"; "services" }
+        verbs = new Listing { "get"; "list"; "watch"; "create" }
+      }
+    }
+  }
+}

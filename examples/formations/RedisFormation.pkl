@@ -1,0 +1,289 @@
+// RedisChart: A native Formae chart for deploying Redis with persistent storage.
+//
+// Pure PKL — no Helm, no pkl-reader-helm, no external tools.
+//
+// Usage:
+//
+//   ```pkl
+//   amends "@formae/forma.pkl"
+//
+//   import "@formae-formations/RedisFormation.pkl"
+//   import "@formae/formae.pkl"
+//
+//   local redis = new RedisChart.Redis {
+//     name = "my-redis"
+//     namespace = "production"
+//     password = "s3cret"
+//     storageSize = "10Gi"
+//   }
+//
+//   forma {
+//     new formae.Stack { label = "my-app" }
+//     new formae.Target {
+//       label = "prod"
+//       config { ["context"] = "my-cluster"; ["namespace"] = "production" }
+//     }
+//     for (r in redis.resources) { r }
+//   }
+//   ```
+module RedisFormation
+
+import "@k8s/k8s.pkl"
+import "@k8s/apps/StatefulSet.pkl" as sts
+import "@k8s/core/Service.pkl" as svc
+import "@k8s/core/Secret.pkl" as secret
+import "@k8s/core/Namespace.pkl" as ns
+
+/// Redis deployment chart with persistent storage via StatefulSet.
+open class Redis {
+
+  // ── Identity ────────────────────────────────────────────────────────────────
+
+  /// Application name. Used for resource names, labels, and formae label prefixes.
+  name: String
+
+  /// Target namespace.
+  namespace: String = "default"
+
+  // ── Container ───────────────────────────────────────────────────────────────
+
+  /// Redis image.
+  image: String = "redis:7"
+
+  /// Number of replicas.
+  replicas: Int = 1
+
+  // ── Storage ───────────────────────────────────────────────────────────────
+
+  /// Size of the persistent volume claim for data.
+  storageSize: String = "5Gi"
+
+  /// Storage class name for the PVC. Uses cluster default when null.
+  storageClassName: String?
+
+  // ── Redis Configuration ───────────────────────────────────────────────────
+
+  /// Optional Redis password (--requirepass). Creates a Secret when set.
+  password: String?
+
+  /// Optional max memory setting (e.g., "256mb").
+  maxMemory: String?
+
+  /// Redis port.
+  port: Int = 6379
+
+  // ── Resources ───────────────────────────────────────────────────────────────
+
+  /// CPU request (e.g., "100m").
+  cpuRequest: String?
+
+  /// CPU limit (e.g., "200m").
+  cpuLimit: String?
+
+  /// Memory request (e.g., "128Mi").
+  memoryRequest: String?
+
+  /// Memory limit (e.g., "256Mi").
+  memoryLimit: String?
+
+  // ── Optional features ───────────────────────────────────────────────────────
+
+  /// Create a Namespace resource.
+  createNamespace: Boolean = false
+
+  // ── Labels ──────────────────────────────────────────────────────────────────
+
+  /// Extra labels added to all resources.
+  extraLabels: Mapping<String, String>?
+
+  /// Extra annotations added to all resources.
+  extraAnnotations: Mapping<String, String>?
+
+  // ── Output ──────────────────────────────────────────────────────────────────
+
+  /// All generated Formae resources. Use in a `forma { }` block:
+  ///
+  ///   for (r in redis.resources) { r }
+  resources: Listing = let (_self = this)
+    new Listing {
+      when (_self.createNamespace) { _self._namespace }
+      when (_self.password != null) { _self._secret }
+      _self._service
+      _self._statefulSet
+    }
+
+  // ── Internal: computed labels ───────────────────────────────────────────────
+
+  hidden _appLabels: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      ["app.kubernetes.io/name"] = "redis"
+      ["app.kubernetes.io/instance"] = _self.name
+      when (_self.extraLabels != null) {
+        for (_k, _v in _self.extraLabels) {
+          [_k] = _v
+        }
+      }
+    }
+
+  hidden _selectorLabels: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      ["app.kubernetes.io/name"] = "redis"
+      ["app.kubernetes.io/instance"] = _self.name
+    }
+
+  hidden _objectMeta: k8s.NamespacedObjectMeta = let (_self = this)
+    new k8s.NamespacedObjectMeta {
+      name = _self.name
+      namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
+      labels = _self._appLabels
+      when (_self.extraAnnotations != null) {
+        annotations = _self.extraAnnotations
+      }
+    }
+
+  // ── Internal: resource builders ─────────────────────────────────────────────
+
+  hidden _namespace: ns.Namespace = let (_self = this)
+    new ns.Namespace {
+      label = _self.name + "-namespace"
+      metadata = new ns.NamespaceMetadata {
+        name = _self.namespace
+      }
+    }
+
+  hidden _secret: secret.Secret = let (_self = this)
+    new secret.Secret {
+      label = _self.name + "-secret"
+      metadata = _self._objectMeta
+      `type` = "Opaque"
+      stringData {
+        ["redis-password"] = _self.password
+      }
+    }
+
+  hidden _resourceReqs: k8s.ResourceRequirements? = let (_self = this)
+    if (_self.cpuRequest == null && _self.cpuLimit == null && _self.memoryRequest == null && _self.memoryLimit == null) null
+    else new k8s.ResourceRequirements {
+      when (_self.cpuRequest != null || _self.memoryRequest != null) {
+        requests {
+          when (_self.cpuRequest != null) { ["cpu"] = _self.cpuRequest }
+          when (_self.memoryRequest != null) { ["memory"] = _self.memoryRequest }
+        }
+      }
+      when (_self.cpuLimit != null || _self.memoryLimit != null) {
+        limits {
+          when (_self.cpuLimit != null) { ["cpu"] = _self.cpuLimit }
+          when (_self.memoryLimit != null) { ["memory"] = _self.memoryLimit }
+        }
+      }
+    }
+
+  hidden _container: k8s.Container = let (_self = this)
+    new k8s.Container {
+      name = "redis"
+      image = _self.image
+      command {
+        "redis-server"
+      }
+      args {
+        when (_self.password != null) {
+          "--requirepass"
+          "$(REDIS_PASSWORD)"
+        }
+        when (_self.maxMemory != null) {
+          "--maxmemory"
+          _self.maxMemory
+        }
+      }
+      ports {
+        new {
+          name = "redis"
+          containerPort = _self.port
+        }
+      }
+      when (_self.password != null) {
+        env {
+          new {
+            name = "REDIS_PASSWORD"
+            valueFrom = new k8s.EnvVarSource {
+              secretKeyRef = new k8s.SecretKeySelector {
+                name = _self.name
+                key = "redis-password"
+              }
+            }
+          }
+        }
+      }
+      volumeMounts {
+        new {
+          name = "data"
+          mountPath = "/data"
+        }
+      }
+      when (_self._resourceReqs != null) {
+        resources = _self._resourceReqs
+      }
+    }
+
+  hidden _statefulSet: sts.StatefulSet = let (_self = this)
+    new sts.StatefulSet {
+      label = _self.name + "-statefulset"
+      metadata = _self._objectMeta
+      spec = new sts.StatefulSetSpec {
+        replicas = _self.replicas
+        serviceName = _self.name
+        selector = new k8s.LabelSelector {
+          matchLabels = _self._selectorLabels
+        }
+        template = new k8s.PodTemplateSpec {
+          metadata = new k8s.ObjectMeta {
+            name = _self.name
+            labels = _self._appLabels
+          }
+          spec = new k8s.PodSpec {
+            containers {
+              _self._container
+            }
+          }
+        }
+        volumeClaimTemplates {
+          new {
+            metadata {
+              name = "data"
+            }
+            spec {
+              accessModes {
+                "ReadWriteOnce"
+              }
+              resources {
+                requests {
+                  ["storage"] = _self.storageSize
+                }
+              }
+              volumeMode = "Filesystem"
+              when (_self.storageClassName != null) {
+                storageClassName = _self.storageClassName
+              }
+            }
+          }
+        }
+      }
+    }
+
+  hidden _service: svc.Service = let (_self = this)
+    new svc.Service {
+      label = _self.name + "-service"
+      metadata = _self._objectMeta
+      spec = new svc.ServiceSpec {
+        `type` = "ClusterIP"
+        selector = _self._selectorLabels
+        ports {
+          new {
+            name = "redis"
+            port = _self.port
+            targetPort = "redis"
+          }
+        }
+      }
+    }
+}

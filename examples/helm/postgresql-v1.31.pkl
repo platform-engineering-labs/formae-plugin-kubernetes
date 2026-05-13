@@ -1,0 +1,75 @@
+/// bitnami/postgresql primary-only on K8s 1.31, via HelmChart.pkl.
+///
+/// Smoke-runnable on a single-node KinD cluster. For production set a
+/// strong password and enable persistence.
+///
+/// Note: on KinD the bitnami postgres image may CrashLoopBackOff because the
+/// password Secret file ends up unreadable under the chart's default
+/// containerSecurityContext. Set `volumePermissions.enabled = true` or
+/// override `primary.containerSecurityContext` if the pod fails to start.
+///
+/// Resolve Pkl dependencies (first time, or after PklProject changes):
+///   pkl project resolve examples/helm/
+///
+/// Usage:
+///   pkl eval examples/helm/postgresql-v1.31.pkl
+///   formae apply --mode reconcile --yes --watch examples/helm/postgresql-v1.31.pkl
+///
+/// Requires:
+///   - pkl-reader-helm binary on PATH (see helm/README.md "Install pkl-reader-helm")
+///   - helm repos: helm repo add bitnami https://charts.bitnami.com/bitnami
+///                 helm repo update
+amends "@formae/forma.pkl"
+
+import "@formae/formae.pkl"
+import "@k8s/k8s.pkl" as k8s
+import "@k8s/v1.31/core/Namespace.pkl" as ns
+import "@k8s/helm/v1.31/HelmChart.pkl"
+
+local chart = new HelmChart {
+  chart = "bitnami/postgresql"
+  version = "18.6.4"
+  releaseName = "my-postgres"
+  namespace = "formae-helm-test"
+  values = new Dynamic {
+    architecture = "standalone"
+    auth {
+      postgresPassword = "formaedev"
+      database = "formae"
+    }
+    primary {
+      persistence {
+        enabled = false
+      }
+    }
+    networkPolicy {
+      enabled = false
+    }
+  }
+}
+
+forma {
+  new formae.Stack {
+    label = "helm-postgres-v131"
+    description = "Helm chart: bitnami/postgresql 18.6.4 on K8s 1.31"
+  }
+
+  new formae.Target {
+    label = "k8s-local"
+    config = new k8s.Config {
+      kubernetesVersion = "1.31"
+      auth = new k8s.KubeconfigAuth {}
+    }
+  }
+
+  new ns.Namespace {
+    label = "postgres-namespace"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-helm-test"
+    }
+  }
+
+  for (resource in chart.resources) {
+    resource
+  }
+}

@@ -1,0 +1,15 @@
+name: Conformance K8s 1.33
+
+# Runs only after Conformance K8s 1.34 succeeds on `main`. Manual
+# workflow_dispatch is also allowed for one-off runs.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  conformance:
+    uses: ./.github/workflows/conformance-version.yml
+    with:
+      k8s_version: "1.33"
+      kind_version: "v0.31.0"
+      kind_image: "kindest/node:v1.33.7@sha256:d26ef333bdb2cbe9862a0f7c3803ecc7b4303d8cea8e814b481b09949d353040"

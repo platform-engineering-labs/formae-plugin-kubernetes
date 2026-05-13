@@ -1,0 +1,18 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+name = "k8s"
+version = "0.1.1"
+namespace = "K8S"
+summary = "Kubernetes resource plugin"
+description = "Kubernetes resource plugin for Formae"
+category = "containers"
+license = "FSL-1.1-ALv2"
+minFormaeVersion = "0.84.0"
+
+output {
+  renderer = new JsonRenderer {}
+}

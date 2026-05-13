@@ -1,0 +1,363 @@
+// KeycloakChart: A native Formae chart for deploying Keycloak.
+//
+// Pure PKL — no Helm, no pkl-reader-helm, no external tools.
+//
+// Keycloak is an open-source identity and access management solution.
+// It provides user authentication, authorization, SSO, and identity brokering.
+//
+// External dependencies (deploy separately or use managed services):
+//   - PostgreSQL (optional, for production — uses embedded H2 by default in dev mode)
+//
+// Usage:
+//
+//   ```pkl
+//   amends "@formae/forma.pkl"
+//
+//   import "@formae/formae.pkl"
+//   import "@formae-formations/KeycloakFormation.pkl"
+//
+//   local keycloak = new KeycloakChart.Keycloak {
+//     name = "keycloak"
+//     namespace = "auth"
+//     adminPassword = "changeme"
+//     databaseVendor = "postgres"
+//     databaseHost = "postgres.auth.svc"
+//     databaseUser = "keycloak"
+//     databasePassword = "dbpass"
+//   }
+//
+//   forma {
+//     new formae.Stack { label = "auth" }
+//     new formae.Target {
+//       label = "prod"
+//       config { ["context"] = "my-cluster"; ["namespace"] = "auth" }
+//     }
+//     for (r in keycloak.resources) { r }
+//   }
+//   ```
+module KeycloakFormation
+
+import "@k8s/k8s.pkl"
+import "@k8s/apps/Deployment.pkl" as dep
+import "@k8s/core/Service.pkl" as svc
+import "@k8s/core/Secret.pkl" as secret
+import "@k8s/core/Namespace.pkl" as ns
+import "@k8s/networking/Ingress.pkl" as ing
+
+/// Keycloak deployment chart.
+open class Keycloak {
+
+  // ── Identity ────────────────────────────────────────────────────────────────
+
+  /// Application name. Used for resource names, labels, and formae label prefixes.
+  name: String
+
+  /// Target namespace.
+  namespace: String = "default"
+
+  // ── Container ───────────────────────────────────────────────────────────────
+
+  /// Keycloak image.
+  image: String = "quay.io/keycloak/keycloak:latest"
+
+  /// Number of replicas.
+  replicas: Int = 1
+
+  // ── Admin Credentials ─────────────────────────────────────────────────────
+
+  /// Keycloak admin username (KEYCLOAK_ADMIN).
+  adminUser: String = "admin"
+
+  /// Keycloak admin password (KEYCLOAK_ADMIN_PASSWORD). Required.
+  adminPassword: String
+
+  // ── Service ───────────────────────────────────────────────────────────────
+
+  /// Keycloak HTTP port.
+  port: Int = 8080
+
+  /// Service type: "ClusterIP", "NodePort", or "LoadBalancer".
+  serviceType: String = "ClusterIP"
+
+  // ── Hostname ──────────────────────────────────────────────────────────────
+
+  /// KC_HOSTNAME — the hostname for production mode. Null for dev mode.
+  hostname: String?
+
+  // ── Database ──────────────────────────────────────────────────────────────
+
+  /// KC_DB — database vendor (e.g., "postgres"). Null uses embedded H2.
+  databaseVendor: String?
+
+  /// KC_DB_URL_HOST — database host.
+  databaseHost: String?
+
+  /// KC_DB_URL_PORT — database port (only used when databaseHost is set).
+  databasePort: Int = 5432
+
+  /// KC_DB_URL_DATABASE — database name.
+  databaseName: String = "keycloak"
+
+  /// KC_DB_USERNAME — database username.
+  databaseUser: String?
+
+  /// KC_DB_PASSWORD — database password.
+  databasePassword: String?
+
+  // ── Resources ─────────────────────────────────────────────────────────────
+
+  /// CPU request (e.g., "250m").
+  cpuRequest: String?
+
+  /// CPU limit (e.g., "1000m").
+  cpuLimit: String?
+
+  /// Memory request (e.g., "512Mi").
+  memoryRequest: String?
+
+  /// Memory limit (e.g., "1Gi").
+  memoryLimit: String?
+
+  // ── Optional features ─────────────────────────────────────────────────────
+
+  /// Create a Namespace resource.
+  createNamespace: Boolean = false
+
+  /// Extra labels added to all resources.
+  extraLabels: Mapping<String, String>?
+
+  /// Extra annotations added to all resources.
+  extraAnnotations: Mapping<String, String>?
+
+  // ── Ingress ───────────────────────────────────────────────────────────────
+
+  /// Ingress hostname. When set, creates an Ingress resource.
+  ingressHost: String?
+
+  /// Ingress path.
+  ingressPath: String = "/"
+
+  /// Ingress path type.
+  ingressPathType: String = "Prefix"
+
+  /// Ingress class name.
+  ingressClassName: String?
+
+  /// Ingress TLS secret name. When set with ingressHost, enables TLS.
+  ingressTLSSecret: String?
+
+  // ── Output ────────────────────────────────────────────────────────────────
+
+  /// All generated Formae resources. Use in a `forma { }` block:
+  ///
+  ///   for (r in keycloak.resources) { r }
+  resources: Listing = let (_self = this)
+    new Listing {
+      when (_self.createNamespace) { _self._namespace }
+      _self._secret
+      _self._service
+      _self._deployment
+      when (_self.ingressHost != null) { _self._ingress }
+    }
+
+  // ── Internal: computed labels ─────────────────────────────────────────────
+
+  hidden _appLabels: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      ["app.kubernetes.io/name"] = "keycloak"
+      ["app.kubernetes.io/instance"] = _self.name
+      when (_self.extraLabels != null) {
+        for (_k, _v in _self.extraLabels) {
+          [_k] = _v
+        }
+      }
+    }
+
+  hidden _selectorLabels: Mapping<String, String> = let (_self = this)
+    new Mapping {
+      ["app.kubernetes.io/name"] = "keycloak"
+      ["app.kubernetes.io/instance"] = _self.name
+    }
+
+  hidden _objectMeta: k8s.ObjectMeta = let (_self = this)
+    new k8s.NamespacedObjectMeta {
+      name = _self.name
+      namespace = if (_self.createNamespace) _self._namespace.res.name else _self.namespace
+      labels = _self._appLabels
+      when (_self.extraAnnotations != null) {
+        annotations = _self.extraAnnotations
+      }
+    }
+
+  // ── Internal: env var helper ──────────────────────────────────────────────
+
+  hidden _ev: (String, String) -> k8s.EnvVar = (n, v) -> new k8s.EnvVar { name = n; value = v }
+
+  // ── Internal: resource builders ───────────────────────────────────────────
+
+  hidden _namespace: ns.Namespace = let (_self = this)
+    new ns.Namespace {
+      label = _self.name + "-namespace"
+      metadata = new ns.NamespaceMetadata {
+        name = _self.namespace
+      }
+    }
+
+  hidden _secret: secret.Secret = let (_self = this)
+    new secret.Secret {
+      label = _self.name + "-secret"
+      metadata = _self._objectMeta
+      type = "Opaque"
+      stringData {
+        ["admin-user"] = _self.adminUser
+        ["admin-password"] = _self.adminPassword
+        when (_self.databasePassword != null) {
+          ["db-password"] = _self.databasePassword
+        }
+      }
+    }
+
+  hidden _resourceReqs: k8s.ResourceRequirements? = let (_self = this)
+    if (_self.cpuRequest == null && _self.cpuLimit == null && _self.memoryRequest == null && _self.memoryLimit == null) null
+    else new k8s.ResourceRequirements {
+      when (_self.cpuRequest != null || _self.memoryRequest != null) {
+        requests {
+          when (_self.cpuRequest != null) { ["cpu"] = _self.cpuRequest }
+          when (_self.memoryRequest != null) { ["memory"] = _self.memoryRequest }
+        }
+      }
+      when (_self.cpuLimit != null || _self.memoryLimit != null) {
+        limits {
+          when (_self.cpuLimit != null) { ["cpu"] = _self.cpuLimit }
+          when (_self.memoryLimit != null) { ["memory"] = _self.memoryLimit }
+        }
+      }
+    }
+
+  hidden _keycloakEnv: Listing = let (_self = this)
+    new Listing {
+      _self._ev.apply("KC_HEALTH_ENABLED", "true")
+      _self._ev.apply("KC_METRICS_ENABLED", "true")
+      _self._ev.apply("KEYCLOAK_ADMIN", _self.adminUser)
+      _self._ev.apply("KEYCLOAK_ADMIN_PASSWORD", _self.adminPassword)
+      when (_self.hostname != null) {
+        _self._ev.apply("KC_HOSTNAME", _self.hostname)
+      }
+      when (_self.databaseVendor != null) {
+        _self._ev.apply("KC_DB", _self.databaseVendor)
+        when (_self.databaseHost != null) {
+          _self._ev.apply("KC_DB_URL_HOST", _self.databaseHost)
+        }
+        _self._ev.apply("KC_DB_URL_PORT", "\(_self.databasePort)")
+        _self._ev.apply("KC_DB_URL_DATABASE", _self.databaseName)
+        when (_self.databaseUser != null) {
+          _self._ev.apply("KC_DB_USERNAME", _self.databaseUser)
+        }
+      }
+      when (_self.databasePassword != null) {
+        _self._ev.apply("KC_DB_PASSWORD", _self.databasePassword)
+      }
+    }
+
+  hidden _container: k8s.Container = let (_self = this)
+    new k8s.Container {
+      name = "keycloak"
+      image = _self.image
+      args {
+        "start-dev"
+      }
+      ports {
+        new {
+          name = "http"
+          containerPort = _self.port
+        }
+      }
+      env = _self._keycloakEnv
+      when (_self._resourceReqs != null) {
+        resources = _self._resourceReqs
+      }
+    }
+
+  hidden _deployment: dep.Deployment = let (_self = this)
+    new dep.Deployment {
+      label = _self.name + "-deployment"
+      metadata = _self._objectMeta
+      spec = new dep.DeploymentSpec {
+        replicas = _self.replicas
+        selector = new k8s.LabelSelector {
+          matchLabels = _self._selectorLabels
+        }
+        strategy = new dep.DeploymentStrategy {
+          type = "RollingUpdate"
+        }
+        template = new k8s.PodTemplateSpec {
+          metadata = new k8s.ObjectMeta {
+            name = _self.name
+            labels = _self._appLabels
+          }
+          spec = new k8s.PodSpec {
+            containers {
+              _self._container
+            }
+          }
+        }
+      }
+    }
+
+  hidden _service: svc.Service = let (_self = this)
+    new svc.Service {
+      label = _self.name + "-service"
+      metadata = _self._objectMeta
+      spec = new svc.ServiceSpec {
+        type = _self.serviceType
+        selector = _self._selectorLabels
+        ports {
+          new {
+            name = "http"
+            port = _self.port
+            targetPort = "http"
+          }
+        }
+      }
+    }
+
+  hidden _ingress: ing.Ingress = let (_self = this)
+    new ing.Ingress {
+      label = _self.name + "-ingress"
+      metadata = _self._objectMeta
+      spec = new ing.IngressSpec {
+        when (_self.ingressClassName != null) {
+          ingressClassName = _self.ingressClassName
+        }
+        when (_self.ingressTLSSecret != null) {
+          tls {
+            new {
+              hosts { _self.ingressHost }
+              secretName = _self.ingressTLSSecret
+            }
+          }
+        }
+        rules {
+          new {
+            host = _self.ingressHost
+            http = new ing.HTTPIngressRuleValue {
+              paths {
+                new {
+                  path = _self.ingressPath
+                  pathType = _self.ingressPathType
+                  backend = new ing.IngressBackend {
+                    service = new ing.IngressServiceBackend {
+                      name = _self.name
+                      port = new ing.ServiceBackendPort {
+                        number = _self.port
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+}

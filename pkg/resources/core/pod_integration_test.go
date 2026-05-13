@@ -1,0 +1,168 @@
+//go:build integration
+
+// © 2025 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+
+package core_test
+
+import (
+	"context"
+	"encoding/json"
+	"strings"
+	"testing"
+	"time"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/core"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/testutil"
+	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestPodCRUDLifecycle(t *testing.T) {
+	testutil.RunCRUDLifecycle(t, testutil.ResourceFixture{
+		ResourceType: "K8S::Core::Pod",
+		IsNamespaced: true,
+
+		CreateProperties: func(ns string) json.RawMessage {
+			return testutil.MustMarshalJSON(t, map[string]any{
+				"apiVersion": "v1",
+				"kind":       "Pod",
+				"metadata": map[string]any{
+					"name":      "test-pod",
+					"namespace": ns,
+					"labels": map[string]string{
+						"app": "integration-test",
+					},
+				},
+				"spec": map[string]any{
+					"containers": []map[string]any{
+						{
+							"name":  "nginx",
+							"image": "nginx:1.27",
+						},
+					},
+				},
+			})
+		},
+
+		UpdateProperties: func(ns string) json.RawMessage {
+			// Pod only allows image changes on running pods
+			return testutil.MustMarshalJSON(t, map[string]any{
+				"apiVersion": "v1",
+				"kind":       "Pod",
+				"metadata": map[string]any{
+					"name":      "test-pod",
+					"namespace": ns,
+					"labels": map[string]string{
+						"app": "integration-test",
+					},
+				},
+				"spec": map[string]any{
+					"containers": []map[string]any{
+						{
+							"name":  "nginx",
+							"image": "nginx:1.27-alpine",
+						},
+					},
+				},
+			})
+		},
+
+		ExpectedCreateStatus: resource.OperationStatusInProgress, // Pending phase
+		ExpectedFinalStatus:  resource.OperationStatusSuccess,    // Running phase
+		StatusTimeout:        90 * time.Second,                   // Image pull may be slow
+
+		VerifyCreate: func(t *testing.T, result *resource.CreateResult) {
+			t.Helper()
+			nativeID := result.ProgressResult.NativeID
+			// NativeID should be namespace/name format
+			if !strings.Contains(nativeID, "/") {
+				t.Errorf("Create: NativeID %q should contain '/'", nativeID)
+			}
+			if !strings.HasSuffix(nativeID, "/test-pod") {
+				t.Errorf("Create: NativeID %q should end with '/test-pod'", nativeID)
+			}
+		},
+
+		VerifyRead: func(t *testing.T, result *resource.ReadResult) {
+			t.Helper()
+			// Verify the properties contain the pod name
+			name := testutil.JSONPath(t, result.Properties, "metadata", "name")
+			if name != "test-pod" {
+				t.Errorf("Read: expected metadata.name=test-pod, got %q", name)
+			}
+		},
+
+		VerifyUpdate: func(t *testing.T, result *resource.UpdateResult) {
+			t.Helper()
+			// Verify update returned properties with the new image
+			props := string(result.ProgressResult.ResourceProperties)
+			if !strings.Contains(props, "nginx:1.27-alpine") {
+				t.Errorf("Update: expected properties to contain nginx:1.27-alpine, got %s", props)
+			}
+		},
+
+		VerifyList: func(t *testing.T, result *resource.ListResult, nativeID string) {
+			t.Helper()
+			// Just verify we found our pod — the framework already checks nativeID presence
+			if len(result.NativeIDs) == 0 {
+				t.Error("List: expected at least one NativeID")
+			}
+		},
+	})
+}
+
+// TestPodList_SkipsOwnedPods is a regression test for the client-side List
+// filter in Pod.List. The owned Pod carries a synthetic ownerReference — the
+// owner doesn't need to exist for the apiserver to accept the field — which
+// keeps the test hermetic (no racing controller required).
+func TestPodList_SkipsOwnedPods(t *testing.T) {
+	env := testutil.SetupEnv(t)
+	ctx := context.Background()
+
+	standalone := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "standalone-pod",
+			Namespace: env.Namespace,
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{{Name: "c", Image: "registry.k8s.io/pause:3.9"}},
+		},
+	}
+	_, err := env.Client.CoreV1().Pods(env.Namespace).Create(ctx, standalone, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	owned := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "owned-pod",
+			Namespace: env.Namespace,
+			OwnerReferences: []metav1.OwnerReference{{
+				APIVersion: "apps/v1",
+				Kind:       "ReplicaSet",
+				Name:       "fake-rs",
+				UID:        types.UID("00000000-0000-0000-0000-000000000000"),
+			}},
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{{Name: "c", Image: "registry.k8s.io/pause:3.9"}},
+		},
+	}
+	_, err = env.Client.CoreV1().Pods(env.Namespace).Create(ctx, owned, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	podProv := &core.Pod{Client: env.Client, Config: env.Config}
+	result, err := podProv.List(ctx, &resource.ListRequest{AdditionalProperties: map[string]string{"namespace": env.Namespace}})
+	require.NoError(t, err)
+
+	assert.Contains(t, result.NativeIDs, env.Namespace+"/standalone-pod",
+		"standalone Pod must appear in List")
+	assert.NotContains(t, result.NativeIDs, env.Namespace+"/owned-pod",
+		"owned Pods must be filtered from List")
+}

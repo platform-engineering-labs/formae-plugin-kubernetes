@@ -1,0 +1,25 @@
+/*
+ * Conformance Test: NginxFormation (Create)
+ *
+ * Tests the NginxFormation abstraction which produces multiple resources:
+ * Namespace, ServiceAccount, Service, and Deployment.
+ * The framework tests the Deployment (last resource) as the main resource.
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@formae-formations/NginxFormation.pkl"
+import "../shared/config/vars.pkl" as v
+
+local chart = new NginxFormation.Nginx {
+  name = "test-nginx-\(v.testRunID)"
+  namespace = "formae-test-\(v.testRunID)"
+  createNamespace = true
+  replicas = 1
+  image = "nginx:alpine"
+}
+
+forma {
+  new formae.Stack { label = "nginx-chart-test"; description = "Nginx chart conformance test" }
+  v.target
+  for (r in chart.resources) { r }
+}

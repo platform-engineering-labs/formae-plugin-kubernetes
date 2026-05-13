@@ -1,0 +1,223 @@
+// © 2025 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+
+package storage
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/prov"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/registry"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/transport"
+	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	storagev1ac "k8s.io/client-go/applyconfigurations/storage/v1"
+)
+
+const ResourceTypeStorageClass = "K8S::Storage::StorageClass"
+
+func init() {
+	registry.Register(
+		ResourceTypeStorageClass,
+		[]resource.Operation{
+			resource.OperationCreate,
+			resource.OperationRead,
+			resource.OperationUpdate,
+			resource.OperationDelete,
+			resource.OperationList,
+		},
+		func(client *transport.Client, cfg *config.Config) prov.Provisioner {
+			return &StorageClass{Client: client, Config: cfg}
+		},
+	)
+}
+
+// StorageClass implements the provisioner for K8S::Storage::StorageClass resources.
+type StorageClass struct {
+	Client *transport.Client
+	Config *config.Config
+}
+
+var _ prov.Provisioner = &StorageClass{}
+
+func (s *StorageClass) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
+	var sc *storagev1ac.StorageClassApplyConfiguration
+	if err := prov.UnmarshalApplyConfig(request.Properties, &sc); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal storageclass properties: %w", err)
+	}
+
+	result, err := s.Client.StorageV1().StorageClasses().Apply(ctx, sc, metav1.ApplyOptions{
+		FieldManager: prov.FieldManager,
+		Force:        true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply storageclass: %w", err)
+	}
+
+	properties, err := prov.LiveState[storagev1ac.StorageClassApplyConfiguration](result, "StorageClass", "storage.k8s.io/v1")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get storageclass live state: %w", err)
+	}
+
+	return &resource.CreateResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:          resource.OperationCreate,
+			OperationStatus:    resource.OperationStatusSuccess,
+			RequestID:          result.ResourceVersion,
+			NativeID:           result.Name,
+			ResourceProperties: properties,
+		},
+	}, nil
+}
+
+func (s *StorageClass) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
+	result, err := s.Client.StorageV1().StorageClasses().Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return &resource.ReadResult{
+				ResourceType: request.ResourceType,
+				ErrorCode:    resource.OperationErrorCodeNotFound,
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to get storageclass: %w", err)
+	}
+
+	properties, err := prov.LiveState[storagev1ac.StorageClassApplyConfiguration](result, "StorageClass", "storage.k8s.io/v1")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get storageclass live state: %w", err)
+	}
+
+	return &resource.ReadResult{
+		ResourceType: request.ResourceType,
+		Properties:   string(properties),
+	}, nil
+}
+
+func (s *StorageClass) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
+	var sc *storagev1ac.StorageClassApplyConfiguration
+	if err := prov.UnmarshalApplyConfig(request.DesiredProperties, &sc); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal storageclass properties: %w", err)
+	}
+
+	result, err := s.Client.StorageV1().StorageClasses().Apply(ctx, sc, metav1.ApplyOptions{
+		FieldManager: prov.FieldManager,
+		Force:        true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply storageclass: %w", err)
+	}
+
+	// Reconcile metadata: remove labels/annotations not in desired state.
+	if err := prov.ReconcileMetadata(result, sc, func(name string, patch []byte, opts metav1.PatchOptions) error {
+		_, err := s.Client.StorageV1().StorageClasses().Patch(ctx, name, types.MergePatchType, patch, opts)
+		return err
+	}); err != nil {
+		return nil, fmt.Errorf("failed to reconcile storageclass metadata: %w", err)
+	}
+
+	properties, err := prov.LiveState[storagev1ac.StorageClassApplyConfiguration](result, "StorageClass", "storage.k8s.io/v1")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get storageclass live state: %w", err)
+	}
+
+	return &resource.UpdateResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:          resource.OperationUpdate,
+			OperationStatus:    resource.OperationStatusSuccess,
+			RequestID:          result.ResourceVersion,
+			NativeID:           result.Name,
+			ResourceProperties: properties,
+		},
+	}, nil
+}
+
+func (s *StorageClass) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
+	err = s.Client.StorageV1().StorageClasses().Delete(ctx, name, metav1.DeleteOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return &resource.DeleteResult{
+				ProgressResult: &resource.ProgressResult{
+					Operation:       resource.OperationDelete,
+					OperationStatus: resource.OperationStatusSuccess,
+				},
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to delete storageclass: %w", err)
+	}
+
+	return &resource.DeleteResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:       resource.OperationDelete,
+			OperationStatus: resource.OperationStatusSuccess,
+		},
+	}, nil
+}
+
+func (s *StorageClass) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
+	name, err := prov.ParseClusterNativeID(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
+	}
+	result, err := s.Client.StorageV1().StorageClasses().Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return &resource.StatusResult{
+				ProgressResult: &resource.ProgressResult{
+					Operation:       resource.OperationCheckStatus,
+					OperationStatus: resource.OperationStatusFailure,
+					ErrorCode:       resource.OperationErrorCodeNotFound,
+				},
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to get storageclass status: %w", err)
+	}
+
+	properties, err := prov.LiveState[storagev1ac.StorageClassApplyConfiguration](result, "StorageClass", "storage.k8s.io/v1")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get storageclass live state: %w", err)
+	}
+
+	return &resource.StatusResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:          resource.OperationCheckStatus,
+			OperationStatus:    resource.OperationStatusSuccess,
+			RequestID:          request.RequestID,
+			NativeID:           result.Name,
+			ResourceProperties: properties,
+		},
+	}, nil
+}
+
+func (s *StorageClass) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
+	var nativeIDs []string
+	if err := prov.EachPage(ctx, func(ctx context.Context, opts metav1.ListOptions) (string, error) {
+		page, err := s.Client.StorageV1().StorageClasses().List(ctx, opts)
+		if err != nil {
+			return "", err
+		}
+		for _, sc := range page.Items {
+			nativeIDs = append(nativeIDs, sc.Name)
+		}
+		return page.Continue, nil
+	}); err != nil {
+		return nil, fmt.Errorf("failed to list storageclasses: %w", err)
+	}
+
+
+	return &resource.ListResult{
+		NativeIDs: nativeIDs,
+	}, nil
+}

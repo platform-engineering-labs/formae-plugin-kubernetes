@@ -1,0 +1,54 @@
+/*
+ * Conformance Test: LimitRange (Update)
+ * Changes: added annotation (mutable), increased default cpu limit
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.29/core/Namespace.pkl" as ns
+import "@k8s/v1.29/core/LimitRange.pkl" as lr
+import "@k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local ns = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  ns
+
+  new lr.LimitRange {
+    label = "test-limitrange"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "test-lr-\(v.testRunID)"
+      namespace = ns.res.name
+      annotations = new Mapping {
+        ["updated"] = "true"
+      }
+    }
+    spec = new lr.LimitRangeSpec {
+      limits = new Listing {
+        new lr.LimitRangeItem {
+          type = "Container"
+          default = new Mapping {
+            ["cpu"] = "1"
+            ["memory"] = "512Mi"
+          }
+          defaultRequest = new Mapping {
+            ["cpu"] = "100m"
+            ["memory"] = "128Mi"
+          }
+        }
+      }
+    }
+  }
+}

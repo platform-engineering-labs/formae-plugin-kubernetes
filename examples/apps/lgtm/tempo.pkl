@@ -1,0 +1,265 @@
+// Tempo Simple Scalable — write/read/backend Deployments all sharing one
+// ConfigMap. Target names are mapped to Tempo's native components:
+//   write   → distributor,ingester
+//   read    → query-frontend,querier
+//   backend → compactor,metrics-generator
+// The write tier exposes OTLP on :4317 (grpc) and :4318 (http).
+
+import "@formae/formae.pkl"
+import "@k8s/v1.34/core/Namespace.pkl" as ns
+import "@k8s/v1.34/core/ConfigMap.pkl" as cm
+import "@k8s/v1.34/core/Service.pkl" as svc
+import "@k8s/v1.34/apps/Deployment.pkl" as dep
+import "@k8s/k8s.pkl" as k8s
+
+local appName = "tempo"
+local imageRef = "docker.io/grafana/tempo:2.7.1"
+local configName = "\(appName)-config"
+local memberlistName = "\(appName)-memberlist"
+local httpPort = 3200
+local grpcPort = 9095
+local memberlistPort = 7946
+local otlpGrpcPort = 4317
+local otlpHttpPort = 4318
+
+local commonLabels = new Mapping {
+  ["app.kubernetes.io/part-of"] = "lgtm"
+  ["app.kubernetes.io/name"] = appName
+  ["managed-by"] = "formae"
+}
+
+function tempoConfig(
+  k8sTarget: formae.Target,
+  appNs: ns.Namespace,
+  nsName: String,
+  minioEndpoint: String,
+  bucketName: String
+): cm.ConfigMap =
+  new cm.ConfigMap {
+    target = k8sTarget.res
+    label = "lgtm-tempo-config"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = configName
+      namespace = appNs.res.name
+      labels = commonLabels
+    }
+    data = new Mapping {
+      ["config-yaml"] = (new YamlRenderer {}).renderValue(new Dynamic {
+        server {
+          http_listen_port = httpPort
+          grpc_listen_port = grpcPort
+        }
+        distributor {
+          receivers {
+            otlp {
+              protocols {
+                http { endpoint = "0.0.0.0:\(otlpHttpPort)" }
+                grpc { endpoint = "0.0.0.0:\(otlpGrpcPort)" }
+              }
+            }
+          }
+        }
+        ingester {
+          lifecycler {
+            ring {
+              kvstore { store = "memberlist" }
+            }
+          }
+        }
+        memberlist {
+          join_members = new Listing { "\(memberlistName).\(nsName).svc.cluster.local:\(memberlistPort)" }
+        }
+        querier {
+          frontend_worker {
+            frontend_address = "tempo-read.\(nsName).svc.cluster.local:\(grpcPort)"
+          }
+        }
+        storage {
+          ["trace"] {
+            backend = "s3"
+            s3 {
+              bucket = bucketName
+              endpoint = minioEndpoint
+              access_key = "${MINIO_ROOT_USER}"
+              secret_key = "${MINIO_ROOT_PASSWORD}"
+              insecure = true
+              forcepathstyle = true
+            }
+            wal { path = "/var/tempo/wal" }
+            ["local"] { path = "/var/tempo/blocks" }
+          }
+        }
+        compactor {
+          compaction { block_retention = "24h" }
+        }
+      })
+    }
+  }
+
+function tempoMemberlistService(k8sTarget: formae.Target, appNs: ns.Namespace): svc.Service =
+  new svc.Service {
+    target = k8sTarget.res
+    label = "lgtm-tempo-memberlist"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = memberlistName
+      namespace = appNs.res.name
+      labels = commonLabels
+    }
+    spec = new svc.ServiceSpec {
+      clusterIP = "None"
+      publishNotReadyAddresses = true
+      selector = commonLabels
+      ports = new Listing {
+        new svc.ServicePort { name = "memberlist"; port = memberlistPort; targetPort = memberlistPort }
+      }
+    }
+  }
+
+function tierDeployment(
+  k8sTarget: formae.Target,
+  appNs: ns.Namespace,
+  role: String,
+  replicaCount: Int,
+  targets: String,
+  credsSecret: String
+): dep.Deployment =
+  new dep.Deployment {
+    target = k8sTarget.res
+    label = "lgtm-tempo-\(role)"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "\(appName)-\(role)"
+      namespace = appNs.res.name
+      labels = (commonLabels) { ["app.kubernetes.io/component"] = role }
+    }
+    spec = new dep.DeploymentSpec {
+      replicas = replicaCount
+      selector = new k8s.LabelSelector {
+        matchLabels = (commonLabels) { ["app.kubernetes.io/component"] = role }
+      }
+      template = new k8s.PodTemplateSpec {
+        metadata = new k8s.ObjectMeta {
+          name = "\(appName)-\(role)"
+          labels = (commonLabels) { ["app.kubernetes.io/component"] = role }
+        }
+        spec = new k8s.PodSpec {
+          containers = new Listing {
+            new k8s.Container {
+              name = appName
+              image = imageRef
+              args = new Listing {
+                "-config.file=/etc/tempo/config.yaml"
+                "-config.expand-env=true"
+                "-target=\(targets)"
+              }
+              env = new Listing {
+                new k8s.EnvVar {
+                  name = "MINIO_ROOT_USER"
+                  valueFrom = new k8s.EnvVarSource {
+                    secretKeyRef = new k8s.SecretKeySelector { name = credsSecret; key = "MINIO_ROOT_USER" }
+                  }
+                }
+                new k8s.EnvVar {
+                  name = "MINIO_ROOT_PASSWORD"
+                  valueFrom = new k8s.EnvVarSource {
+                    secretKeyRef = new k8s.SecretKeySelector { name = credsSecret; key = "MINIO_ROOT_PASSWORD" }
+                  }
+                }
+              }
+              ports = new Listing {
+                new k8s.ContainerPort { name = "http"; containerPort = httpPort }
+                new k8s.ContainerPort { name = "grpc"; containerPort = grpcPort }
+                new k8s.ContainerPort { name = "memberlist"; containerPort = memberlistPort }
+                new k8s.ContainerPort { name = "otlp-grpc"; containerPort = otlpGrpcPort }
+                new k8s.ContainerPort { name = "otlp-http"; containerPort = otlpHttpPort }
+              }
+              volumeMounts = new Listing {
+                new k8s.VolumeMount { name = "config"; mountPath = "/etc/tempo"; readOnly = true }
+                new k8s.VolumeMount { name = "data"; mountPath = "/var/tempo" }
+              }
+              resources = new k8s.ResourceRequirements {
+                requests = new Mapping { ["cpu"] = "50m"; ["memory"] = "128Mi" }
+                limits = new Mapping { ["cpu"] = "500m"; ["memory"] = "512Mi" }
+              }
+            }
+          }
+          volumes = new Listing {
+            new k8s.Volume {
+              name = "config"
+              configMap = new k8s.ConfigMapVolumeSource {
+                name = configName
+                items = new Listing {
+                  new k8s.KeyToPath { key = "config-yaml"; path = "config.yaml" }
+                }
+              }
+            }
+            new k8s.Volume {
+              name = "data"
+              emptyDir = new k8s.EmptyDirVolumeSource {}
+            }
+          }
+        }
+      }
+    }
+  }
+
+function tierService(k8sTarget: formae.Target, appNs: ns.Namespace, role: String): svc.Service =
+  new svc.Service {
+    target = k8sTarget.res
+    label = "lgtm-tempo-\(role)-svc"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "\(appName)-\(role)"
+      namespace = appNs.res.name
+      labels = (commonLabels) { ["app.kubernetes.io/component"] = role }
+    }
+    spec = new svc.ServiceSpec {
+      selector = (commonLabels) { ["app.kubernetes.io/component"] = role }
+      ports = new Listing {
+        new svc.ServicePort { name = "http"; port = httpPort; targetPort = httpPort }
+        new svc.ServicePort { name = "grpc"; port = grpcPort; targetPort = grpcPort }
+      }
+    }
+  }
+
+// Write tier Service additionally exposes OTLP ingest ports.
+function writeTierService(k8sTarget: formae.Target, appNs: ns.Namespace): svc.Service =
+  new svc.Service {
+    target = k8sTarget.res
+    label = "lgtm-tempo-write-svc"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "\(appName)-write"
+      namespace = appNs.res.name
+      labels = (commonLabels) { ["app.kubernetes.io/component"] = "write" }
+    }
+    spec = new svc.ServiceSpec {
+      selector = (commonLabels) { ["app.kubernetes.io/component"] = "write" }
+      ports = new Listing {
+        new svc.ServicePort { name = "http"; port = httpPort; targetPort = httpPort }
+        new svc.ServicePort { name = "grpc"; port = grpcPort; targetPort = grpcPort }
+        new svc.ServicePort { name = "otlp-grpc"; port = otlpGrpcPort; targetPort = otlpGrpcPort }
+        new svc.ServicePort { name = "otlp-http"; port = otlpHttpPort; targetPort = otlpHttpPort }
+      }
+    }
+  }
+
+function allResources(
+  k8sTarget: formae.Target,
+  appNs: ns.Namespace,
+  nsName: String,
+  credsSecret: String,
+  minioEndpoint: String,
+  bucketName: String
+) = new Listing {
+  tempoConfig(k8sTarget, appNs, nsName, minioEndpoint, bucketName)
+  tempoMemberlistService(k8sTarget, appNs)
+
+  // Tempo doesn't accept comma-joined targets; use scalable-single-binary
+  // for all tiers. Tiers still scale independently via replica counts.
+  tierDeployment(k8sTarget, appNs, "write",   2, "scalable-single-binary", credsSecret)
+  writeTierService(k8sTarget, appNs)
+
+  tierDeployment(k8sTarget, appNs, "read",    2, "scalable-single-binary", credsSecret)
+  tierService(k8sTarget, appNs, "read")
+
+  tierDeployment(k8sTarget, appNs, "backend", 1, "scalable-single-binary", credsSecret)
+  tierService(k8sTarget, appNs, "backend")
+}

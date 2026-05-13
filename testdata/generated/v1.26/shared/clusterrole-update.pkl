@@ -1,0 +1,28 @@
+/*
+ * Conformance Test: ClusterRole (Update)
+ * Changes: added "watch" verb (mutable)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.26/rbac/ClusterRole.pkl" as cr
+import "@k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new cr.ClusterRole {
+    label = "test-clusterrole"
+    metadata = new k8s.ObjectMeta {
+      name = "test-cr-\(v.testRunID)"
+    }
+    rules = new Listing {
+      new k8s.PolicyRule {
+        apiGroups = new Listing { "" }
+        resources = new Listing { "nodes" }
+        verbs = new Listing { "get"; "list"; "watch" }
+      }
+    }
+  }
+}

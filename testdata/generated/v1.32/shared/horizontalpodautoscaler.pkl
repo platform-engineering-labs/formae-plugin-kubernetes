@@ -1,0 +1,56 @@
+/*
+ * Conformance Test: HorizontalPodAutoscaler (Create)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.32/core/Namespace.pkl" as ns
+import "@k8s/v1.32/autoscaling/HorizontalPodAutoscaler.pkl" as hpa
+import "@k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local ns = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  ns
+
+  new hpa.HorizontalPodAutoscaler {
+    label = "test-hpa"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "test-hpa-\(v.testRunID)"
+      namespace = ns.res.name
+    }
+    spec = new hpa.HorizontalPodAutoscalerSpec {
+      scaleTargetRef = new hpa.CrossVersionObjectReference {
+        apiVersion = "apps/v1"
+        kind = "Deployment"
+        name = "test-dep-\(v.testRunID)"
+      }
+      minReplicas = 1
+      maxReplicas = 5
+      metrics = new Listing {
+        new hpa.MetricSpec {
+          type = "Resource"
+          resource = new hpa.ResourceMetricSource {
+            name = "cpu"
+            target = new hpa.MetricTarget {
+              type = "Utilization"
+              averageUtilization = 80
+            }
+          }
+        }
+      }
+    }
+  }
+}

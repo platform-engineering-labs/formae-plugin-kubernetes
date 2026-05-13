@@ -1,0 +1,358 @@
+name: Nightly
+
+# Tests plugin against formae main branch to catch SDK regressions before release.
+# PEL-maintained plugins only.
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # 3 AM UTC
+  workflow_dispatch:
+    inputs:
+      formae_branch:
+        description: "Formae branch to build from (default: main)"
+        required: false
+        default: "main"
+        type: string
+
+jobs:
+  # Build formae from main once and share it across matrix jobs
+  build-formae:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Build formae
+        run: |
+          BRANCH="${{ inputs.formae_branch || 'main' }}"
+          echo "Building formae from branch: ${BRANCH}"
+          git clone --branch "${BRANCH}" --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          cd /tmp/formae
+          git fetch --tags
+          # Get latest release tag (sorted by semver) and pass to make
+          LATEST_TAG=$(git tag -l "[0-9]*" --sort=-version:refname | grep -v -- '-' | head -1)
+          echo "Building formae with VERSION=${LATEST_TAG}"
+          make build VERSION="${LATEST_TAG}"
+
+      - name: Upload formae binary and Makefile
+        uses: actions/upload-artifact@v7
+        with:
+          name: formae-binary
+          path: |
+            /tmp/formae/formae
+            /tmp/formae/Makefile
+          retention-days: 1
+
+  # Discover test cases dynamically from testdata/
+  # Splits into resource tests and chart tests for different timeout configs.
+  discover-tests:
+    runs-on: ubuntu-latest
+    outputs:
+      resource-tests: ${{ steps.discover.outputs.resource-tests }}
+      chart-tests: ${{ steps.discover.outputs.chart-tests }}
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v4
+
+      - name: Discover test cases
+        id: discover
+        run: |
+          RESOURCE_TESTS=$(ls testdata/main/shared/*.pkl 2>/dev/null \
+            | xargs -n1 basename \
+            | grep -v '\-update\.pkl$' \
+            | grep -v '\-replace\.pkl$' \
+            | sed 's/\.pkl$//' \
+            | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          # certmanager-formation is excluded: cert-manager's cainjector
+          # Deployment has a webhook/cert bootstrap chicken-and-egg that
+          # rarely settles on cold kind clusters within any reasonable
+          # apply timeout. Re-enable once the K8s plugin supports a
+          # non-blocking Deployment Create or we order the bootstrap
+          # (CRDs + webhook first, cainjector after).
+          CHART_TESTS=$(ls testdata/main/formations/*.pkl 2>/dev/null \
+            | xargs -n1 basename \
+            | grep -v '^certmanager-formation\.pkl$' \
+            | sed 's/\.pkl$//' \
+            | jq -R -s -c 'split("\n") | map(select(length > 0))')
+
+          echo "Resource tests: ${RESOURCE_TESTS}"
+          echo "Chart tests: ${CHART_TESTS}"
+          echo "resource-tests=${RESOURCE_TESTS}" >> "$GITHUB_OUTPUT"
+          echo "chart-tests=${CHART_TESTS}" >> "$GITHUB_OUTPUT"
+
+  # Conformance tests for individual K8S resource types.
+  conformance-tests:
+    needs: [build-formae, discover-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        test-case: ${{ fromJson(needs.discover-tests.outputs.resource-tests) }}
+      max-parallel: 20
+      fail-fast: false
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Set up Pkl
+        uses: pkl-community/setup-pkl@v0
+        with:
+          pkl-version: 0.30.0
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: formae-test
+          node_image: "kindest/node:v1.34.3@sha256:08497ee19eace7b4b5348db5c6a1591d7752b164530a36f855cb0f2bdcbadd48"
+
+      - name: Download formae binary
+        uses: actions/download-artifact@v8
+        with:
+          name: formae-binary
+          path: /tmp/formae-artifact
+
+      - name: Clone formae source for replace directives
+        run: |
+          # Match the branch the binary was built from so go.mod replace
+          # directives pick up the same source the binary embeds.
+          BRANCH="${{ inputs.formae_branch || 'main' }}"
+          git clone --branch "${BRANCH}" --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          cp /tmp/formae-artifact/formae /tmp/formae/formae
+          chmod +x /tmp/formae/formae
+
+      # Temporary: until Orbital package manager handles plugin version
+      # coordination, the formae Makefile is the source of truth for which
+      # plugin branch to build against. Parse the @ref suffix and check
+      # out that ref so the plugin is compatible with the formae binary.
+      - name: Align plugin branch with formae Makefile
+        run: |
+          PLUGIN_NAME=$(basename "${{ github.repository }}")
+          REF=$(grep "${PLUGIN_NAME}" /tmp/formae/Makefile \
+            | grep -o '@[^[:space:]\\]*' \
+            | head -1 \
+            | sed 's/^@//')
+          if [ -n "$REF" ]; then
+            echo "Formae Makefile pins ${PLUGIN_NAME} to ref: ${REF}"
+            git fetch origin "${REF}"
+            git checkout "${REF}"
+          else
+            echo "No ref override for ${PLUGIN_NAME}, staying on default branch"
+          fi
+
+      - name: Inject formae replace directives
+        run: |
+          FORMAE_SRC=/tmp/formae
+          for pkg in pkg/auth pkg/model pkg/plugin pkg/plugin-conformance-tests; do
+            if grep -q "formae/$pkg" go.mod 2>/dev/null; then
+              echo "Injecting replace for $pkg -> $FORMAE_SRC/$pkg"
+              go mod edit -replace "github.com/platform-engineering-labs/formae/$pkg=$FORMAE_SRC/$pkg"
+            fi
+          done
+          go mod tidy
+
+      - name: Install plugin
+        run: make install
+
+      - name: Resolve testdata Pkl deps (v1.34)
+        run: pkl project resolve testdata/generated/v1.34/
+
+      - name: Run conformance tests (${{ matrix.test-case }})
+        env:
+          FORMAE_BINARY: /tmp/formae/formae
+          FORMAE_TEST_RUN_ID: nightly-main-${{ github.run_id }}-${{ github.run_attempt }}
+          FORMAE_TEST_TESTDATA_DIR: testdata/generated/v1.34/shared
+        run: make conformance-test-crud-run conformance-test-discovery-run TEST=${{ matrix.test-case }} PARALLEL=1
+
+  # Chart conformance tests deploy full Helm charts (many resources).
+  # Discovery needs a longer timeout since charts create numerous resources.
+  chart-conformance-tests:
+    needs: [build-formae, discover-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        test-case: ${{ fromJson(needs.discover-tests.outputs.chart-tests) }}
+      max-parallel: 20
+      fail-fast: false
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Set up Pkl
+        uses: pkl-community/setup-pkl@v0
+        with:
+          pkl-version: 0.30.0
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: formae-test
+          node_image: "kindest/node:v1.34.3@sha256:08497ee19eace7b4b5348db5c6a1591d7752b164530a36f855cb0f2bdcbadd48"
+
+      - name: Download formae binary
+        uses: actions/download-artifact@v8
+        with:
+          name: formae-binary
+          path: /tmp/formae-artifact
+
+      - name: Clone formae source for replace directives
+        run: |
+          # Match the branch the binary was built from so go.mod replace
+          # directives pick up the same source the binary embeds.
+          BRANCH="${{ inputs.formae_branch || 'main' }}"
+          git clone --branch "${BRANCH}" --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          cp /tmp/formae-artifact/formae /tmp/formae/formae
+          chmod +x /tmp/formae/formae
+
+      # Temporary: until Orbital package manager handles plugin version
+      # coordination, the formae Makefile is the source of truth for which
+      # plugin branch to build against. Parse the @ref suffix and check
+      # out that ref so the plugin is compatible with the formae binary.
+      - name: Align plugin branch with formae Makefile
+        run: |
+          PLUGIN_NAME=$(basename "${{ github.repository }}")
+          REF=$(grep "${PLUGIN_NAME}" /tmp/formae/Makefile \
+            | grep -o '@[^[:space:]\\]*' \
+            | head -1 \
+            | sed 's/^@//')
+          if [ -n "$REF" ]; then
+            echo "Formae Makefile pins ${PLUGIN_NAME} to ref: ${REF}"
+            git fetch origin "${REF}"
+            git checkout "${REF}"
+          else
+            echo "No ref override for ${PLUGIN_NAME}, staying on default branch"
+          fi
+
+      - name: Inject formae replace directives
+        run: |
+          FORMAE_SRC=/tmp/formae
+          for pkg in pkg/auth pkg/model pkg/plugin pkg/plugin-conformance-tests; do
+            if grep -q "formae/$pkg" go.mod 2>/dev/null; then
+              echo "Injecting replace for $pkg -> $FORMAE_SRC/$pkg"
+              go mod edit -replace "github.com/platform-engineering-labs/formae/$pkg=$FORMAE_SRC/$pkg"
+            fi
+          done
+          go mod tidy
+
+      - name: Install plugin
+        run: make install
+
+      - name: Resolve testdata Pkl deps
+        run: pkl project resolve testdata/main/
+
+      - name: Run chart conformance tests (${{ matrix.test-case }})
+        env:
+          FORMAE_BINARY: /tmp/formae/formae
+          FORMAE_TEST_RUN_ID: nightly-main-${{ github.run_id }}-${{ github.run_attempt }}
+          FORMAE_TEST_DISCOVERY_TIMEOUT: "5"
+          FORMAE_TEST_TESTDATA_DIR: testdata/main/formations
+        run: make conformance-test-crud-run conformance-test-discovery-run TEST=${{ matrix.test-case }} PARALLEL=1
+
+  # Notify when nightly is fixed (was red, now green)
+  notify-fixed:
+    needs: [conformance-tests, chart-conformance-tests]
+    runs-on: ubuntu-latest
+    if: success()
+    permissions:
+      actions: read
+    steps:
+      - name: Check if previous run failed
+        id: check_previous
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const runs = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'nightly.yml',
+              per_page: 2,
+              status: 'completed'
+            });
+
+            // Get previous run (skip current which isn't completed yet)
+            const previousRun = runs.data.workflow_runs.find(run => run.id !== context.runId);
+
+            if (previousRun && previousRun.conclusion === 'failure') {
+              return 'true';
+            }
+            return 'false';
+          result-encoding: string
+
+      - name: Notify Slack (Fixed)
+        if: steps.check_previous.outputs.result == 'true'
+        uses: slackapi/slack-github-action@v3.0.3
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": ":white_check_mark: Nightly fixed on ${{ github.repository }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":white_check_mark: *Nightly fixed* on `${{ github.repository }}`\n\nPlugin conformance tests now passing against formae main branch."
+                  }
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "View Run"
+                      },
+                      "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    }
+                  ]
+                }
+              ]
+            }
+
+  # Notify on failure
+  notify-failure:
+    needs: [conformance-tests, chart-conformance-tests]
+    runs-on: ubuntu-latest
+    if: failure()
+    steps:
+      - name: Notify Slack
+        uses: slackapi/slack-github-action@v3.0.3
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": ":warning: Nightly build failed on ${{ github.repository }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":warning: *Nightly build failed* on `${{ github.repository }}`\n\nPlugin conformance tests failed against formae main branch. This may indicate an SDK regression."
+                  }
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "View Run"
+                      },
+                      "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    }
+                  ]
+                }
+              ]
+            }

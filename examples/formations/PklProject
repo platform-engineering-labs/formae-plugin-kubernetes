@@ -1,0 +1,15 @@
+amends "pkl:Project"
+
+package {
+  name = "formae-formations"
+  baseUri = "package://hub.platform.engineering/plugins/k8s/examples/formations"
+  version = "0.1.0"
+  packageZipUrl = "https://hub.platform.engineering/plugins/k8s/examples/formations/formae-formations@\(version).zip"
+}
+
+dependencies {
+  ["formae"] {
+    uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.84.0"
+  }
+  ["k8s"] = import("../../schema/pkl/main/PklProject")
+}

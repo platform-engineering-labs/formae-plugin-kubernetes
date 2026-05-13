@@ -1,0 +1,39 @@
+/*
+ * Conformance Test: Lease (Create)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.33/core/Namespace.pkl" as ns
+import "@k8s/v1.33/coordination/Lease.pkl" as l
+import "@k8s/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local ns = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  ns
+
+  new l.Lease {
+    label = "test-lease"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "test-lease-\(v.testRunID)"
+      namespace = ns.res.name
+    }
+    spec = new l.LeaseSpec {
+      holderIdentity = "test-holder"
+      leaseDurationSeconds = 30
+    }
+  }
+}

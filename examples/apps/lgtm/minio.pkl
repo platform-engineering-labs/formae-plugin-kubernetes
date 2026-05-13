@@ -1,0 +1,158 @@
+// MinIO single-node StatefulSet providing S3-compatible object storage for
+// Loki / Tempo / Mimir. Buckets are auto-created on first boot via
+// MINIO_DEFAULT_BUCKETS. Not HA — intended for examples only.
+
+import "@formae/formae.pkl"
+import "@k8s/v1.34/core/Namespace.pkl" as ns
+import "@k8s/v1.34/core/Service.pkl" as svc
+import "@k8s/v1.34/core/PersistentVolumeClaim.pkl" as pvc
+import "@k8s/v1.34/apps/StatefulSet.pkl" as ss
+import "@k8s/k8s.pkl" as k8s
+
+local appName = "minio"
+local imageRef = "docker.io/minio/minio:RELEASE.2024-12-18T13-15-44Z"
+
+local minioLabels = new Mapping {
+  ["app.kubernetes.io/part-of"] = "lgtm"
+  ["app.kubernetes.io/name"] = appName
+  ["managed-by"] = "formae"
+}
+
+function minioStatefulSet(
+  k8sTarget: formae.Target,
+  appNs: ns.Namespace,
+  credsSecret: String,
+  bucketsCsv: String
+): ss.StatefulSet =
+  new ss.StatefulSet {
+    target = k8sTarget.res
+    label = "lgtm-minio"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = appName
+      namespace = appNs.res.name
+      labels = minioLabels
+    }
+    spec = new ss.StatefulSetSpec {
+      serviceName = appName
+      replicas = 1
+      selector = new k8s.LabelSelector { matchLabels = minioLabels }
+      template = new k8s.PodTemplateSpec {
+        metadata = new k8s.ObjectMeta { name = appName; labels = minioLabels }
+        spec = new k8s.PodSpec {
+          containers = new Listing {
+            new k8s.Container {
+              name = "minio"
+              image = imageRef
+              args = new Listing {
+                "server"
+                "/data"
+                "--console-address"
+                ":9001"
+              }
+              ports = new Listing {
+                new k8s.ContainerPort { name = "api"; containerPort = 9000 }
+                new k8s.ContainerPort { name = "console"; containerPort = 9001 }
+              }
+              env = new Listing {
+                new k8s.EnvVar {
+                  name = "MINIO_ROOT_USER"
+                  valueFrom = new k8s.EnvVarSource {
+                    secretKeyRef = new k8s.SecretKeySelector {
+                      name = credsSecret
+                      key = "MINIO_ROOT_USER"
+                    }
+                  }
+                }
+                new k8s.EnvVar {
+                  name = "MINIO_ROOT_PASSWORD"
+                  valueFrom = new k8s.EnvVarSource {
+                    secretKeyRef = new k8s.SecretKeySelector {
+                      name = credsSecret
+                      key = "MINIO_ROOT_PASSWORD"
+                    }
+                  }
+                }
+                new k8s.EnvVar { name = "LGTM_BUCKETS"; value = bucketsCsv }
+              }
+              // Official minio/minio image doesn't honor MINIO_DEFAULT_BUCKETS —
+              // use a postStart hook that runs `mc mb` once the server is up.
+              lifecycle = new Mapping {
+                ["postStart"] = new Mapping {
+                  ["exec"] = new Mapping {
+                    ["command"] = new Listing {
+                      "/bin/sh"
+                      "-c"
+                      "until mc alias set local http://localhost:9000 \"$MINIO_ROOT_USER\" \"$MINIO_ROOT_PASSWORD\" >/dev/null 2>&1; do sleep 1; done; for b in $(echo $LGTM_BUCKETS | tr ',' ' '); do mc mb -p local/$b || true; done"
+                    }
+                  }
+                }
+              }
+              volumeMounts = new Listing {
+                new k8s.VolumeMount { name = "data"; mountPath = "/data" }
+              }
+              resources = new k8s.ResourceRequirements {
+                requests = new Mapping { ["cpu"] = "100m"; ["memory"] = "256Mi" }
+                limits = new Mapping { ["cpu"] = "500m"; ["memory"] = "512Mi" }
+              }
+            }
+          }
+        }
+      }
+      volumeClaimTemplates = new Listing {
+        new ss.PersistentVolumeClaimTemplate {
+          metadata = new k8s.ObjectMeta { name = "data" }
+          spec = new pvc.PersistentVolumeClaimSpec {
+            accessModes = new Listing { "ReadWriteOnce" }
+            resources = new k8s.ResourceRequirements {
+              requests = new Mapping { ["storage"] = "20Gi" }
+            }
+          }
+        }
+      }
+    }
+  }
+
+function minioApiService(k8sTarget: formae.Target, appNs: ns.Namespace): svc.Service =
+  new svc.Service {
+    target = k8sTarget.res
+    label = "lgtm-minio-api"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = appName
+      namespace = appNs.res.name
+      labels = minioLabels
+    }
+    spec = new svc.ServiceSpec {
+      selector = minioLabels
+      ports = new Listing {
+        new svc.ServicePort { name = "api"; port = 9000; targetPort = 9000 }
+      }
+    }
+  }
+
+function minioConsoleService(k8sTarget: formae.Target, appNs: ns.Namespace): svc.Service =
+  new svc.Service {
+    target = k8sTarget.res
+    label = "lgtm-minio-console"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "\(appName)-console"
+      namespace = appNs.res.name
+      labels = minioLabels
+    }
+    spec = new svc.ServiceSpec {
+      selector = minioLabels
+      ports = new Listing {
+        new svc.ServicePort { name = "console"; port = 9001; targetPort = 9001 }
+      }
+    }
+  }
+
+function allResources(
+  k8sTarget: formae.Target,
+  appNs: ns.Namespace,
+  credsSecret: String,
+  defaultBuckets: String
+) = new Listing {
+  minioStatefulSet(k8sTarget, appNs, credsSecret, defaultBuckets)
+  minioApiService(k8sTarget, appNs)
+  minioConsoleService(k8sTarget, appNs)
+}

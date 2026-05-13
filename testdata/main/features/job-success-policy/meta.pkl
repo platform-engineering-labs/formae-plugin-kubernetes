@@ -1,0 +1,2 @@
+minK8sVersion = "1.33"
+description = "Indexed Job with successPolicy (KEP-3998). GA in 1.33. Allows declaring a Job complete based on per-index success counts."

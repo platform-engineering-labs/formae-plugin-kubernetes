@@ -1,0 +1,48 @@
+# Build artifacts
+bin/
+dist/
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# PKL
+.pkl-cache/
+
+# Worktrees
+.worktrees/
+PklProject.deps.json
+
+# Generated at build time from formae-plugin.pkl
+schema/pkl/VERSION
+
+# Note: schema/pkl/generated/ is committed (not ignored). Regen via `make
+# generate-versioned-schemas`; CI enforces parity via `make verify-generated-schemas`.
+
+# Stray Go build artifacts at the repo root (from running tools without -o).
+/gen-versioned-reflect
+/gen-versioned-testdata
+conformance.log
+
+# Note: schema/pkl/generated/helm/v<X.Y>/ is committed (not ignored).
+# Regen via `cd schema/pkl/generated/helm && make generate`; CI enforces
+# parity via `cd schema/pkl/generated/helm && make verify`.
+
+# Stray codegen binaries.
+schema/pkl/generated/helm/tools/gen-versioned-helm/gen-versioned-helm
