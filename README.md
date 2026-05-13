@@ -1,7 +1,7 @@
 # Kubernetes Plugin for formae
 
-[![CI](https://github.com/platform-engineering-labs/formae-plugin-k8s/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/platform-engineering-labs/formae-plugin-k8s/actions/workflows/ci.yml)
-[![Nightly](https://github.com/platform-engineering-labs/formae-plugin-k8s/actions/workflows/nightly.yml/badge.svg?branch=main)](https://github.com/platform-engineering-labs/formae-plugin-k8s/actions/workflows/nightly.yml)
+[![CI](https://github.com/platform-engineering-labs/formae-plugin-kubernetes/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/platform-engineering-labs/formae-plugin-kubernetes/actions/workflows/ci.yml)
+[![Nightly](https://github.com/platform-engineering-labs/formae-plugin-kubernetes/actions/workflows/nightly.yml/badge.svg?branch=main)](https://github.com/platform-engineering-labs/formae-plugin-kubernetes/actions/workflows/nightly.yml)
 
 Kubernetes resource plugin for
 [formae](https://github.com/platform-engineering-labs/formae). This plugin
