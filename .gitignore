@@ -46,3 +46,9 @@ conformance.log
 
 # Stray codegen binaries.
 schema/pkl/generated/helm/tools/gen-versioned-helm/gen-versioned-helm
+
+# Local AI session files (not part of the plugin sources).
+CLAUDE.md
+.claude/
+.handoffs/
+docs/superpowers/
