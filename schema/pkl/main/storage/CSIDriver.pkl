@@ -46,30 +46,33 @@ open class CSIDriver extends k8s.Resource {
   spec: CSIDriverSpec
 }
 
+/// CSIDriver spec is fully immutable post-create — the API server
+/// rejects any update with "field is immutable". Every field below
+/// is marked createOnly so formae surfaces the violation at plan time.
 @k8s.SubResourceHint {}
 open class CSIDriverSpec extends formae.SubResource {
-  @k8s.FieldHint { hasProviderDefault = true }
+  @k8s.FieldHint { hasProviderDefault = true; createOnly = true }
   fsGroupPolicy: String?
 
-  @k8s.FieldHint {}
+  @k8s.FieldHint { createOnly = true }
   attachRequired: Boolean?
 
-  @k8s.FieldHint { hasProviderDefault = true }
+  @k8s.FieldHint { hasProviderDefault = true; createOnly = true }
   requiresRepublish: Boolean?
 
-  @k8s.FieldHint { hasProviderDefault = true }
+  @k8s.FieldHint { hasProviderDefault = true; createOnly = true }
   storageCapacity: Boolean?
 
-  @k8s.FieldHint {}
+  @k8s.FieldHint { createOnly = true }
   tokenRequests: Listing<TokenRequest>?
 
-  @k8s.FieldHint { hasProviderDefault = true }
+  @k8s.FieldHint { hasProviderDefault = true; createOnly = true }
   volumeLifecycleModes: Listing<String>?
 
-  @k8s.FieldHint {}
+  @k8s.FieldHint { createOnly = true }
   podInfoOnMount: Boolean?
 
-  @k8s.FieldHint { hasProviderDefault = true }
+  @k8s.FieldHint { hasProviderDefault = true; createOnly = true }
   seLinuxMount: Boolean?
 }
 

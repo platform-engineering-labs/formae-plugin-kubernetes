@@ -45,22 +45,25 @@ open class StorageClass extends k8s.Resource {
   @k8s.FieldHint { required = true }
   metadata: k8s.ObjectMeta
 
-  @k8s.FieldHint {}
+  /// StorageClass is largely immutable post-create. Only
+  /// `allowVolumeExpansion`, `mountOptions`, and `allowedTopologies`
+  /// may change. All other fields are set-once.
+  @k8s.FieldHint { createOnly = true }
   volumeBindingMode: String?
 
-  @k8s.FieldHint { required = true }
+  @k8s.FieldHint { required = true; createOnly = true }
   provisioner: String
 
   @k8s.FieldHint {}
   allowVolumeExpansion: Boolean?
 
-  @k8s.FieldHint { hasProviderDefault = true }
+  @k8s.FieldHint { hasProviderDefault = true; createOnly = true }
   reclaimPolicy: String? = "Delete"
 
   @k8s.FieldHint {}
   mountOptions: Listing<String>?
 
-  @k8s.FieldHint {}
+  @k8s.FieldHint { createOnly = true }
   parameters: Mapping<String, String>?
 
   @k8s.FieldHint {}

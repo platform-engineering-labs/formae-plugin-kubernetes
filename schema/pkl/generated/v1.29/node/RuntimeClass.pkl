@@ -47,13 +47,16 @@ open class RuntimeClass extends k8s.Resource {
   @k8s.FieldHint { required = true }
   metadata: k8s.ObjectMeta
 
-  @k8s.FieldHint { required = true }
+  /// `handler` is immutable on RuntimeClass.
+  @k8s.FieldHint { required = true; createOnly = true }
   handler: String
 
-  @k8s.FieldHint {}
+  /// `overhead` is immutable on RuntimeClass.
+  @k8s.FieldHint { createOnly = true }
   overhead: Overhead?
 
-  @k8s.FieldHint {}
+  /// `scheduling` is immutable on RuntimeClass.
+  @k8s.FieldHint { createOnly = true }
   scheduling: Scheduling?
 }
 

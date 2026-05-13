@@ -586,7 +586,10 @@ open class JobSpec extends formae.SubResource {
   @FieldHint { hasProviderDefault = true }
   suspend: Boolean? = false
 
-  @FieldHint { required = true }
+  /// `template` is immutable on Job once created — only suspend /
+  /// parallelism / activeDeadlineSeconds / backoffLimit may change
+  /// post-create. Editing the pod template fails at SSA apply.
+  @FieldHint { required = true; createOnly = true }
   template: PodTemplateSpec
 
   /// K8s defaults to 6.
@@ -596,19 +599,24 @@ open class JobSpec extends formae.SubResource {
   @FieldHint {}
   backoffLimitPerIndex: Int?
 
-  @FieldHint { hasProviderDefault = true }
+  /// `manualSelector` is immutable on Job.
+  @FieldHint { hasProviderDefault = true; createOnly = true }
   manualSelector: Boolean?
 
   @FieldHint { hasProviderDefault = true }
   parallelism: Int? = 1
 
-  @FieldHint { hasProviderDefault = true }
+  /// `completions` is immutable on non-Indexed Jobs and partially
+  /// mutable on Indexed ones. Treat as createOnly for safety.
+  @FieldHint { hasProviderDefault = true; createOnly = true }
   completions: Int? = 1
 
-  @FieldHint { hasProviderDefault = true }
+  /// `completionMode` is set-once on Job.
+  @FieldHint { hasProviderDefault = true; createOnly = true }
   completionMode: String? = "NonIndexed"
 
-  @FieldHint {}
+  /// `podFailurePolicy` is immutable on Job.
+  @FieldHint { createOnly = true }
   podFailurePolicy: PodFailurePolicy?
 
   @FieldHint {}
@@ -622,7 +630,8 @@ open class JobSpec extends formae.SubResource {
   @K8sVersion { introducedIn = "1.30"; reference = "https://kep.k8s.io/4368" }
   managedBy: String?
 
-  @FieldHint {}
+  /// `selector` is immutable on Job (manualSelector required to set).
+  @FieldHint { createOnly = true }
   selector: LabelSelector?
 
   /// Max failed indexes for Indexed Jobs. Alpha in K8s 1.28, Beta in 1.29, GA in 1.33.
@@ -634,7 +643,8 @@ open class JobSpec extends formae.SubResource {
   activeDeadlineSeconds: Int?
 
   /// Job success policy. Alpha in K8s 1.30, Beta in 1.31, GA in 1.33.
-  @FieldHint {}
+  /// `successPolicy` is immutable on Job once set.
+  @FieldHint { createOnly = true }
   @K8sVersion { introducedIn = "1.30"; reference = "https://kep.k8s.io/3998" }
   successPolicy: SuccessPolicy?
 }

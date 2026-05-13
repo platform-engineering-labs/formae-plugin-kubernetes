@@ -48,6 +48,8 @@ open class RoleBinding extends k8s.Resource {
   @k8s.FieldHint {}
   subjects: Listing<k8s.Subject>?
 
-  @k8s.FieldHint { required = true }
+  /// `roleRef` is immutable on RoleBinding. To change the role, delete
+  /// and recreate the binding.
+  @k8s.FieldHint { required = true; createOnly = true }
   roleRef: k8s.RoleRef
 }

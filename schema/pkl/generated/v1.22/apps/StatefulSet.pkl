@@ -62,7 +62,8 @@ open class StatefulSetSpec extends formae.SubResource {
   @k8s.FieldHint { required = true }
   template: k8s.PodTemplateSpec
 
-  @k8s.FieldHint { hasProviderDefault = true }
+  /// `podManagementPolicy` is immutable on StatefulSet.
+  @k8s.FieldHint { hasProviderDefault = true; createOnly = true }
   podManagementPolicy: String? = "OrderedReady"
 
   @k8s.FieldHint { hasProviderDefault = true }
@@ -74,16 +75,22 @@ open class StatefulSetSpec extends formae.SubResource {
   @k8s.FieldHint { hasProviderDefault = true }
   revisionHistoryLimit: Int? = 10
 
-  @k8s.FieldHint { required = true }
+  /// .spec.selector is immutable on StatefulSet. The apiserver rejects
+  /// any update with "field is immutable". createOnly surfaces the
+  /// violation at plan time rather than failing at SSA apply.
+  @k8s.FieldHint { required = true; createOnly = true }
   selector: k8s.LabelSelector
 
   @k8s.FieldHint {}
   minReadySeconds: Int?
 
-  @k8s.FieldHint { required = true }
+  /// `serviceName` is immutable on StatefulSet.
+  @k8s.FieldHint { required = true; createOnly = true }
   serviceName: (String|formae.Resolvable)
 
-  @k8s.FieldHint {}
+  /// `volumeClaimTemplates` is immutable post-create — adding,
+  /// removing, or modifying a template entry fails at SSA apply.
+  @k8s.FieldHint { createOnly = true }
   volumeClaimTemplates: Listing<PersistentVolumeClaimTemplate>?
 }
 

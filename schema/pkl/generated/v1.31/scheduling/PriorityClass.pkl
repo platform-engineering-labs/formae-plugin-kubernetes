@@ -45,15 +45,19 @@ open class PriorityClass extends k8s.Resource {
   @k8s.FieldHint { required = true }
   metadata: k8s.ObjectMeta
 
-  @k8s.FieldHint {}
+  /// `globalDefault` is immutable on PriorityClass.
+  @k8s.FieldHint { createOnly = true }
   globalDefault: Boolean?
 
   @k8s.FieldHint {}
   description: String?
 
-  @k8s.FieldHint { required = true }
+  /// `value` is immutable on PriorityClass — the apiserver rejects
+  /// any post-create change.
+  @k8s.FieldHint { required = true; createOnly = true }
   value: Int
 
-  @k8s.FieldHint {}
+  /// `preemptionPolicy` is immutable on PriorityClass.
+  @k8s.FieldHint { createOnly = true }
   preemptionPolicy: String?
 }

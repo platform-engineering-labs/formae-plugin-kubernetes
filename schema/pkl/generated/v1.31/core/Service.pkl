@@ -58,13 +58,17 @@ open class Service extends k8s.Resource {
 
 @k8s.SubResourceHint {}
 open class ServiceSpec extends formae.SubResource {
-  @k8s.FieldHint {}
+  /// `clusterIPs` is immutable on Service once assigned (whether by
+  /// user or controller). The apiserver rejects updates that change
+  /// the existing entries or add new ones.
+  @k8s.FieldHint { createOnly = true }
   clusterIPs: Listing<String>?
 
   @k8s.FieldHint {}
   healthCheckNodePort: Int?
 
-  @k8s.FieldHint { hasProviderDefault = true }
+  /// `ipFamilyPolicy` is immutable once set.
+  @k8s.FieldHint { hasProviderDefault = true; createOnly = true }
   ipFamilyPolicy: String? = "SingleStack"
 
   /// Deprecated in K8s 1.36. Planned removal in v1.43.
@@ -89,13 +93,16 @@ open class ServiceSpec extends formae.SubResource {
   @k8s.FieldHint { hasProviderDefault = true }
   `type`: String? = "ClusterIP"
 
-  @k8s.FieldHint {}
+  /// `loadBalancerClass` is set-once on Service.
+  @k8s.FieldHint { createOnly = true }
   loadBalancerClass: String?
 
   @k8s.FieldHint {}
   sessionAffinityConfig: SessionAffinityConfig?
 
-  @k8s.FieldHint {}
+  /// `ipFamilies` is immutable once the Service has been bound to
+  /// a family. Adding/removing entries is rejected.
+  @k8s.FieldHint { createOnly = true }
   ipFamilies: Listing<String>?
 
   @k8s.FieldHint {}
@@ -119,7 +126,8 @@ open class ServiceSpec extends formae.SubResource {
   @k8s.FieldHint { hasProviderDefault = true }
   internalTrafficPolicy: String? = "Cluster"
 
-  @k8s.FieldHint {}
+  /// `clusterIP` is immutable. To change it, recreate the Service.
+  @k8s.FieldHint { createOnly = true }
   clusterIP: String?
 
   @k8s.FieldHint {}

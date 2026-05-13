@@ -51,7 +51,8 @@ open class IngressClass extends k8s.Resource {
 
 @k8s.SubResourceHint {}
 open class IngressClassSpec extends formae.SubResource {
-  @k8s.FieldHint {}
+  /// `controller` is immutable on IngressClass.
+  @k8s.FieldHint { createOnly = true }
   controller: String?
 
   @k8s.FieldHint {}

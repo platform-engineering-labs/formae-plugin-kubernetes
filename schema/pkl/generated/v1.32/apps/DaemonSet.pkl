@@ -67,7 +67,10 @@ open class DaemonSetSpec extends formae.SubResource {
   @k8s.FieldHint { hasProviderDefault = true }
   revisionHistoryLimit: Int? = 10
 
-  @k8s.FieldHint { required = true }
+  /// .spec.selector is immutable on DaemonSet. The apiserver rejects
+  /// any update with "field is immutable". createOnly surfaces the
+  /// violation at plan time rather than failing at SSA apply.
+  @k8s.FieldHint { required = true; createOnly = true }
   selector: k8s.LabelSelector
 
   @k8s.FieldHint {}

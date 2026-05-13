@@ -70,7 +70,11 @@ open class DeploymentSpec extends formae.SubResource {
   @k8s.FieldHint { hasProviderDefault = true }
   revisionHistoryLimit: Int? = 10
 
-  @k8s.FieldHint { required = true }
+  /// .spec.selector is immutable on Deployment since K8s 1.8. The
+  /// apiserver rejects any update — including added matchLabels keys —
+  /// with "field is immutable". createOnly surfaces the violation at
+  /// plan time rather than failing at SSA apply.
+  @k8s.FieldHint { required = true; createOnly = true }
   selector: k8s.LabelSelector
 
   @k8s.FieldHint {}

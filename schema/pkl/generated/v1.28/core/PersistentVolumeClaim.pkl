@@ -54,30 +54,35 @@ open class PersistentVolumeClaim extends k8s.Resource {
   spec: PersistentVolumeClaimSpec?
 }
 
+/// PVC spec is largely immutable once a claim is bound. Only
+/// `resources.requests.storage` may be expanded (and only when the
+/// underlying StorageClass allows volume expansion). Every other
+/// field below is marked createOnly to surface immutability at plan
+/// time rather than letting K8s reject at apply.
 @k8s.SubResourceHint {}
 open class PersistentVolumeClaimSpec extends formae.SubResource {
-  @k8s.FieldHint { required = true }
+  @k8s.FieldHint { required = true; createOnly = true }
   accessModes: Listing<String>
 
   @k8s.FieldHint {}
   resources: k8s.ResourceRequirements?
 
-  @k8s.FieldHint { hasProviderDefault = true }
+  @k8s.FieldHint { hasProviderDefault = true; createOnly = true }
   storageClassName: (String|formae.Resolvable)?
 
-  @k8s.FieldHint { hasProviderDefault = true }
+  @k8s.FieldHint { hasProviderDefault = true; createOnly = true }
   volumeMode: String? = "Filesystem"
 
-  @k8s.FieldHint {}
+  @k8s.FieldHint { createOnly = true }
   volumeName: (String|formae.Resolvable)?
 
-  @k8s.FieldHint {}
+  @k8s.FieldHint { createOnly = true }
   selector: k8s.LabelSelector?
 
-  @k8s.FieldHint {}
+  @k8s.FieldHint { createOnly = true }
   dataSource: DataSource?
 
-  @k8s.FieldHint {}
+  @k8s.FieldHint { createOnly = true }
   dataSourceRef: DataSource?
 }
 
