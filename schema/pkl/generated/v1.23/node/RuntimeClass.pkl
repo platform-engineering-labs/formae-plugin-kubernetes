@@ -63,7 +63,7 @@ open class RuntimeClass extends k8s.Resource {
 @k8s.SubResourceHint {}
 open class Overhead extends formae.SubResource {
   @k8s.FieldHint {}
-  podFixed: Mapping<String, String>?
+  podFixed: k8s.ResourceQuantities?
 }
 
 @k8s.SubResourceHint {}

@@ -63,20 +63,20 @@ open class LimitRangeSpec extends formae.SubResource {
 @k8s.SubResourceHint {}
 open class LimitRangeItem extends formae.SubResource {
   @k8s.FieldHint {}
-  default: Mapping<String, String>?
+  default: k8s.ResourceQuantities?
 
   @k8s.FieldHint {}
-  min: Mapping<String, String>?
+  min: k8s.ResourceQuantities?
 
   @k8s.FieldHint {}
-  max: Mapping<String, String>?
+  max: k8s.ResourceQuantities?
 
   @k8s.FieldHint {}
-  maxLimitRequestRatio: Mapping<String, String>?
+  maxLimitRequestRatio: k8s.ResourceQuantities?
 
   @k8s.FieldHint { required = true }
   `type`: String
 
   @k8s.FieldHint {}
-  defaultRequest: Mapping<String, String>?
+  defaultRequest: k8s.ResourceQuantities?
 }

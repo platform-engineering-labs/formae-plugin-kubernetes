@@ -93,22 +93,22 @@ open class NetworkPolicyPeer extends formae.SubResource {
 @k8s.SubResourceHint {}
 open class IPBlock extends formae.SubResource {
   @k8s.FieldHint { required = true }
-  cidr: String
+  cidr: k8s.CIDR
 
   @k8s.FieldHint {}
-  except: Listing<String>?
+  except: Listing<k8s.CIDR>?
 }
 
 @k8s.SubResourceHint {}
 open class NetworkPolicyPort extends formae.SubResource {
   @k8s.FieldHint {}
-  protocol: String?
+  protocol: k8s.Protocol?
 
   @k8s.FieldHint {}
-  port: (Int|String)?
+  port: k8s.IntOrString?
 
   @k8s.FieldHint {}
-  endPort: Int?
+  endPort: k8s.PortNumber?
 }
 
 @k8s.SubResourceHint {}

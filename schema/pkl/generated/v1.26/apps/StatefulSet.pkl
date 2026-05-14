@@ -70,7 +70,7 @@ open class StatefulSetSpec extends formae.SubResource {
   updateStrategy: StatefulSetUpdateStrategy?
 
   @k8s.FieldHint {}
-  replicas: Int?
+  replicas: k8s.NonNegativeInt?
 
   /// Custom ordinal start for StatefulSet pods. Alpha in K8s 1.26, Beta in 1.27, GA in 1.32.
   @k8s.FieldHint {}
@@ -82,7 +82,7 @@ open class StatefulSetSpec extends formae.SubResource {
   persistentVolumeClaimRetentionPolicy: StatefulSetPersistentVolumeClaimRetentionPolicy?
 
   @k8s.FieldHint { hasProviderDefault = true }
-  revisionHistoryLimit: Int? = 10
+  revisionHistoryLimit: k8s.NonNegativeInt? = 10
 
   /// .spec.selector is immutable on StatefulSet. The apiserver rejects
   /// any update with "field is immutable". createOnly surfaces the
@@ -91,7 +91,7 @@ open class StatefulSetSpec extends formae.SubResource {
   selector: k8s.LabelSelector
 
   @k8s.FieldHint {}
-  minReadySeconds: Int?
+  minReadySeconds: k8s.NonNegativeInt?
 
   /// `serviceName` is immutable on StatefulSet.
   @k8s.FieldHint { required = true; createOnly = true }
@@ -136,16 +136,16 @@ open class StatefulSetUpdateStrategy extends formae.SubResource {
 @k8s.SubResourceHint {}
 open class RollingUpdateStatefulSetStrategy extends formae.SubResource {
   @k8s.FieldHint {}
-  partition: Int?
+  partition: k8s.NonNegativeInt?
 
   @k8s.FieldHint {}
-  maxUnavailable: (Int|String)?
+  maxUnavailable: k8s.IntOrString?
 }
 
 @k8s.SubResourceHint {}
 open class StatefulSetOrdinals extends formae.SubResource {
   @k8s.FieldHint {}
-  start: Int?
+  start: k8s.NonNegativeInt?
 }
 
 @k8s.SubResourceHint {}

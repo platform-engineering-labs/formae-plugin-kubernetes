@@ -62,13 +62,13 @@ open class CronJobSpec extends formae.SubResource {
   suspend: Boolean? = false
 
   @k8s.FieldHint { required = true }
-  schedule: String
+  schedule: k8s.CronSchedule
 
   @k8s.FieldHint { required = true }
   jobTemplate: JobTemplateSpec
 
   @k8s.FieldHint {}
-  startingDeadlineSeconds: Int?
+  startingDeadlineSeconds: k8s.NonNegativeInt?
 
   @k8s.FieldHint { hasProviderDefault = true }
   concurrencyPolicy: String? = "Allow"
@@ -79,11 +79,11 @@ open class CronJobSpec extends formae.SubResource {
 
   /// K8s defaults to 1.
   @k8s.FieldHint { hasProviderDefault = true }
-  failedJobsHistoryLimit: Int?
+  failedJobsHistoryLimit: k8s.NonNegativeInt?
 
   /// K8s defaults to 3.
   @k8s.FieldHint { hasProviderDefault = true }
-  successfulJobsHistoryLimit: Int?
+  successfulJobsHistoryLimit: k8s.NonNegativeInt?
 }
 
 @k8s.SubResourceHint {}

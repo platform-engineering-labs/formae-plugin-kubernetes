@@ -87,5 +87,5 @@ open class TokenRequest extends formae.SubResource {
   audience: String
 
   @k8s.FieldHint {}
-  expirationSeconds: Int?
+  expirationSeconds: k8s.PositiveInt?
 }

@@ -62,10 +62,10 @@ open class LeaseSpec extends formae.SubResource {
   renewTime: String?
 
   @k8s.FieldHint {}
-  leaseDurationSeconds: Int?
+  leaseDurationSeconds: k8s.PositiveInt?
 
   @k8s.FieldHint {}
-  leaseTransitions: Int?
+  leaseTransitions: k8s.NonNegativeInt?
 
   @k8s.FieldHint {}
   preferredHolder: String?

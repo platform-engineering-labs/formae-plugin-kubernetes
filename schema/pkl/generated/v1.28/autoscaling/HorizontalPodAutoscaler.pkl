@@ -57,10 +57,10 @@ open class HorizontalPodAutoscaler extends k8s.Resource {
 @k8s.SubResourceHint {}
 open class HorizontalPodAutoscalerSpec extends formae.SubResource {
   @k8s.FieldHint { required = true }
-  maxReplicas: Int
+  maxReplicas: k8s.NonNegativeInt
 
   @k8s.FieldHint {}
-  minReplicas: Int?
+  minReplicas: k8s.NonNegativeInt?
 
   @k8s.FieldHint {}
   metrics: Listing<MetricSpec>?
@@ -114,16 +114,16 @@ open class MetricIdentifier extends formae.SubResource {
 @k8s.SubResourceHint {}
 open class MetricTarget extends formae.SubResource {
   @k8s.FieldHint {}
-  averageValue: String?
+  averageValue: k8s.Quantity?
 
   @k8s.FieldHint {}
-  averageUtilization: Int?
+  averageUtilization: k8s.Int32?
 
   @k8s.FieldHint { required = true }
   `type`: String
 
   @k8s.FieldHint {}
-  value: String?
+  value: k8s.Quantity?
 }
 
 @k8s.SubResourceHint {}
@@ -195,7 +195,7 @@ open class HPAScalingRules extends formae.SubResource {
   selectPolicy: String?
 
   @k8s.FieldHint {}
-  stabilizationWindowSeconds: Int?
+  stabilizationWindowSeconds: k8s.StabilizationWindowSeconds?
 
   @k8s.FieldHint {}
   policies: Listing<HPAScalingPolicy>?
@@ -204,11 +204,11 @@ open class HPAScalingRules extends formae.SubResource {
 @k8s.SubResourceHint {}
 open class HPAScalingPolicy extends formae.SubResource {
   @k8s.FieldHint { required = true }
-  periodSeconds: Int
+  periodSeconds: k8s.PositiveInt
 
   @k8s.FieldHint { required = true }
   `type`: String
 
   @k8s.FieldHint { required = true }
-  value: Int
+  value: k8s.PositiveInt
 }
