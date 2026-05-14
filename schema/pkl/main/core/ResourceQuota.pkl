@@ -55,7 +55,7 @@ open class ResourceQuotaSpec extends formae.SubResource {
   scopeSelector: ScopeSelector?
 
   @k8s.FieldHint {}
-  hard: Mapping<String, String>?
+  hard: k8s.ResourceQuantities?
 
   @k8s.FieldHint {}
   scopes: Listing<String>?
