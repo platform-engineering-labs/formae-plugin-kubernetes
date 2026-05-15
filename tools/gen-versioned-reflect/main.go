@@ -340,14 +340,23 @@ func copyFile(src, dst string) error {
 	return os.WriteFile(dst, data, 0o644)
 }
 
-// importRewriteRE matches `import "../k8s.pkl"` and
-// `module foo extends "../k8s.pkl"` (any namespace-shared base file
-// reference). Versioned resource modules sit one directory deeper than
-// master under the unified tree (`<out>/v<X.Y>/<api-group>/<Resource>.pkl`),
-// so their relative reference to the package's shared file climbs two
-// levels. RFC-0001 §3 documents the `extends` workaround used for
-// module-level annotations; this regex covers both forms.
-var importRewriteRE = regexp.MustCompile(`((?:import|extends)\s+")\.\./(k8s\.pkl")`)
+// subresourcesRenameRE matches `import "../k8s-subresources.pkl"` and
+// `module X extends "../k8s-subresources.pkl"` in master resource modules.
+// In the per-version tree the subresources file is renamed to k8s.pkl
+// (emitted as v<X.Y>/k8s.pkl by processTarget), so all references to the
+// master's k8s-subresources.pkl must become ../k8s.pkl (sibling in
+// v<X.Y>/).
+var subresourcesRenameRE = regexp.MustCompile(
+	`((?:import|extends)\s+")\.\./k8s-subresources\.pkl(")`)
+
+// typesSiblingClimbRE matches the bare `extends "k8s-types.pkl"` clause
+// on the k8s-subresources.pkl module declaration. When that file is
+// emitted as v<X.Y>/k8s.pkl it sits one level deeper than the generated
+// root, so the reference must climb to ../k8s-types.pkl.
+// Only matches without a leading `../` to avoid re-applying on already-
+// rewritten content.
+var typesSiblingClimbRE = regexp.MustCompile(
+	`(extends\s+")(k8s-types\.pkl")`)
 
 // pklProjectVersionRE matches the version assignment in a Pkl project
 // `package {}` block, e.g. `version = "0.1.0"` (with whatever
@@ -397,11 +406,19 @@ func processTarget(disc *discoverResult, target, in, out string) error {
 		}
 		base := filepath.Base(rel)
 
-		// Top-level files are not duplicated per-version. PklProject,
-		// PklProject.deps.json, and the shared <namespace>.pkl live at
-		// the unified tree root and the caller writes them once.
+		// Top-level files: only k8s-subresources.pkl is per-version (it
+		// carries the @K8sVersion-gated SubResource classes). Every other
+		// top-level file is shared at the generated tree root by
+		// writeRootFiles.
+		// planRel is the original relative path used for plan lookups;
+		// rel may be renamed below for the output destination.
+		planRel := rel
 		if filepath.Dir(rel) == "." {
-			return nil
+			if rel != "k8s-subresources.pkl" {
+				return nil
+			}
+			// Fall through: emit at v<X.Y>/k8s.pkl (renamed).
+			rel = "k8s.pkl"
 		}
 
 		stats.files++
@@ -421,9 +438,11 @@ func processTarget(disc *discoverResult, target, in, out string) error {
 		// Look up the gating plan for this master file. Discover paths
 		// look like "../../schema/pkl/main/<rel>"; suffix-match is
 		// sufficient since the rel paths are unique within the master.
+		// Use planRel (the original master path) for the lookup so that
+		// the k8s-subresources.pkl → k8s.pkl rename doesn't break the match.
 		var t *fileTransform
 		for k, p := range plan {
-			if strings.HasSuffix(k, filepath.Join(in, rel)) {
+			if strings.HasSuffix(k, filepath.Join(in, planRel)) {
 				t = p
 				break
 			}
@@ -457,16 +476,24 @@ func processTarget(disc *discoverResult, target, in, out string) error {
 	return nil
 }
 
-// rewriteImports adjusts relative imports to shared package-root files
-// (e.g. `../k8s.pkl`) for the unified-tree layout where versioned modules
-// sit one extra directory level deep. Idempotent: re-running on already-
-// rewritten content is a no-op.
+// rewriteImports adjusts relative imports in per-version files for the
+// unified-tree layout. Two substitutions are applied in order:
+//
+//  1. `../k8s-subresources.pkl` → `../k8s.pkl` (the per-version rename).
+//     Covers both `import` and `module X extends` forms.
+//
+//  2. bare `extends "k8s-types.pkl"` → `extends "../k8s-types.pkl"`.
+//     Applies to the emitted v<X.Y>/k8s.pkl (formerly k8s-subresources.pkl)
+//     whose module declaration references the root-shared types file.
+//
+// Idempotent: re-running on already-rewritten content is a no-op.
 func rewriteImports(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
-	rewritten := importRewriteRE.ReplaceAll(data, []byte(`${1}../../${2}`))
+	rewritten := subresourcesRenameRE.ReplaceAll(data, []byte(`${1}../k8s.pkl${2}`))
+	rewritten = typesSiblingClimbRE.ReplaceAll(rewritten, []byte(`${1}../${2}`))
 	if bytesEqual(data, rewritten) {
 		return nil
 	}
@@ -519,6 +546,12 @@ func writeRootFiles(in, out, generatedVersion string) error {
 	}
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".pkl") {
+			continue
+		}
+		// k8s-subresources.pkl is per-version (filtered by processTarget
+		// and emitted as v<X.Y>/k8s.pkl). It must not appear at the
+		// generated tree root.
+		if e.Name() == "k8s-subresources.pkl" {
 			continue
 		}
 		src := filepath.Join(in, e.Name())
