@@ -1,7 +1,7 @@
 /// Mappers for batch/v1 K8S resource types.
 module batch
 
-import "../../../k8s.pkl" as k8s
+import "../../../v1.30/k8s.pkl" as k8s
 import "../../../v1.30/apps/ReplicaSet.pkl" as rs
 import "../../../v1.30/batch/Job.pkl" as job
 import "../../../v1.30/batch/CronJob.pkl" as cj
