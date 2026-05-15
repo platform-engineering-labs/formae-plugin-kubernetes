@@ -15,7 +15,7 @@
  * by tools/gen-versioned-reflect; the generator emits the filtered
  * result as v<X.Y>/k8s.pkl in the generated tree.
  */
-extends "k8s-types.pkl"
+open module k8sSubresources extends "k8s-types.pkl"
 
 import "@formae/formae.pkl"
 
