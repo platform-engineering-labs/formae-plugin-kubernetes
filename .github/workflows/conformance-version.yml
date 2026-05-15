@@ -4,14 +4,6 @@ name: Conformance (per K8s version)
 # (shared resources + features) against a single K8s minor. Called from
 # ci.yml in a chained sequence so older versions only run once newer
 # versions pass.
-#
-# Builds formae from a git tag (default: 0.85.0) and injects
-# replace directives into the plugin's go.mod so the harness, formae
-# Go code, and Pkl schemas all resolve from the same /tmp/formae source
-# tree. Hub.platform.engineering doesn't host dev tags as Pkl packages,
-# so remote schema resolution would 404 — the source clone is what
-# makes `--schema-location local` actually find the formae Pkl package
-# under /tmp/formae.
 
 on:
   workflow_call:
@@ -29,48 +21,83 @@ on:
         type: string
         required: true
       formae_ref:
-        description: "Git ref of platform-engineering-labs/formae to build & test against (tag or branch)."
+        description: "formae version installed via setup/formae.sh. Must match the PklProject dependency pin (currently 0.84.0)."
         type: string
         required: false
-        default: "0.85.0"
-      formae_pkl_version:
-        description: "Version string the binary self-reports + the Pkl package the runtime fetches from hub. Must match a published `formae@<version>` package."
-        type: string
-        required: false
-        default: "0.85.0"
+        default: "0.84.0"
 
 jobs:
-  # Build formae from the requested ref once and share the binary across
-  # the discover/conformance jobs. The reported binary version matches
-  # the ref (passed to `make build VERSION=...`).
-  build-formae:
+  # Prepare job: install formae binary via the official setup script,
+  # build the plugin once, populate caches, ship everything matrix
+  # entries need as a single `test-runtime` artifact.
+  #
+  # Replaces the previous build-formae+source-clone+replace-directive
+  # pattern. The setup/formae.sh installer pulls a published binary
+  # from hub.platform.engineering; PklProjects resolve against
+  # hub-hosted stable Pkl packages (no source-mount needed).
+  #
+  # To pin a specific formae version, set inputs.formae_ref to the
+  # version string (e.g. "0.84.0"). Default tracks the PklProject pin.
+  prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
-      - name: Build formae from ref ${{ inputs.formae_ref }}
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: false
+
+      - name: Restore + save Go module cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: gomod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            gomod-${{ runner.os }}-
+
+      - uses: ./.github/actions/setup-pkl-cached
+        with:
+          save: 'true'  # prepare is allowed to save (single writer per run)
+
+      - name: Install formae
+        # Installs the formae binary into /opt/pel/formae/bin/formae.
+        # Pin a version with `-v <X.Y.Z>` (e.g. -v 0.84.0). Default
+        # (latest stable) tracks the PklProject formae pin in this repo.
+        # `-y` skips the interactive prompt (CI has no tty).
         run: |
           set -euo pipefail
-          REF="${{ inputs.formae_ref }}"
-          PKL_VERSION="${{ inputs.formae_pkl_version }}"
-          echo "Building formae from ref ${REF} reporting version ${PKL_VERSION}"
-          git clone --branch "${REF}" --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
-          cd /tmp/formae
-          # Self-reported binary version drives FORMAE_VERSION on plugin
-          # spawn, which the plugin SDK appends to the hub Pkl package
-          # URL. The actual published Pkl package version (read from
-          # internal/schema/pkl/schema/PklProject) is what hub serves,
-          # not the git tag, so we build the binary with PKL_VERSION
-          # rather than REF to keep runtime fetches in sync with hub.
-          make build VERSION="${PKL_VERSION}"
-          ./formae --version
+          curl -fsSL https://hub.platform.engineering/setup/formae.sh \
+            | bash -s -- -v "${{ inputs.formae_ref }}" -y
+          echo "/opt/pel/formae/bin" >> "$GITHUB_PATH"
+          /opt/pel/formae/bin/formae --version
 
-      - name: Upload formae binary and Makefile
-        uses: actions/upload-artifact@v7
+      - name: Download Go modules
+        run: go mod download
+
+      - name: Install plugin
+        # `make install` builds the plugin binary, copies the generated
+        # multi-version schema tree, copies the manifest, and runs
+        # `pkl project resolve` on the install dir to lock deps.
+        run: make install
+
+      - name: Bundle test-runtime
+        run: |
+          set -euo pipefail
+          tar -C "$HOME"   -czf install-bundle.tgz .pel/formae
+          sudo tar -C /opt/pel -czf formae-binary.tgz formae
+          sudo chown "$(id -u):$(id -g)" formae-binary.tgz
+          ls -la install-bundle.tgz formae-binary.tgz
+
+      - uses: actions/upload-artifact@v7
         with:
-          name: formae-binary-${{ inputs.k8s_version }}
+          name: test-runtime
           path: |
-            /tmp/formae/formae
-            /tmp/formae/Makefile
+            install-bundle.tgz
+            formae-binary.tgz
           retention-days: 1
 
   discover:
@@ -109,7 +136,7 @@ jobs:
           echo "feature-tests=${FEATURE_TESTS}" >> "$GITHUB_OUTPUT"
 
   conformance:
-    needs: [build-formae, discover]
+    needs: [prepare, discover]
     runs-on: ubuntu-latest
     # 20min job budget = 2 retry × 7min make + ~3-4min for setup (checkout,
     # setup-go, setup-pkl, KinD spin-up, plugin install) + cushion. Keep
@@ -202,7 +229,7 @@ jobs:
   # this job is gated on the discover step producing a non-empty matrix.
   # Older K8s minors with no GA-yet features simply skip the whole job.
   conformance-features:
-    needs: [build-formae, discover]
+    needs: [prepare, discover]
     if: needs.discover.outputs.feature-tests != '' && needs.discover.outputs.feature-tests != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 20
