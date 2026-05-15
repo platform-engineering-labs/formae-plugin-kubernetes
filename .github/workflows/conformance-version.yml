@@ -138,10 +138,8 @@ jobs:
   conformance:
     needs: [prepare, discover]
     runs-on: ubuntu-latest
-    # 20min job budget = 2 retry × 7min make + ~3-4min for setup (checkout,
-    # setup-go, setup-pkl, KinD spin-up, plugin install) + cushion. Keep
-    # retry max_attempts × timeout_minutes ≤ 14 so the job doesn't get
-    # cancelled mid-retry.
+    # 20min budget = 2 retries × 7min + ~4min for setup (checkout,
+    # toolchains, cache restore, artifact extract, KinD spin) + cushion.
     timeout-minutes: 20
     strategy:
       matrix:
@@ -150,51 +148,25 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
-      - uses: pkl-community/setup-pkl@v0
+          cache: false
+
+      - name: Restore Go module cache
+        uses: actions/cache/restore@v4
         with:
-          pkl-version: 0.30.0
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: gomod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            gomod-${{ runner.os }}-
 
-      - name: Download formae binary
-        uses: actions/download-artifact@v8
-        with:
-          name: formae-binary-${{ inputs.k8s_version }}
-          path: /tmp/formae-artifact
+      - uses: ./.github/actions/setup-pkl-cached
 
-      - name: Clone formae source for replace directives
-        run: |
-          set -euo pipefail
-          # Re-clone the same ref so the source tree matches the binary
-          # we just downloaded. Replace directives below point the
-          # plugin's Go modules at this tree, and the in-tree Pkl
-          # packages let `--schema-location local` resolve `@formae/...`
-          # imports without hitting hub.platform.engineering (which
-          # doesn't host dev tags as Pkl packages).
-          git clone --branch "${{ inputs.formae_ref }}" --depth 1 \
-            https://github.com/platform-engineering-labs/formae.git /tmp/formae
-          # Place binary under <tmpDir>/bin/ so orbital's tree-root derivation
-          # `filepath.Dir(filepath.Dir(binPath))` resolves to /tmp/formae,
-          # where the empty .ops/ marker satisfies orbital's Ready() check
-          # without scaffolding a signed tree. Mirrors the pattern in
-          # formae's tests/blackbox/testmain_test.go.
-          mkdir -p /tmp/formae/bin /tmp/formae/.ops
-          cp /tmp/formae-artifact/formae /tmp/formae/bin/formae
-          chmod +x /tmp/formae/bin/formae
-          /tmp/formae/bin/formae --version
-
-      - name: Inject formae replace directives
-        run: |
-          set -euo pipefail
-          FORMAE_SRC=/tmp/formae
-          for pkg in pkg/auth pkg/model pkg/plugin pkg/plugin-conformance-tests pkg/api/model; do
-            if grep -q "formae/$pkg" go.mod 2>/dev/null; then
-              echo "Injecting replace for $pkg -> $FORMAE_SRC/$pkg"
-              go mod edit -replace "github.com/platform-engineering-labs/formae/$pkg=$FORMAE_SRC/$pkg"
-            fi
-          done
-          go mod tidy
+      - uses: ./.github/actions/restore-test-runtime
 
       - name: Create kind cluster (K8s ${{ inputs.k8s_version }})
         uses: helm/kind-action@v1
@@ -203,22 +175,19 @@ jobs:
           cluster_name: formae-test
           node_image: ${{ inputs.kind_image }}
 
-      - name: Install plugin (multi-version schema layout)
-        # `install` cps schema/pkl/generated/ wholesale (PklProject + all v*/
-        # subtrees) so the runtime version dispatch can pick the right schema
-        # based on each target's ApiVersion.
-        run: make install
-
       - name: Run conformance tests (${{ matrix.test-case }})
         env:
-          FORMAE_BINARY: /tmp/formae/bin/formae
+          # FORMAE_BINARY pins the plugin-conformance-tests SDK to the
+          # binary installed by prepare (matches inputs.formae_ref).
+          # Without it, the SDK would auto-download "latest" via orbital
+          # and could drift from the PklProject pin → wire protocol
+          # mismatch. Keep this in sync with the prepare-job install.
+          FORMAE_BINARY: /opt/pel/formae/bin/formae
           FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-v${{ inputs.k8s_version }}
           FORMAE_TEST_TESTDATA_DIR: testdata/generated/v${{ inputs.k8s_version }}/shared
           FORMAE_K8S_VERSION: ${{ inputs.k8s_version }}
         uses: nick-fields/retry@v4
         with:
-          # Total retry budget: 2 × 7min = 14min ≤ 20min job timeout.
-          # Covers transient formae plugin-spawn timeouts (5s) under load.
           timeout_minutes: 7
           max_attempts: 2
           command: make conformance-test-crud-run conformance-test-discovery-run TEST=${{ matrix.test-case }} PARALLEL=1 TIMEOUT=6
