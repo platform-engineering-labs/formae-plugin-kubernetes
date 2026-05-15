@@ -63,13 +63,12 @@ jobs:
         # releases. The alternate setup/formae.sh reads
         # binaries/repo.json and lags behind. `--yes` skips pelmgr's
         # interactive bubbletea prompt (no tty in CI). Default
-        # install-path is /opt/pel; binary lands at
-        # /opt/pel/formae/bin/formae.
+        # install-path is /opt/pel; binary lands at /opt/pel/bin/formae.
         run: |
           set -euo pipefail
           curl -fsSL https://hub.platform.engineering/get/formae.sh | bash -s -- --yes
-          echo "/opt/pel/formae/bin" >> "$GITHUB_PATH"
-          /opt/pel/formae/bin/formae --version
+          echo "/opt/pel/bin" >> "$GITHUB_PATH"
+          /opt/pel/bin/formae --version
 
       - name: Download Go modules
         run: go mod download
@@ -82,21 +81,21 @@ jobs:
 
       - name: Bundle test-runtime
         # Tarball the plugin install tree ($HOME/.pel/formae) installed
-        # by `make install` and the formae binary tree (/opt/pel/formae)
-        # installed by pelmgr. Matrix entries extract both.
+        # by `make install` and the entire pelmgr install root
+        # (/opt/pel) which contains formae + pkl + plugin binaries.
         run: |
           set -euo pipefail
-          tar -C "$HOME"  -czf install-bundle.tgz .pel/formae
-          sudo tar -C /opt/pel -czf formae-binary.tgz formae
-          sudo chown "$(id -u):$(id -g)" formae-binary.tgz
-          ls -la install-bundle.tgz formae-binary.tgz
+          tar -C "$HOME" -czf install-bundle.tgz .pel/formae
+          sudo tar -C / -czf pel-binary.tgz opt/pel
+          sudo chown "$(id -u):$(id -g)" pel-binary.tgz
+          ls -la install-bundle.tgz pel-binary.tgz
 
       - uses: actions/upload-artifact@v7
         with:
           name: test-runtime
           path: |
             install-bundle.tgz
-            formae-binary.tgz
+            pel-binary.tgz
           retention-days: 1
 
   discover:
