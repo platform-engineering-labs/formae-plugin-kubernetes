@@ -1,0 +1,64 @@
+name: Prewarm CI caches
+
+# Keeps Pkl package cache + Go module cache warm so conformance matrix
+# entries restore-only and never block on registry fetches at plugin
+# runtime. Triggered on:
+#   - push: main          — refresh on every merge
+#   - schedule: every 6h  — survive GitHub cache eviction window (7d)
+#   - workflow_dispatch   — manual recovery
+#
+# This workflow is the cache-WRITE side; conformance workflows are
+# cache-READ.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/PklProject'
+      - '**/PklProject.deps.json'
+      - 'go.mod'
+      - 'go.sum'
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: false  # we manage the cache manually to align keys
+
+      - uses: ./.github/actions/setup-pkl-cached
+        with:
+          save: 'true'  # this workflow OWNS the cache
+
+      - name: Restore + save Go module cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: gomod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            gomod-${{ runner.os }}-
+
+      - name: Resolve all PklProjects (populates Pkl cache)
+        run: |
+          set -euo pipefail
+          # Resolve every PklProject under the repo so the cache holds
+          # every dep that any conformance or CI run might need.
+          find . -name PklProject -not -path '*/node_modules/*' -print0 \
+            | while IFS= read -r -d '' p; do
+                dir=$(dirname "$p")
+                echo "Resolving $dir"
+                (cd "$dir" && pkl project resolve)
+              done
+
+      - name: Download Go modules
+        run: go mod download

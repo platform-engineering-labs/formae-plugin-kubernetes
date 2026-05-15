@@ -25,6 +25,16 @@ jobs:
         with:
           go-version: "1.25"
 
+      - name: Restore Go module cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: gomod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            gomod-${{ runner.os }}-
+
       - name: Set up Pkl
         uses: pkl-community/setup-pkl@v0
         with:
@@ -43,6 +53,16 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.25"
+
+      - name: Restore Go module cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: gomod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            gomod-${{ runner.os }}-
 
       - name: Run unit tests
         run: make test-unit
@@ -69,10 +89,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Pkl
-        uses: pkl-community/setup-pkl@v0
-        with:
-          pkl-version: 0.30.0
+      - uses: ./.github/actions/setup-pkl-cached
 
       - name: Validate Pkl manifest
         run: |
@@ -90,10 +107,17 @@ jobs:
         with:
           go-version: "1.25"
 
-      - name: Set up Pkl
-        uses: pkl-community/setup-pkl@v0
+      - name: Restore Go module cache
+        uses: actions/cache/restore@v4
         with:
-          pkl-version: 0.30.0
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: gomod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            gomod-${{ runner.os }}-
+
+      - uses: ./.github/actions/setup-pkl-cached
 
       - name: Verify schema
         run: make verify-schema
@@ -109,10 +133,7 @@ jobs:
         with:
           go-version: "1.25"
 
-      - name: Set up Pkl
-        uses: pkl-community/setup-pkl@v0
-        with:
-          pkl-version: 0.30.0
+      - uses: ./.github/actions/setup-pkl-cached
 
       # Regenerates helm/v*/ from helm/shared/ and fails if the diff
       # isn't empty — catches stale committed trees in PRs.
