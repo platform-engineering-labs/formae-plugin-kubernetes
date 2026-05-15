@@ -20,7 +20,7 @@
  * No @K8sVersion gates appear in this file — all content is version-agnostic
  * and lives unchanged at the generated package root.
  */
-open module k8sTypes
+open module shared
 
 import "@formae/formae.pkl"
 

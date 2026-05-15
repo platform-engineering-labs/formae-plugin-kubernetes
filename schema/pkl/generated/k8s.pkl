@@ -10,7 +10,7 @@
  *   - Auth (abstract base) + KubeconfigAuth / EKSAuth / GKEAuth / AKSAuth / OVHAuth / OCIAuth
  *
  * Resource scaffolding (Resource, ObjectMeta, …), typealiases, and the K8sVersion
- * annotation live in k8s-types.pkl. Shared sub-resource classes (PodSpec, Container,
+ * annotation live in shared.pkl. Shared sub-resource classes (PodSpec, Container,
  * Volume, JobSpec, …) live in k8s-subresources.pkl and are filtered per K8s minor
  * by tools/gen-versioned-reflect at generation time.
  *
@@ -19,13 +19,13 @@
  *   - Go-side target config marshaling (pkg/config/config.go)
  *   - Conformance test bootstrap
  */
-// Extends k8s-types.pkl so this slim root inherits every typealias,
+// Extends shared.pkl so this slim root inherits every typealias,
 // helper, the K8sVersion annotation, Resource base, and the ObjectMeta
 // variants. The per-version source `k8s-subresources.pkl` in turn
 // extends THIS module, so the per-version generated `v<X.Y>/k8s.pkl`
 // reaches Config + Auth + every type + every SubResource class through
 // a single `k8s.` alias at consumer sites.
-open module k8s extends "k8s-types.pkl"
+open module k8s extends "shared.pkl"
 
 import "@formae/formae.pkl"
 

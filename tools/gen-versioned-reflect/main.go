@@ -484,9 +484,9 @@ func processTarget(disc *discoverResult, target, in, out string) error {
 //  1. `../k8s-subresources.pkl` → `../k8s.pkl` (the per-version rename).
 //     Covers both `import` and `module X extends` forms.
 //
-//  2. bare `extends "k8s-types.pkl"` → `extends "../k8s-types.pkl"`.
+//  2. bare `extends "k8s.pkl"` → `extends "../k8s.pkl"`.
 //     Applies to the emitted v<X.Y>/k8s.pkl (formerly k8s-subresources.pkl)
-//     whose module declaration references the root-shared types file.
+//     whose module declaration references the root-shared k8s.pkl.
 //
 // Idempotent: re-running on already-rewritten content is a no-op.
 func rewriteImports(path string) error {
