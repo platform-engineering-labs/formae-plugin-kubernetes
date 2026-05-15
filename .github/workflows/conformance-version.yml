@@ -66,7 +66,13 @@ jobs:
         # install path and export FORMAE_BIN for downstream steps.
         run: |
           set -euo pipefail
-          curl -fsSL https://hub.platform.engineering/get/formae.sh | bash -s -- -y
+          # Probe pelmgr flags first; install with whichever is supported.
+          curl -fsSL "https://hub.platform.engineering/get/binaries/$(uname | tr A-Z a-z)-$(uname -m | tr -d _ | sed s/aarch64/arm64/)/pelmgr" -o /tmp/pelmgr
+          chmod +x /tmp/pelmgr
+          /tmp/pelmgr --help || true
+          /tmp/pelmgr install --help || true
+          # Fall back to running the script, will see in logs which flag works.
+          curl -fsSL https://hub.platform.engineering/get/formae.sh | bash -s
           # Locate the binary pelmgr just installed
           FORMAE_BIN=$(command -v formae || find "$HOME/.pel" /opt/pel -type f -name formae 2>/dev/null | head -1)
           if [ -z "$FORMAE_BIN" ]; then
