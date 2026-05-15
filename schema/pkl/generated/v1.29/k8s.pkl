@@ -30,6 +30,47 @@ open module k8sSubresources extends "../k8s.pkl"
 import "@formae/formae.pkl"
 
 // =============================================================================
+// K8s Quantity conversion helpers
+// -----------------------------------------------------------------------------
+// Declared in this module (not in shared.pkl) because Pkl `const function`
+// from an extends-parent is NOT visible inside closures of the extending
+// module. The `(it) -> toK8sQuantity(it)` closures on @FieldHint
+// outputTransformation below need lexical access to the function at runtime;
+// the only way to guarantee that is to declare the function in the same
+// module as the closure. Consumers reach these via the `k8s.` alias
+// (e.g. `k8s.toK8sQuantityMapping(it)` in core/ResourceQuota.pkl).
+// =============================================================================
+
+/// Convert a Pkl `DataSize` to a K8s `resource.Quantity` string.
+/// Binary units (`kib`/`mib`/`gib`/`tib`/`pib`) map to `Ki`/`Mi`/`Gi`/`Ti`/`Pi`.
+/// Decimal units (`kb`/`mb`/`gb`/`tb`/`pb`) map to `k`/`M`/`G`/`T`/`P`.
+/// Plain `b` renders as the bare value.
+const function dataSizeToK8s(d: DataSize): String =
+  let (v = d.value.toString())
+    if (d.unit == "b") v
+    else if (d.unit == "kib") "\(v)Ki"
+    else if (d.unit == "mib") "\(v)Mi"
+    else if (d.unit == "gib") "\(v)Gi"
+    else if (d.unit == "tib") "\(v)Ti"
+    else if (d.unit == "pib") "\(v)Pi"
+    else if (d.unit == "kb") "\(v)k"
+    else if (d.unit == "mb") "\(v)M"
+    else if (d.unit == "gb") "\(v)G"
+    else if (d.unit == "tb") "\(v)T"
+    else if (d.unit == "pb") "\(v)P"
+    else "\(d.toUnit("b").value)"
+
+/// Render any `Quantity` value (`DataSize` or `String`) as a K8s wire-format string.
+const function toK8sQuantity(v: Quantity): String =
+  if (v is DataSize) dataSizeToK8s(v) else v
+
+/// Render every value in a `ResourceQuantities` mapping to a K8s wire-format string,
+/// leaving `String` entries untouched. Use this as an `outputTransformation` on any
+/// field typed `ResourceQuantities` (`requests`, `limits`, `hard`, `podFixed`, …).
+const function toK8sQuantityMapping(m: Mapping<String, Quantity>): Mapping<String, String> =
+  m.toMap().mapValues((_, v) -> toK8sQuantity(v)).toMapping()
+
+// =============================================================================
 // Shared Sub-Resource Types
 // =============================================================================
 
