@@ -58,18 +58,23 @@ jobs:
           save: 'true'  # prepare is allowed to save (single writer per run)
 
       - name: Install formae
-        # Bootstrap via setup/formae.sh (latest in repo.json — currently
-        # 0.83.2), then `formae upgrade` to pull whatever the binary
-        # itself considers latest (the upgrade channel sometimes leads
-        # repo.json). `-y` skips the interactive prompt (no tty in CI).
+        # Use the pelmgr-based installer (get/formae.sh) — it pulls
+        # from repos/platform.engineering/pel, which tracks current
+        # releases. The alternate setup/formae.sh reads
+        # binaries/repo.json and lags behind. Discover install path
+        # and export FORMAE_BIN for downstream steps + matrix entries.
         run: |
           set -euo pipefail
-          curl -fsSL https://hub.platform.engineering/setup/formae.sh \
-            | bash -s -- -y
-          echo "/opt/pel/formae/bin" >> "$GITHUB_PATH"
-          /opt/pel/formae/bin/formae --version
-          /opt/pel/formae/bin/formae upgrade -y || true
-          /opt/pel/formae/bin/formae --version
+          /bin/bash -c "$(curl -fsSL https://hub.platform.engineering/get/formae.sh)"
+          # Locate the binary pelmgr just installed
+          FORMAE_BIN=$(command -v formae || find "$HOME/.pel" /opt/pel -type f -name formae 2>/dev/null | head -1)
+          if [ -z "$FORMAE_BIN" ]; then
+            echo "formae binary not found after install"; exit 1
+          fi
+          echo "FORMAE_BIN=$FORMAE_BIN"
+          echo "FORMAE_BIN=$FORMAE_BIN" >> "$GITHUB_ENV"
+          echo "$(dirname "$FORMAE_BIN")" >> "$GITHUB_PATH"
+          "$FORMAE_BIN" --version
 
       - name: Download Go modules
         run: go mod download
@@ -81,19 +86,24 @@ jobs:
         run: make install
 
       - name: Bundle test-runtime
+        # Tarball everything under ~/.pel — formae binary tree
+        # (installed by pelmgr) + plugin install tree (installed by
+        # `make install`). Also record the absolute path of the formae
+        # binary so the matrix can export FORMAE_BINARY without
+        # re-discovering it.
         run: |
           set -euo pipefail
-          tar -C "$HOME"   -czf install-bundle.tgz .pel/formae
-          sudo tar -C /opt/pel -czf formae-binary.tgz formae
-          sudo chown "$(id -u):$(id -g)" formae-binary.tgz
-          ls -la install-bundle.tgz formae-binary.tgz
+          tar -C "$HOME" -czf install-bundle.tgz .pel
+          echo "$FORMAE_BIN" > formae-binary-path.txt
+          ls -la install-bundle.tgz formae-binary-path.txt
+          cat formae-binary-path.txt
 
       - uses: actions/upload-artifact@v7
         with:
           name: test-runtime
           path: |
             install-bundle.tgz
-            formae-binary.tgz
+            formae-binary-path.txt
           retention-days: 1
 
   discover:
@@ -172,13 +182,9 @@ jobs:
           node_image: ${{ inputs.kind_image }}
 
       - name: Run conformance tests (${{ matrix.test-case }})
+        # FORMAE_BINARY is exported by the restore-test-runtime composite
+        # via $GITHUB_ENV and inherits into this step automatically.
         env:
-          # FORMAE_BINARY pins the plugin-conformance-tests SDK to the
-          # binary installed by prepare (matches inputs.formae_ref).
-          # Without it, the SDK would auto-download "latest" via orbital
-          # and could drift from the PklProject pin → wire protocol
-          # mismatch. Keep this in sync with the prepare-job install.
-          FORMAE_BINARY: /opt/pel/formae/bin/formae
           FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-v${{ inputs.k8s_version }}
           FORMAE_TEST_TESTDATA_DIR: testdata/generated/v${{ inputs.k8s_version }}/shared
           FORMAE_K8S_VERSION: ${{ inputs.k8s_version }}
@@ -233,8 +239,8 @@ jobs:
           node_image: ${{ inputs.kind_image }}
 
       - name: Run feature conformance (${{ matrix.feature }})
+        # FORMAE_BINARY exported by restore-test-runtime composite.
         env:
-          FORMAE_BINARY: /opt/pel/formae/bin/formae
           FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-v${{ inputs.k8s_version }}-${{ matrix.feature }}
           FORMAE_TEST_TESTDATA_DIR: testdata/generated/v${{ inputs.k8s_version }}/features/${{ matrix.feature }}
           FORMAE_K8S_VERSION: ${{ inputs.k8s_version }}
