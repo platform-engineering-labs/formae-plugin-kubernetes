@@ -10,7 +10,7 @@
 module horizontalpodautoscaler extends "../k8s.pkl"
 
 import "@formae/formae.pkl"
-import "../k8s.pkl"
+import "../k8s-subresources.pkl" as k8s
 
 const type = "K8S::Autoscaling::HorizontalPodAutoscaler"
 
