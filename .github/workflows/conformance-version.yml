@@ -58,15 +58,17 @@ jobs:
           save: 'true'  # prepare is allowed to save (single writer per run)
 
       - name: Install formae
-        # Installs the latest published formae binary into
-        # /opt/pel/formae/bin/formae. To pin a specific version locally,
-        # add `-v <X.Y.Z>` to the bash args. `-y` skips the interactive
-        # prompt (CI has no tty).
+        # Bootstrap via setup/formae.sh (latest in repo.json — currently
+        # 0.83.2), then `formae upgrade` to pull whatever the binary
+        # itself considers latest (the upgrade channel sometimes leads
+        # repo.json). `-y` skips the interactive prompt (no tty in CI).
         run: |
           set -euo pipefail
           curl -fsSL https://hub.platform.engineering/setup/formae.sh \
             | bash -s -- -y
           echo "/opt/pel/formae/bin" >> "$GITHUB_PATH"
+          /opt/pel/formae/bin/formae --version
+          /opt/pel/formae/bin/formae upgrade -y || true
           /opt/pel/formae/bin/formae --version
 
       - name: Download Go modules
