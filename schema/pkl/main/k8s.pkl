@@ -19,10 +19,15 @@
  *   - Go-side target config marshaling (pkg/config/config.go)
  *   - Conformance test bootstrap
  */
-open module k8s
+// Extends k8s-types.pkl so this slim root inherits every typealias,
+// helper, the K8sVersion annotation, Resource base, and the ObjectMeta
+// variants. The per-version source `k8s-subresources.pkl` in turn
+// extends THIS module, so the per-version generated `v<X.Y>/k8s.pkl`
+// reaches Config + Auth + every type + every SubResource class through
+// a single `k8s.` alias at consumer sites.
+open module k8s extends "k8s-types.pkl"
 
 import "@formae/formae.pkl"
-import "k8s-types.pkl" as types
 
 // =============================================================================
 // Target Configuration
@@ -44,7 +49,7 @@ open class Config {
   /// and emitted to the marshaled Config JSON, where formae's
   /// schema-version resolver reads it.
   @formae.ConfigFieldHint { createOnly = false }
-  hidden kubernetesVersion: types.KubernetesMinorVersion
+  hidden kubernetesVersion: KubernetesMinorVersion
 
   fixed Type: String = type
   fixed Auth: Auth = auth

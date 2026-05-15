@@ -15,7 +15,12 @@
  * by tools/gen-versioned-reflect; the generator emits the filtered
  * result as v<X.Y>/k8s.pkl in the generated tree.
  */
-open module k8sSubresources extends "k8s-types.pkl"
+// Chain: k8s-subresources.pkl extends k8s.pkl extends k8s-types.pkl.
+// At consumer sites, importing k8s-subresources.pkl (or its per-version
+// rename to k8s.pkl) exposes Config + Auth (from root k8s.pkl), every
+// typealias + base class (from k8s-types.pkl via the chain), and every
+// SubResource class (declared in this file).
+open module k8sSubresources extends "k8s.pkl"
 
 import "@formae/formae.pkl"
 
