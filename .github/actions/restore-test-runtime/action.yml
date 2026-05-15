@@ -1,0 +1,37 @@
+# .github/actions/restore-test-runtime/action.yml
+name: 'Restore test-runtime artifact'
+description: |
+  Downloads the `test-runtime` artifact uploaded by the conformance
+  prepare job and extracts:
+    - /opt/pel/formae/        (formae binary tree, owned by root)
+    - $HOME/.pel/formae/      (installed plugin tree)
+  Prepends /opt/pel/formae/bin to GITHUB_PATH so subsequent steps can
+  invoke `formae` directly. Tarballs ship gzipped; total artifact under
+  ~50MB so download is fast.
+
+runs:
+  using: composite
+  steps:
+    - name: Download test-runtime artifact
+      uses: actions/download-artifact@v8
+      with:
+        name: test-runtime
+        path: /tmp/test-runtime
+
+    - name: Extract formae binary tree
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo mkdir -p /opt/pel
+        sudo tar -xzf /tmp/test-runtime/formae-binary.tgz -C /opt/pel
+        sudo chmod -R a+rx /opt/pel/formae
+        echo "/opt/pel/formae/bin" >> "$GITHUB_PATH"
+        /opt/pel/formae/bin/formae --version
+
+    - name: Extract plugin install tree
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "$HOME/.pel"
+        tar -xzf /tmp/test-runtime/install-bundle.tgz -C "$HOME"
+        ls -la "$HOME/.pel/formae/plugins/"
