@@ -1,3 +1,18 @@
+// Note: this bundle does NOT provision a Cloud Router + Cloud NAT. Workloads
+// pulling from non-Google registries (e.g., `ghcr.io`) will fail on private
+// nodes until a NAT is added. Track formae-plugin-gcp SCHEMA-AUDIT.md — the
+// `google.compute.RouterNat` resource is currently missing from the plugin.
+// Workaround until then:
+//
+//   gcloud compute routers create <name>-router \
+//     --network=<name>-vpc --region=<region>
+//   gcloud compute routers nats create <name>-nat \
+//     --router=<name>-router --region=<region> \
+//     --nat-all-subnet-ip-ranges --auto-allocate-nat-external-ips
+//
+// Docker Hub mirrors via mirror.gcr.io, so most lgtm images pull without NAT;
+// only the OTel telemetrygen image (ghcr.io) actually requires it.
+
 import "@gcp/compute/network.pkl"
 import "@gcp/compute/subnetwork.pkl"
 
