@@ -65,7 +65,7 @@ open class DaemonSetSpec extends formae.SubResource {
   updateStrategy: DaemonSetUpdateStrategy?
 
   @k8s.FieldHint { hasProviderDefault = true }
-  revisionHistoryLimit: Int? = 10
+  revisionHistoryLimit: k8s.NonNegativeInt? = 10
 
   /// .spec.selector is immutable on DaemonSet. The apiserver rejects
   /// any update with "field is immutable". createOnly surfaces the
@@ -74,7 +74,7 @@ open class DaemonSetSpec extends formae.SubResource {
   selector: k8s.LabelSelector
 
   @k8s.FieldHint {}
-  minReadySeconds: Int?
+  minReadySeconds: k8s.NonNegativeInt?
 }
 
 @k8s.SubResourceHint {}
@@ -89,8 +89,8 @@ open class DaemonSetUpdateStrategy extends formae.SubResource {
 @k8s.SubResourceHint {}
 open class RollingUpdateDaemonSet extends formae.SubResource {
   @k8s.FieldHint {}
-  maxSurge: (Int|String)?
+  maxSurge: k8s.IntOrString?
 
   @k8s.FieldHint {}
-  maxUnavailable: (Int|String)?
+  maxUnavailable: k8s.IntOrString?
 }

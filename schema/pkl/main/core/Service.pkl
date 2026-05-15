@@ -57,10 +57,10 @@ open class ServiceSpec extends formae.SubResource {
   /// user or controller). The apiserver rejects updates that change
   /// the existing entries or add new ones.
   @k8s.FieldHint { createOnly = true }
-  clusterIPs: Listing<String>?
+  clusterIPs: Listing<k8s.ClusterIP>?
 
   @k8s.FieldHint {}
-  healthCheckNodePort: Int?
+  healthCheckNodePort: k8s.PortNumber?
 
   /// `ipFamilyPolicy` is immutable once set.
   @k8s.FieldHint { hasProviderDefault = true; createOnly = true }
@@ -71,7 +71,7 @@ open class ServiceSpec extends formae.SubResource {
   /// long-running security review that led to deprecation.
   @k8s.FieldHint {}
   @k8s.K8sVersion { deprecatedIn = "1.36"; reference = "https://github.com/kubernetes/enhancements/issues/1864" }
-  externalIPs: Listing<String>?
+  externalIPs: Listing<k8s.IPAddress>?
 
   @k8s.FieldHint { hasProviderDefault = true }
   sessionAffinity: String? = "None"
@@ -103,13 +103,13 @@ open class ServiceSpec extends formae.SubResource {
   ipFamilies: Listing<String>?
 
   @k8s.FieldHint {}
-  loadBalancerIP: String?
+  loadBalancerIP: k8s.IPAddress?
 
   @k8s.FieldHint {}
   externalName: String?
 
   @k8s.FieldHint {}
-  loadBalancerSourceRanges: Listing<String>?
+  loadBalancerSourceRanges: Listing<k8s.CIDR>?
 
   @k8s.FieldHint {}
   externalTrafficPolicy: String?
@@ -125,7 +125,7 @@ open class ServiceSpec extends formae.SubResource {
 
   /// `clusterIP` is immutable. To change it, recreate the Service.
   @k8s.FieldHint { createOnly = true }
-  clusterIP: String?
+  clusterIP: k8s.ClusterIP?
 
   @k8s.FieldHint {}
   topologyKeys: Listing<String>?
@@ -137,10 +137,10 @@ open class ServiceSpec extends formae.SubResource {
 @k8s.SubResourceHint {}
 open class ServicePort extends formae.SubResource {
   @k8s.FieldHint { hasProviderDefault = true }
-  protocol: String? = "TCP"
+  protocol: k8s.Protocol? = "TCP"
 
   @k8s.FieldHint { required = true }
-  port: Int
+  port: k8s.PortNumber
 
   @k8s.FieldHint {}
   appProtocol: String?
@@ -149,10 +149,10 @@ open class ServicePort extends formae.SubResource {
   name: String?
 
   @k8s.FieldHint {}
-  nodePort: Int?
+  nodePort: k8s.PortNumber?
 
   @k8s.FieldHint {}
-  targetPort: (Int|String)?
+  targetPort: k8s.IntOrString?
 }
 
 @k8s.SubResourceHint {}
@@ -164,5 +164,5 @@ open class SessionAffinityConfig extends formae.SubResource {
 @k8s.SubResourceHint {}
 open class ClientIPConfig extends formae.SubResource {
   @k8s.FieldHint {}
-  timeoutSeconds: Int?
+  timeoutSeconds: k8s.NonNegativeInt?
 }

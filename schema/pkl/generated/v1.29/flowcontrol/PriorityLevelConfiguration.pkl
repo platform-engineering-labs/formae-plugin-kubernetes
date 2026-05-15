@@ -66,16 +66,16 @@ open class PriorityLevelConfigurationSpec extends formae.SubResource {
 @k8s.SubResourceHint {}
 open class LimitedPriorityLevelConfiguration extends formae.SubResource {
   @k8s.FieldHint {}
-  lendablePercent: Int?
+  lendablePercent: k8s.Percent?
 
   @k8s.FieldHint {}
-  borrowingLimitPercent: Int?
+  borrowingLimitPercent: k8s.FlowControlPercent?
 
   @k8s.FieldHint {}
   limitResponse: LimitResponse?
 
   @k8s.FieldHint {}
-  nominalConcurrencyShares: Int?
+  nominalConcurrencyShares: k8s.NonNegativeInt?
 }
 
 @k8s.SubResourceHint {}
@@ -90,20 +90,20 @@ open class LimitResponse extends formae.SubResource {
 @k8s.SubResourceHint {}
 open class QueuingConfiguration extends formae.SubResource {
   @k8s.FieldHint {}
-  handSize: Int?
+  handSize: k8s.PositiveInt?
 
   @k8s.FieldHint {}
-  queues: Int?
+  queues: k8s.PositiveInt?
 
   @k8s.FieldHint {}
-  queueLengthLimit: Int?
+  queueLengthLimit: k8s.PositiveInt?
 }
 
 @k8s.SubResourceHint {}
 open class ExemptPriorityLevelConfiguration extends formae.SubResource {
   @k8s.FieldHint {}
-  lendablePercent: Int?
+  lendablePercent: k8s.Percent?
 
   @k8s.FieldHint {}
-  nominalConcurrencyShares: Int?
+  nominalConcurrencyShares: k8s.NonNegativeInt?
 }

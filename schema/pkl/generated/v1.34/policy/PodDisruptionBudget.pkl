@@ -57,10 +57,10 @@ open class PodDisruptionBudget extends k8s.Resource {
 @k8s.SubResourceHint {}
 open class PodDisruptionBudgetSpec extends formae.SubResource {
   @k8s.FieldHint {}
-  minAvailable: (Int|String)?
+  minAvailable: k8s.IntOrString?
 
   @k8s.FieldHint {}
-  maxUnavailable: (Int|String)?
+  maxUnavailable: k8s.IntOrString?
 
   /// Eviction policy for unhealthy pods (e.g., AlwaysAllow).
   /// Alpha in K8s 1.26, Beta default-on in 1.27, GA in 1.31.

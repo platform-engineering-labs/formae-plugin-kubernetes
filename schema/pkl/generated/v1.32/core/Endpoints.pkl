@@ -78,16 +78,16 @@ open class EndpointAddress extends formae.SubResource {
   hostname: String?
 
   @k8s.FieldHint { required = true }
-  ip: String
+  ip: k8s.IPAddress
 }
 
 @k8s.SubResourceHint {}
 open class EndpointPort extends formae.SubResource {
   @k8s.FieldHint {}
-  protocol: String?
+  protocol: k8s.Protocol?
 
   @k8s.FieldHint { required = true }
-  port: Int
+  port: k8s.PortNumber
 
   @k8s.FieldHint {}
   appProtocol: String?

@@ -93,7 +93,7 @@ open class ContainerStateTerminated extends formae.SubResource {
   reason: String?
 
   @k8s.FieldHint { required = true }
-  exitCode: Int
+  exitCode: k8s.Int32
 
   @k8s.FieldHint {}
   startedAt: String?
@@ -105,7 +105,7 @@ open class ContainerStateTerminated extends formae.SubResource {
   message: String?
 
   @k8s.FieldHint {}
-  signal: Int?
+  signal: k8s.NonNegativeInt?
 
   @k8s.FieldHint {}
   finishedAt: String?
@@ -120,20 +120,20 @@ open class ContainerUser extends formae.SubResource {
 @k8s.SubResourceHint {}
 open class LinuxContainerUser extends formae.SubResource {
   @k8s.FieldHint { required = true }
-  gid: Int
+  gid: k8s.UnixID
 
   @k8s.FieldHint {}
-  supplementalGroups: Listing<Int>?
+  supplementalGroups: Listing<k8s.UnixID>?
 }
 
 @k8s.SubResourceHint {}
 open class PodIP extends formae.SubResource {
   @k8s.FieldHint { required = true }
-  ip: String
+  ip: k8s.IPAddress
 }
 
 @k8s.SubResourceHint {}
 open class HostIP extends formae.SubResource {
   @k8s.FieldHint { required = true }
-  ip: String
+  ip: k8s.IPAddress
 }

@@ -57,7 +57,7 @@ open class ReplicaSetSpec extends formae.SubResource {
   template: k8s.PodTemplateSpec?
 
   @k8s.FieldHint {}
-  replicas: Int?
+  replicas: k8s.NonNegativeInt?
 
   /// .spec.selector is immutable on ReplicaSet. The apiserver rejects
   /// any update with "field is immutable". createOnly surfaces the
@@ -66,5 +66,5 @@ open class ReplicaSetSpec extends formae.SubResource {
   selector: k8s.LabelSelector
 
   @k8s.FieldHint {}
-  minReadySeconds: Int?
+  minReadySeconds: k8s.NonNegativeInt?
 }

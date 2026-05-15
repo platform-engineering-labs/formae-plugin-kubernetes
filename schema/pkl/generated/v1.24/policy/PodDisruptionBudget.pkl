@@ -57,10 +57,10 @@ open class PodDisruptionBudget extends k8s.Resource {
 @k8s.SubResourceHint {}
 open class PodDisruptionBudgetSpec extends formae.SubResource {
   @k8s.FieldHint {}
-  minAvailable: (Int|String)?
+  minAvailable: k8s.IntOrString?
 
   @k8s.FieldHint {}
-  maxUnavailable: (Int|String)?
+  maxUnavailable: k8s.IntOrString?
 
   @k8s.FieldHint {}
   selector: k8s.LabelSelector?

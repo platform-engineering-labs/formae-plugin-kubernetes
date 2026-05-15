@@ -218,11 +218,11 @@ function frontendDeployment(k8sTarget: formae.Target, appNs: ns.Namespace): dep.
               resources = new k8s.ResourceRequirements {
                 requests = new Mapping {
                   ["cpu"] = "50m"
-                  ["memory"] = "64Mi"
+                  ["memory"] = 64.mib
                 }
                 limits = new Mapping {
                   ["cpu"] = "200m"
-                  ["memory"] = "128Mi"
+                  ["memory"] = 128.mib
                 }
               }
             }
@@ -293,11 +293,11 @@ function backendDeployment(k8sTarget: formae.Target, appNs: ns.Namespace): dep.D
               resources = new k8s.ResourceRequirements {
                 requests = new Mapping {
                   ["cpu"] = "100m"
-                  ["memory"] = "128Mi"
+                  ["memory"] = 128.mib
                 }
                 limits = new Mapping {
                   ["cpu"] = "500m"
-                  ["memory"] = "256Mi"
+                  ["memory"] = 256.mib
                 }
               }
             }

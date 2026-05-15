@@ -57,7 +57,7 @@ open class FlowSchemaSpec extends formae.SubResource {
   priorityLevelConfiguration: PriorityLevelConfigurationReference
 
   @k8s.FieldHint {}
-  matchingPrecedence: Int?
+  matchingPrecedence: k8s.MatchingPrecedence?
 
   @k8s.FieldHint {}
   rules: Listing<PolicyRulesWithSubjects>?

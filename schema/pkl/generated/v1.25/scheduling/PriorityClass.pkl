@@ -55,7 +55,7 @@ open class PriorityClass extends k8s.Resource {
   /// `value` is immutable on PriorityClass — the apiserver rejects
   /// any post-create change.
   @k8s.FieldHint { required = true; createOnly = true }
-  value: Int
+  value: k8s.Int32
 
   /// `preemptionPolicy` is immutable on PriorityClass.
   @k8s.FieldHint { createOnly = true }

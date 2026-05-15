@@ -1,0 +1,77 @@
+/*
+ * Conformance Test: Pod with native Pkl `DataSize` quantities.
+ *
+ * Exercises the `(DataSize|String)` `Quantity` typealias on:
+ *   * container `resources.requests` / `resources.limits` for memory
+ *   * an `emptyDir` volume `sizeLimit`
+ *
+ * CPU still uses the String form (Pkl has no millicore unit). The plugin
+ * extractor applies `toK8sQuantity{Mapping}` so the wire payload is
+ * `"256Mi"` / `"1Gi"` / `"100Mi"`, not a Pkl DataSize object.
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.29/core/Namespace.pkl" as ns
+import "@k8s/v1.29/core/Pod.pkl" as pod
+import "@k8s/k8s.pkl" as k8s
+import "../../shared/config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local ns = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  ns
+
+  new pod.Pod {
+    label = "test-pod-data-size"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "test-pod-ds-\(v.testRunID)"
+      namespace = ns.res.name
+    }
+    spec = new k8s.PodSpec {
+      containers = new Listing {
+        new k8s.Container {
+          name = "worker"
+          image = "registry.k8s.io/pause:3.10"
+          resources = new k8s.ResourceRequirements {
+            requests = new Mapping {
+              ["memory"] = 256.mib
+              ["cpu"] = "100m"
+            }
+            limits = new Mapping {
+              ["memory"] = 1.gib
+              ["cpu"] = "500m"
+            }
+          }
+          volumeMounts = new Listing {
+            new k8s.VolumeMount {
+              name = "scratch"
+              mountPath = "/scratch"
+            }
+          }
+        }
+      }
+      volumes = new Listing {
+        new k8s.Volume {
+          name = "scratch"
+          emptyDir = new k8s.EmptyDirVolumeSource {
+            sizeLimit = 100.mib
+            medium = "Memory"
+          }
+        }
+      }
+      restartPolicy = "Always"
+    }
+  }
+}

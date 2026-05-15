@@ -87,7 +87,7 @@ open class IngressServiceBackend extends formae.SubResource {
 @k8s.SubResourceHint {}
 open class ServiceBackendPort extends formae.SubResource {
   @k8s.FieldHint {}
-  number: Int?
+  number: k8s.PortNumber?
 
   @k8s.FieldHint {}
   name: String?

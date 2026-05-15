@@ -177,8 +177,8 @@ function tierDeployment(
                 new k8s.VolumeMount { name = "data"; mountPath = "/var/loki" }
               }
               resources = new k8s.ResourceRequirements {
-                requests = new Mapping { ["cpu"] = "50m"; ["memory"] = "128Mi" }
-                limits = new Mapping { ["cpu"] = "500m"; ["memory"] = "512Mi" }
+                requests = new Mapping { ["cpu"] = "50m"; ["memory"] = 128.mib }
+                limits = new Mapping { ["cpu"] = "500m"; ["memory"] = 512.mib }
               }
             }
           }

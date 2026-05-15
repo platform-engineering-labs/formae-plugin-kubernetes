@@ -61,7 +61,7 @@ open class ValidatingWebhook extends formae.SubResource {
   namespaceSelector: k8s.LabelSelector?
 
   @k8s.FieldHint { hasProviderDefault = true }
-  timeoutSeconds: Int? = 10
+  timeoutSeconds: k8s.WebhookTimeoutSeconds? = 10
 
   @k8s.FieldHint {}
   rules: Listing<k8s.RuleWithOperations>?

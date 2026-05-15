@@ -173,8 +173,8 @@ function grafanaDeployment(k8sTarget: formae.Target, appNs: ns.Namespace): dep.D
                 }
               }
               resources = new k8s.ResourceRequirements {
-                requests = new Mapping { ["cpu"] = "100m"; ["memory"] = "256Mi" }
-                limits = new Mapping { ["cpu"] = "500m"; ["memory"] = "512Mi" }
+                requests = new Mapping { ["cpu"] = "100m"; ["memory"] = 256.mib }
+                limits = new Mapping { ["cpu"] = "500m"; ["memory"] = 512.mib }
               }
             }
           }
