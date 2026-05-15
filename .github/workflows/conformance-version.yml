@@ -59,29 +59,17 @@ jobs:
 
       - name: Install formae
         # Use the pelmgr-based installer (get/formae.sh) — it pulls
-        # from repos/platform.engineering/pel, which tracks current
+        # from repos/platform.engineering/pel which tracks current
         # releases. The alternate setup/formae.sh reads
-        # binaries/repo.json and lags behind. `--y` skips pelmgr's
-        # interactive bubbletea prompt (no tty in CI). Discover
-        # install path and export FORMAE_BIN for downstream steps.
+        # binaries/repo.json and lags behind. `--yes` skips pelmgr's
+        # interactive bubbletea prompt (no tty in CI). Default
+        # install-path is /opt/pel; binary lands at
+        # /opt/pel/formae/bin/formae.
         run: |
           set -euo pipefail
-          # Probe pelmgr flags first; install with whichever is supported.
-          curl -fsSL "https://hub.platform.engineering/get/binaries/$(uname | tr A-Z a-z)-$(uname -m | tr -d _ | sed s/aarch64/arm64/)/pelmgr" -o /tmp/pelmgr
-          chmod +x /tmp/pelmgr
-          /tmp/pelmgr --help || true
-          /tmp/pelmgr install --help || true
-          # Fall back to running the script, will see in logs which flag works.
-          curl -fsSL https://hub.platform.engineering/get/formae.sh | bash -s
-          # Locate the binary pelmgr just installed
-          FORMAE_BIN=$(command -v formae || find "$HOME/.pel" /opt/pel -type f -name formae 2>/dev/null | head -1)
-          if [ -z "$FORMAE_BIN" ]; then
-            echo "formae binary not found after install"; exit 1
-          fi
-          echo "FORMAE_BIN=$FORMAE_BIN"
-          echo "FORMAE_BIN=$FORMAE_BIN" >> "$GITHUB_ENV"
-          echo "$(dirname "$FORMAE_BIN")" >> "$GITHUB_PATH"
-          "$FORMAE_BIN" --version
+          curl -fsSL https://hub.platform.engineering/get/formae.sh | bash -s -- --yes
+          echo "/opt/pel/formae/bin" >> "$GITHUB_PATH"
+          /opt/pel/formae/bin/formae --version
 
       - name: Download Go modules
         run: go mod download
@@ -93,24 +81,22 @@ jobs:
         run: make install
 
       - name: Bundle test-runtime
-        # Tarball everything under ~/.pel — formae binary tree
-        # (installed by pelmgr) + plugin install tree (installed by
-        # `make install`). Also record the absolute path of the formae
-        # binary so the matrix can export FORMAE_BINARY without
-        # re-discovering it.
+        # Tarball the plugin install tree ($HOME/.pel/formae) installed
+        # by `make install` and the formae binary tree (/opt/pel/formae)
+        # installed by pelmgr. Matrix entries extract both.
         run: |
           set -euo pipefail
-          tar -C "$HOME" -czf install-bundle.tgz .pel
-          echo "$FORMAE_BIN" > formae-binary-path.txt
-          ls -la install-bundle.tgz formae-binary-path.txt
-          cat formae-binary-path.txt
+          tar -C "$HOME"  -czf install-bundle.tgz .pel/formae
+          sudo tar -C /opt/pel -czf formae-binary.tgz formae
+          sudo chown "$(id -u):$(id -g)" formae-binary.tgz
+          ls -la install-bundle.tgz formae-binary.tgz
 
       - uses: actions/upload-artifact@v7
         with:
           name: test-runtime
           path: |
             install-bundle.tgz
-            formae-binary-path.txt
+            formae-binary.tgz
           retention-days: 1
 
   discover:
