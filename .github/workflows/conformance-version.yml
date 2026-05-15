@@ -21,10 +21,10 @@ on:
         type: string
         required: true
       formae_ref:
-        description: "formae version installed via setup/formae.sh. Must match the PklProject dependency pin (currently 0.84.0)."
+        description: "formae version installed via setup/formae.sh. Must match the PklProject dependency pin (currently 0.85.2)."
         type: string
         required: false
-        default: "0.84.0"
+        default: "0.85.2"
 
 jobs:
   # Prepare job: install formae binary via the official setup script,
@@ -37,7 +37,7 @@ jobs:
   # hub-hosted stable Pkl packages (no source-mount needed).
   #
   # To pin a specific formae version, set inputs.formae_ref to the
-  # version string (e.g. "0.84.0"). Default tracks the PklProject pin.
+  # version string (e.g. "0.85.2"). Default tracks the PklProject pin.
   prepare:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -65,7 +65,7 @@ jobs:
 
       - name: Install formae
         # Installs the formae binary into /opt/pel/formae/bin/formae.
-        # Pin a version with `-v <X.Y.Z>` (e.g. -v 0.84.0). Default
+        # Pin a version with `-v <X.Y.Z>` (e.g. -v 0.85.2). Default
         # (latest stable) tracks the PklProject formae pin in this repo.
         # `-y` skips the interactive prompt (CI has no tty).
         run: |
