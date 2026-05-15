@@ -65,28 +65,34 @@ var pklProjectRewrites = func(_ string) []struct{ Old, New string } {
 }
 
 // fixtureSchemaImportRE matches `import "@k8s/<group>/<X>.pkl"` style
-// references that target an api-group subdirectory. The plain
-// `@k8s/k8s.pkl` package-root import is intentionally NOT matched —
-// shared base types live at the package root and apply across versions.
+// references that target an api-group subdirectory.
 var fixtureSchemaImportRE = regexp.MustCompile(`(import\s+"@k8s/)([a-z][a-z0-9_-]*\/)`)
+
+// fixtureK8sRootImportRE matches the bare `import "@k8s/k8s.pkl"` reference.
+// After the schema split, k8s.pkl at the package root holds only Config +
+// Auth; the SubResource classes (PodSpec, Container, …) live in the
+// per-version v<X.Y>/k8s.pkl. Fixtures reference those classes, so the
+// root import must be rewritten to the per-version sibling.
+var fixtureK8sRootImportRE = regexp.MustCompile(`(import\s+"@k8s/)(k8s\.pkl")`)
 
 // rewriteFixtureSchemaImports rewrites fixture imports under a generated
 // per-version testdata tree to address the matching schema version
 // subtree:
 //
 //	import "@k8s/core/Pod.pkl"   ->  import "@k8s/v1.30/core/Pod.pkl"
-//	import "@k8s/k8s.pkl"        unchanged (package-root shared types)
+//	import "@k8s/k8s.pkl"        ->  import "@k8s/v1.30/k8s.pkl"
 //
-// Idempotent: re-running on already-rewritten content is a no-op (the
-// regex requires a single api-group segment after `@k8s/`, which the
-// rewritten form `@k8s/v1.30/...` no longer matches).
+// Idempotent: re-running on already-rewritten content is a no-op (both
+// regexes require either an api-group segment or the bare `k8s.pkl` form
+// directly after `@k8s/`; the rewritten form `@k8s/v1.30/...` matches
+// neither).
 func rewriteFixtureSchemaImports(path, version string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
-	repl := []byte(fmt.Sprintf(`${1}v%s/${2}`, version))
-	rewritten := fixtureSchemaImportRE.ReplaceAll(data, repl)
+	rewritten := fixtureSchemaImportRE.ReplaceAll(data, []byte(fmt.Sprintf(`${1}v%s/${2}`, version)))
+	rewritten = fixtureK8sRootImportRE.ReplaceAll(rewritten, []byte(fmt.Sprintf(`${1}v%s/${2}`, version)))
 	if bytesEqual(data, rewritten) {
 		return nil
 	}
