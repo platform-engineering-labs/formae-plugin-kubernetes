@@ -15,6 +15,7 @@ only when the target K8s minor satisfies the meta.
 | `job-success-policy` | `Job.spec.successPolicy` | 1.33 | [3998](https://kep.k8s.io/3998) |
 | `pdb-unhealthy-eviction` | `PodDisruptionBudget.spec.unhealthyPodEvictionPolicy` | 1.31 | [3017](https://kep.k8s.io/3017) |
 | `pod-apparmor-profile` | `Pod.spec.securityContext.appArmorProfile` | 1.31 | [24](https://kep.k8s.io/24) |
+| `pod-data-size` | `Container.resources.{requests,limits}` + `Volume.emptyDir.sizeLimit` as Pkl `DataSize` | 1.21 | — |
 | `pod-host-users` | `Pod.spec.hostUsers` | 1.33 | [127](https://kep.k8s.io/127) |
 | `pod-resize-policy` | `Container.resizePolicy` | 1.33 | [1287](https://kep.k8s.io/1287) |
 | `pod-resource-claims` | `Pod.spec.resourceClaims` | 1.34 | [3063](https://kep.k8s.io/3063) |

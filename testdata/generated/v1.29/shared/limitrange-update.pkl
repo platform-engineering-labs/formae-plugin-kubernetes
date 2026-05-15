@@ -41,11 +41,11 @@ forma {
           type = "Container"
           default = new Mapping {
             ["cpu"] = "1"
-            ["memory"] = "512Mi"
+            ["memory"] = 512.mib
           }
           defaultRequest = new Mapping {
             ["cpu"] = "100m"
-            ["memory"] = "128Mi"
+            ["memory"] = 128.mib
           }
         }
       }

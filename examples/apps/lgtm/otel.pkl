@@ -117,8 +117,8 @@ function gatewayDeployment(k8sTarget: formae.Target, appNs: ns.Namespace): dep.D
                 new k8s.VolumeMount { name = "config"; mountPath = "/etc/otel"; readOnly = true }
               }
               resources = new k8s.ResourceRequirements {
-                requests = new Mapping { ["cpu"] = "100m"; ["memory"] = "128Mi" }
-                limits = new Mapping { ["cpu"] = "500m"; ["memory"] = "512Mi" }
+                requests = new Mapping { ["cpu"] = "100m"; ["memory"] = 128.mib }
+                limits = new Mapping { ["cpu"] = "500m"; ["memory"] = 512.mib }
               }
             }
           }
@@ -275,8 +275,8 @@ function agentDaemonSet(k8sTarget: formae.Target, appNs: ns.Namespace): ds.Daemo
                 new k8s.VolumeMount { name = "varlogpods"; mountPath = "/var/log/pods"; readOnly = true }
               }
               resources = new k8s.ResourceRequirements {
-                requests = new Mapping { ["cpu"] = "50m"; ["memory"] = "128Mi" }
-                limits = new Mapping { ["cpu"] = "200m"; ["memory"] = "256Mi" }
+                requests = new Mapping { ["cpu"] = "50m"; ["memory"] = 128.mib }
+                limits = new Mapping { ["cpu"] = "200m"; ["memory"] = 256.mib }
               }
             }
           }

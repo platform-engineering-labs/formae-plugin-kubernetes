@@ -1,0 +1,2 @@
+minK8sVersion = "1.21"
+description = "Pod with container resources and emptyDir sizeLimit expressed as Pkl `DataSize` literals (256.mib, 1.gib, 100.mib). Validates that the `Quantity` typealias's DataSize branch is rendered to K8s wire format via `toK8sQuantityMapping` / `toK8sQuantity` outputTransformations."

@@ -53,8 +53,8 @@ function generator(
                 "--service=telemetrygen"
               }
               resources = new k8s.ResourceRequirements {
-                requests = new Mapping { ["cpu"] = "10m"; ["memory"] = "32Mi" }
-                limits = new Mapping { ["cpu"] = "100m"; ["memory"] = "64Mi" }
+                requests = new Mapping { ["cpu"] = "10m"; ["memory"] = 32.mib }
+                limits = new Mapping { ["cpu"] = "100m"; ["memory"] = 64.mib }
               }
             }
           }

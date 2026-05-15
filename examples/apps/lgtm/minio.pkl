@@ -91,8 +91,8 @@ function minioStatefulSet(
                 new k8s.VolumeMount { name = "data"; mountPath = "/data" }
               }
               resources = new k8s.ResourceRequirements {
-                requests = new Mapping { ["cpu"] = "100m"; ["memory"] = "256Mi" }
-                limits = new Mapping { ["cpu"] = "500m"; ["memory"] = "512Mi" }
+                requests = new Mapping { ["cpu"] = "100m"; ["memory"] = 256.mib }
+                limits = new Mapping { ["cpu"] = "500m"; ["memory"] = 512.mib }
               }
             }
           }
@@ -104,7 +104,7 @@ function minioStatefulSet(
           spec = new pvc.PersistentVolumeClaimSpec {
             accessModes = new Listing { "ReadWriteOnce" }
             resources = new k8s.ResourceRequirements {
-              requests = new Mapping { ["storage"] = "20Gi" }
+              requests = new Mapping { ["storage"] = 20.gib }
             }
           }
         }
