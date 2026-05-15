@@ -14,7 +14,7 @@
 module poddisruptionbudget
 
 import "@formae/formae.pkl"
-import "../../k8s.pkl"
+import "../k8s.pkl" as k8s
 
 const type = "K8S::Policy::PodDisruptionBudget"
 

@@ -7,7 +7,7 @@ import "@formae/formae.pkl"
 import "@k8s/v1.29/core/Namespace.pkl" as ns
 import "@k8s/v1.29/core/Service.pkl" as svc
 import "@k8s/v1.29/apps/StatefulSet.pkl" as sts
-import "@k8s/k8s.pkl" as k8s
+import "@k8s/v1.29/k8s.pkl" as k8s
 import "./config/vars.pkl" as v
 
 forma {
