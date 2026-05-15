@@ -62,6 +62,26 @@ class SecurityResources {
           destinationPortRange = new securitylist.PortRange { min = 6443; max = 6443 }
         }
       }
+      // External HTTP access to public LoadBalancer services
+      new securitylist.IngressSecurityRule {
+        description = "Allow HTTP to public LoadBalancers"
+        protocol = "6"
+        source = "0.0.0.0/0"
+        sourceType = "CIDR_BLOCK"
+        tcpOptions = new securitylist.TcpOptions {
+          destinationPortRange = new securitylist.PortRange { min = 80; max = 80 }
+        }
+      }
+      // External HTTPS access to public LoadBalancer services
+      new securitylist.IngressSecurityRule {
+        description = "Allow HTTPS to public LoadBalancers"
+        protocol = "6"
+        source = "0.0.0.0/0"
+        sourceType = "CIDR_BLOCK"
+        tcpOptions = new securitylist.TcpOptions {
+          destinationPortRange = new securitylist.PortRange { min = 443; max = 443 }
+        }
+      }
     }
 
     egressSecurityRules {
