@@ -109,7 +109,7 @@ open class MetricIdentifier extends formae.SubResource {
 
 @k8s.SubResourceHint {}
 open class MetricTarget extends formae.SubResource {
-  @k8s.FieldHint {}
+  @k8s.FieldHint { outputTransformation = (it) -> k8s.toK8sQuantity(it) }
   averageValue: k8s.Quantity?
 
   @k8s.FieldHint {}
@@ -118,7 +118,7 @@ open class MetricTarget extends formae.SubResource {
   @k8s.FieldHint { required = true }
   `type`: String
 
-  @k8s.FieldHint {}
+  @k8s.FieldHint { outputTransformation = (it) -> k8s.toK8sQuantity(it) }
   value: k8s.Quantity?
 }
 
