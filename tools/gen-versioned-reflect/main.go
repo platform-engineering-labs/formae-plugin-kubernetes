@@ -349,16 +349,14 @@ func copyFile(src, dst string) error {
 var subresourcesRenameRE = regexp.MustCompile(
 	`((?:import|extends)\s+")\.\./k8s-subresources\.pkl(")`)
 
-// rootK8sSiblingClimbRE matches the bare `extends "k8s.pkl"` clause on
-// the k8s-subresources.pkl module declaration. When that file is
-// emitted as v<X.Y>/k8s.pkl it sits one level deeper than the generated
-// root k8s.pkl, so the reference must climb to ../k8s.pkl. Note that
-// after the rename the per-version filename IS k8s.pkl — without the
-// climb-out rewrite the line would self-reference.
+// targetSiblingClimbRE matches the bare `extends "target.pkl"` clause on
+// the k8s-subresources.pkl module declaration. When that file is emitted
+// as v<X.Y>/k8s.pkl it sits one level deeper than the generated root's
+// target.pkl, so the reference must climb to ../target.pkl.
 // Only matches without a leading `../` to avoid re-applying on already-
 // rewritten content.
-var rootK8sSiblingClimbRE = regexp.MustCompile(
-	`(extends\s+")(k8s\.pkl")`)
+var targetSiblingClimbRE = regexp.MustCompile(
+	`(extends\s+")(target\.pkl")`)
 
 // pklProjectVersionRE matches the version assignment in a Pkl project
 // `package {}` block, e.g. `version = "0.1.0"` (with whatever
@@ -495,7 +493,7 @@ func rewriteImports(path string) error {
 		return err
 	}
 	rewritten := subresourcesRenameRE.ReplaceAll(data, []byte(`${1}../k8s.pkl${2}`))
-	rewritten = rootK8sSiblingClimbRE.ReplaceAll(rewritten, []byte(`${1}../${2}`))
+	rewritten = targetSiblingClimbRE.ReplaceAll(rewritten, []byte(`${1}../${2}`))
 	if bytesEqual(data, rewritten) {
 		return nil
 	}

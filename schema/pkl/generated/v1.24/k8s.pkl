@@ -25,7 +25,7 @@
 // rename to k8s.pkl) exposes Config + Auth (from root k8s.pkl), every
 // typealias + base class (from shared.pkl via the chain), and every
 // SubResource class (declared in this file).
-open module k8sSubresources extends "../k8s.pkl"
+open module k8sSubresources extends "../target.pkl"
 
 import "@formae/formae.pkl"
 

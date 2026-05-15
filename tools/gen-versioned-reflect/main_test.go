@@ -24,14 +24,14 @@ func TestImportRewrites(t *testing.T) {
 			want: `module flowschema extends "../k8s.pkl"`,
 		},
 		{
-			name: "bare root k8s sibling extends → climb out one level",
-			in:   `open module k8sSubresources extends "k8s.pkl"`,
-			want: `open module k8sSubresources extends "../k8s.pkl"`,
+			name: "bare target sibling extends → climb out one level",
+			in:   `open module k8sSubresources extends "target.pkl"`,
+			want: `open module k8sSubresources extends "../target.pkl"`,
 		},
 		{
-			name: "idempotent on already-rewritten root k8s climb",
-			in:   `open module k8sSubresources extends "../k8s.pkl"`,
-			want: `open module k8sSubresources extends "../k8s.pkl"`,
+			name: "idempotent on already-rewritten target climb",
+			in:   `open module k8sSubresources extends "../target.pkl"`,
+			want: `open module k8sSubresources extends "../target.pkl"`,
 		},
 		{
 			name: "idempotent on already-rewritten subresources import",
@@ -48,7 +48,7 @@ func TestImportRewrites(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			got := subresourcesRenameRE.ReplaceAllString(c.in, `${1}../k8s.pkl${2}`)
-			got = rootK8sSiblingClimbRE.ReplaceAllString(got, `${1}../${2}`)
+			got = targetSiblingClimbRE.ReplaceAllString(got, `${1}../${2}`)
 			if got != c.want {
 				t.Errorf("got %q, want %q", got, c.want)
 			}

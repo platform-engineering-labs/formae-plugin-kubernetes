@@ -25,7 +25,7 @@
 // extends THIS module, so the per-version generated `v<X.Y>/k8s.pkl`
 // reaches Config + Auth + every type + every SubResource class through
 // a single `k8s.` alias at consumer sites.
-open module k8s extends "shared.pkl"
+open module target extends "shared.pkl"
 
 import "@formae/formae.pkl"
 
