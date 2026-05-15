@@ -1,0 +1,46 @@
+name: 'Setup Pkl with cache'
+description: |
+  Installs Pkl at the requested version and restores the Pkl package
+  cache (~/.pkl/cache). Cache key is content-addressed via hashFiles
+  over all PklProject and PklProject.deps.json files in the repo, so a
+  new key only emerges when a dependency genuinely changes.
+
+  The save side lives in prewarm-pkl-cache.yml (cron + push:main) and in
+  the conformance prepare job. Most callers should pass save=false to
+  avoid concurrent matrix entries racing to save the same key.
+
+inputs:
+  pkl-version:
+    description: "Pkl version (matches the pin used everywhere else)"
+    required: false
+    default: "0.30.0"
+  save:
+    description: "Set to 'true' to allow this caller to save the cache. Default false (restore-only)."
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Pkl
+      uses: pkl-community/setup-pkl@v0
+      with:
+        pkl-version: ${{ inputs.pkl-version }}
+
+    - name: Restore Pkl cache
+      if: inputs.save != 'true'
+      uses: actions/cache/restore@v4
+      with:
+        path: ~/.pkl/cache
+        key: pkl-${{ runner.os }}-${{ hashFiles('**/PklProject', '**/PklProject.deps.json') }}
+        restore-keys: |
+          pkl-${{ runner.os }}-
+
+    - name: Cache Pkl (read+write)
+      if: inputs.save == 'true'
+      uses: actions/cache@v4
+      with:
+        path: ~/.pkl/cache
+        key: pkl-${{ runner.os }}-${{ hashFiles('**/PklProject', '**/PklProject.deps.json') }}
+        restore-keys: |
+          pkl-${{ runner.os }}-
