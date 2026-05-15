@@ -17,6 +17,7 @@ import "eks.pkl"
 import "iam.pkl"
 import "network.pkl"
 import "security_groups.pkl"
+import "storage.pkl"
 import "vpc.pkl"
 
 local props = new Dynamic {
@@ -68,6 +69,7 @@ resources: Listing = new {
   iam.clusterRole(props)
   iam.nodeRole(props)
   eksCluster
+  storage.autoEbsStorageClass(target)
 }
 
 target: formae.Target = new formae.Target {

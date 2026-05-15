@@ -116,7 +116,7 @@ function demoDashboardConfig(k8sTarget: formae.Target, appNs: ns.Namespace): cm.
               "type": "timeseries",
               "title": "Metrics (Mimir)",
               "datasource": { "type": "prometheus", "uid": "mimir" },
-              "targets": [{ "expr": "rate({__name__=~\"gen_.+\"}[1m])" }],
+              "targets": [{ "expr": "rate(gen[1m])" }],
               "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 }
             },
             {
@@ -220,6 +220,11 @@ function grafanaService(k8sTarget: formae.Target, appNs: ns.Namespace): svc.Serv
       name = appName
       namespace = appNs.res.name
       labels = grafanaLabels
+      annotations = new Mapping {
+        // EKS Auto-Mode defaults LoadBalancer Services to internal NLBs; this
+        // annotation makes the NLB internet-facing. Other clouds ignore it.
+        ["service.beta.kubernetes.io/aws-load-balancer-scheme"] = "internet-facing"
+      }
     }
     spec = new svc.ServiceSpec {
       type = "LoadBalancer"
