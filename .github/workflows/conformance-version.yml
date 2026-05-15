@@ -61,11 +61,12 @@ jobs:
         # Use the pelmgr-based installer (get/formae.sh) — it pulls
         # from repos/platform.engineering/pel, which tracks current
         # releases. The alternate setup/formae.sh reads
-        # binaries/repo.json and lags behind. Discover install path
-        # and export FORMAE_BIN for downstream steps + matrix entries.
+        # binaries/repo.json and lags behind. `--y` skips pelmgr's
+        # interactive bubbletea prompt (no tty in CI). Discover
+        # install path and export FORMAE_BIN for downstream steps.
         run: |
           set -euo pipefail
-          /bin/bash -c "$(curl -fsSL https://hub.platform.engineering/get/formae.sh)"
+          curl -fsSL https://hub.platform.engineering/get/formae.sh | bash -s -- --y
           # Locate the binary pelmgr just installed
           FORMAE_BIN=$(command -v formae || find "$HOME/.pel" /opt/pel -type f -name formae 2>/dev/null | head -1)
           if [ -z "$FORMAE_BIN" ]; then
