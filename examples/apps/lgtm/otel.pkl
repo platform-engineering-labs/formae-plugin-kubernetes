@@ -173,6 +173,11 @@ function agentClusterRoleRes(k8sTarget: formae.Target): cr.ClusterRole =
         resources = new Listing { "nodes"; "nodes/stats"; "nodes/proxy"; "pods"; "namespaces" }
         verbs = new Listing { "get"; "list"; "watch" }
       }
+      new k8s.PolicyRule {
+        apiGroups = new Listing { "apps" }
+        resources = new Listing { "replicasets" }
+        verbs = new Listing { "get"; "list"; "watch" }
+      }
     }
   }
 
@@ -210,17 +215,52 @@ function agentConfig(k8sTarget: formae.Target, appNs: ns.Namespace, nsName: Stri
           kubeletstats {
             collection_interval = "30s"
             auth_type = "serviceAccount"
-            endpoint = "https://${env:K8S_NODE_NAME}:10250"
+            endpoint = "https://${env:K8S_NODE_IP}:10250"
             insecure_skip_verify = true
           }
           filelog {
             include = new Listing { "/var/log/pods/*/*/*.log" }
             start_at = "end"
             include_file_path = true
+            operators = new Listing {
+              new Dynamic {
+                id = "container-parser"
+                type = "container"
+              }
+            }
           }
         }
         processors {
           batch {}
+          k8sattributes {
+            auth_type = "serviceAccount"
+            passthrough = false
+            filter {
+              node_from_env_var = "K8S_NODE_NAME"
+            }
+            extract {
+              metadata = new Listing {
+                "k8s.pod.name"
+                "k8s.namespace.name"
+                "k8s.container.name"
+                "k8s.deployment.name"
+              }
+              labels = new Listing {
+                new Dynamic {
+                  tag_name = "service.name"
+                  key = "app.kubernetes.io/name"
+                  from = "pod"
+                }
+              }
+            }
+            pod_association = new Listing {
+              new Dynamic {
+                sources = new Listing {
+                  new Dynamic { from = "resource_attribute"; name = "k8s.pod.uid" }
+                }
+              }
+            }
+          }
         }
         exporters {
           otlp {
@@ -232,12 +272,12 @@ function agentConfig(k8sTarget: formae.Target, appNs: ns.Namespace, nsName: Stri
           pipelines {
             metrics {
               receivers = new Listing { "kubeletstats" }
-              processors = new Listing { "batch" }
+              processors = new Listing { "k8sattributes"; "batch" }
               exporters = new Listing { "otlp" }
             }
             logs {
               receivers = new Listing { "filelog" }
-              processors = new Listing { "batch" }
+              processors = new Listing { "k8sattributes"; "batch" }
               exporters = new Listing { "otlp" }
             }
           }
@@ -263,6 +303,12 @@ function agentDaemonSet(k8sTarget: formae.Target, appNs: ns.Namespace): ds.Daemo
               image = imageRef
               args = new Listing { "--config=/etc/otel/config.yaml" }
               env = new Listing {
+                new k8s.EnvVar {
+                  name = "K8S_NODE_IP"
+                  valueFrom = new k8s.EnvVarSource {
+                    fieldRef = new k8s.ObjectFieldSelector { fieldPath = "status.hostIP" }
+                  }
+                }
                 new k8s.EnvVar {
                   name = "K8S_NODE_NAME"
                   valueFrom = new k8s.EnvVarSource {

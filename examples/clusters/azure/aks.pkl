@@ -24,7 +24,7 @@ function aksCluster(properties: Dynamic?): mc.ManagedCluster = new mc.ManagedClu
   agentPoolProfiles {
     new mc.AgentPoolProfile {
       name = "systempool"
-      count = 1
+      count = 3
       vmSize = "Standard_D2s_v3"
       mode = "System"
       osType = "Linux"
