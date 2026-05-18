@@ -11,7 +11,7 @@ import "@k8s/v1.34/apps/Deployment.pkl" as dep
 import "@k8s/v1.34/apps/DaemonSet.pkl" as ds
 import "@k8s/v1.34/rbac/ClusterRole.pkl" as cr
 import "@k8s/v1.34/rbac/ClusterRoleBinding.pkl" as crb
-import "@k8s/k8s.pkl" as k8s
+import "@k8s/v1.34/k8s.pkl" as k8s
 
 local imageRef = "docker.io/otel/opentelemetry-collector-contrib:0.115.1"
 

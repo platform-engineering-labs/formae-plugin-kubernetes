@@ -28,7 +28,7 @@
 //   ```
 module PrometheusFormation
 
-import "@k8s/k8s.pkl"
+import "@k8s/v1.34/k8s.pkl"
 import "@k8s/apps/Deployment.pkl" as dep
 import "@k8s/core/Service.pkl" as svc
 import "@k8s/core/ServiceAccount.pkl" as sa
