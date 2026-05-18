@@ -342,19 +342,18 @@ func copyFile(src, dst string) error {
 
 // subresourcesRenameRE matches `import "../k8s-subresources.pkl"` and
 // `module X extends "../k8s-subresources.pkl"` in master resource modules.
-// In the per-version tree the file is renamed to subresources.pkl
-// (emitted as v<X.Y>/subresources.pkl by processTarget), so references
-// to the master's k8s-subresources.pkl must become ../subresources.pkl
-// (sibling in v<X.Y>/).
+// In the per-version tree the file is renamed to k8s.pkl (emitted as
+// v<X.Y>/k8s.pkl by processTarget), so references to the master's
+// k8s-subresources.pkl must become ../k8s.pkl (sibling in v<X.Y>/).
 var subresourcesRenameRE = regexp.MustCompile(
 	`((?:import|extends)\s+")\.\./k8s-subresources\.pkl(")`)
 
 // targetSiblingClimbRE matches the bare `extends "target.pkl"` clause on
 // the k8s-subresources.pkl module declaration. When that file is emitted
 // as v<X.Y>/k8s.pkl it sits one level deeper than the generated root's
-// target.pkl, so the reference must climb to ../target.pkl.
-// Only matches without a leading `../` to avoid re-applying on already-
-// rewritten content.
+// target.pkl, so the reference must climb to ../target.pkl. Only matches
+// without a leading `../` to avoid re-applying on already-rewritten
+// content.
 var targetSiblingClimbRE = regexp.MustCompile(
 	`(extends\s+")(target\.pkl")`)
 
@@ -417,13 +416,13 @@ func processTarget(disc *discoverResult, target, in, out string) error {
 			if rel != "k8s-subresources.pkl" {
 				return nil
 			}
-			// Fall through: emit at v<X.Y>/subresources.pkl (renamed).
-			// The per-version filename must NOT collide with the
-			// package root's basename — formae extract's alias
-			// derivation falls back to parent-dir-as-prefix on
-			// basename collision, producing dotted identifiers like
-			// `v1.34_k8s` for our dotted version dirs.
-			rel = "subresources.pkl"
+			// Fall through: emit at v<X.Y>/k8s.pkl (renamed).
+			// Matches the apple/pkl-k8s naming convention. The
+			// generated tree root no longer ships a top-level
+			// k8s.pkl (root was renamed to target.pkl), so there
+			// is no longer a basename collision for formae extract
+			// to disambiguate against.
+			rel = "k8s.pkl"
 		}
 
 		stats.files++
@@ -488,7 +487,7 @@ func processTarget(disc *discoverResult, target, in, out string) error {
 //     Covers both `import` and `module X extends` forms.
 //
 //  2. bare `extends "target.pkl"` → `extends "../target.pkl"`.
-//     Applies to the emitted v<X.Y>/subresources.pkl (formerly
+//     Applies to the emitted v<X.Y>/k8s.pkl (formerly
 //     k8s-subresources.pkl) whose module declaration references the
 //     root-shared target.pkl.
 //
@@ -498,7 +497,7 @@ func rewriteImports(path string) error {
 	if err != nil {
 		return err
 	}
-	rewritten := subresourcesRenameRE.ReplaceAll(data, []byte(`${1}../subresources.pkl${2}`))
+	rewritten := subresourcesRenameRE.ReplaceAll(data, []byte(`${1}../k8s.pkl${2}`))
 	rewritten = targetSiblingClimbRE.ReplaceAll(rewritten, []byte(`${1}../${2}`))
 	if bytesEqual(data, rewritten) {
 		return nil

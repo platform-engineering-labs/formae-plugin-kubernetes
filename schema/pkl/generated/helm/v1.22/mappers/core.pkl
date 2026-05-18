@@ -1,7 +1,7 @@
 /// Mappers for core/v1 K8S resource types.
 module core
 
-import "../../../v1.22/subresources.pkl" as k8s
+import "../../../v1.22/k8s.pkl" as k8s
 import "../../../v1.22/core/Namespace.pkl" as ns
 import "../../../v1.22/core/Pod.pkl" as pod
 import "../../../v1.22/core/ConfigMap.pkl" as cm
