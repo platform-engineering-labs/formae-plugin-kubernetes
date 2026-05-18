@@ -104,7 +104,8 @@ function minioStatefulSet(
           spec = new pvc.PersistentVolumeClaimSpec {
             accessModes = new Listing { "ReadWriteOnce" }
             resources = new k8s.ResourceRequirements {
-              requests = new Mapping { ["storage"] = 20.gib }
+              // OCI Block Volume enforces a 50Gi minimum; lower values are silently bumped up.
+              requests = new Mapping { ["storage"] = 50.gib }
             }
           }
         }
