@@ -106,7 +106,7 @@ jobs:
         uses: helm/kind-action@v1
         with:
           cluster_name: formae-test
-          node_image: "kindest/node:v1.34.3@sha256:08497ee19eace7b4b5348db5c6a1591d7752b164530a36f855cb0f2bdcbadd48"
+          node_image: "kindest/node:v1.35.1@sha256:b08d1f9b5244fb2aae7bea9861c1d372a9535f259efed62a9e92e6b5ab500529"
 
       - name: Download formae binary
         uses: actions/download-artifact@v8
@@ -156,14 +156,14 @@ jobs:
       - name: Install plugin
         run: make install
 
-      - name: Resolve testdata Pkl deps (v1.34)
-        run: pkl project resolve testdata/generated/v1.34/
+      - name: Resolve testdata Pkl deps (v1.35)
+        run: pkl project resolve testdata/generated/v1.35/
 
       - name: Run conformance tests (${{ matrix.test-case }})
         env:
           FORMAE_BINARY: /tmp/formae/formae
           FORMAE_TEST_RUN_ID: nightly-main-${{ github.run_id }}-${{ github.run_attempt }}
-          FORMAE_TEST_TESTDATA_DIR: testdata/generated/v1.34/shared
+          FORMAE_TEST_TESTDATA_DIR: testdata/generated/v1.35/shared
         run: make conformance-test-crud-run conformance-test-discovery-run TEST=${{ matrix.test-case }} PARALLEL=1
 
   # Chart conformance tests deploy full Helm charts (many resources).
@@ -195,7 +195,7 @@ jobs:
         uses: helm/kind-action@v1
         with:
           cluster_name: formae-test
-          node_image: "kindest/node:v1.34.3@sha256:08497ee19eace7b4b5348db5c6a1591d7752b164530a36f855cb0f2bdcbadd48"
+          node_image: "kindest/node:v1.35.1@sha256:b08d1f9b5244fb2aae7bea9861c1d372a9535f259efed62a9e92e6b5ab500529"
 
       - name: Download formae binary
         uses: actions/download-artifact@v8
