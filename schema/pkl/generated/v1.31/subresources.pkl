@@ -179,6 +179,9 @@ open class PodSpec extends formae.SubResource {
   @FieldHint {}
   volumes: Listing<Volume>?
 
+  @FieldHint {}
+  resources: ResourceRequirements?
+
   @FieldHint { updateMethod = "EntitySet"; indexField = "name" }
   ephemeralContainers: Listing<EphemeralContainer>?
 
@@ -262,10 +265,6 @@ open class Volume extends formae.SubResource {
 
   @FieldHint {}
   gcePersistentDisk : Mapping?
-
-  /// Image volume source. Alpha in K8s 1.31, Beta in 1.33, GA in 1.36.
-  @FieldHint {}
-  image: ImageVolumeSource?
 
   @FieldHint {}
   photonPersistentDisk : Mapping?

@@ -175,6 +175,9 @@ open class PodSpec extends formae.SubResource {
   @FieldHint {}
   volumes: Listing<Volume>?
 
+  @FieldHint {}
+  resources: ResourceRequirements?
+
   @FieldHint { updateMethod = "EntitySet"; indexField = "name" }
   ephemeralContainers: Listing<EphemeralContainer>?
 

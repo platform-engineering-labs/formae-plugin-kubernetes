@@ -128,6 +128,9 @@ open class StatefulSetUpdateStrategy extends formae.SubResource {
 open class RollingUpdateStatefulSetStrategy extends formae.SubResource {
   @k8s.FieldHint {}
   partition: k8s.NonNegativeInt?
+
+  @k8s.FieldHint {}
+  maxUnavailable: k8s.IntOrString?
 }
 
 @k8s.SubResourceHint {}
