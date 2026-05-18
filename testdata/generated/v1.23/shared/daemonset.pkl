@@ -5,7 +5,7 @@ amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
 import "@k8s/v1.23/core/Namespace.pkl" as ns
 import "@k8s/v1.23/apps/DaemonSet.pkl" as ds
-import "@k8s/v1.23/k8s.pkl" as k8s
+import "@k8s/v1.23/subresources.pkl" as k8s
 import "./config/vars.pkl" as v
 
 forma {

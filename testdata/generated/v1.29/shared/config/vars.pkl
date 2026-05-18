@@ -1,5 +1,5 @@
 import "@formae/formae.pkl"
-import "@k8s/v1.29/k8s.pkl"
+import "@k8s/v1.29/subresources.pkl" as k8s
 
 local stackName = "plugin-sdk-test-stack"
 

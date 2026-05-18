@@ -14,14 +14,14 @@ func TestImportRewrites(t *testing.T) {
 		name, in, want string
 	}{
 		{
-			name: "import master subresources → per-version sibling",
+			name: "import master k8s-subresources → per-version subresources",
 			in:   `import "../k8s-subresources.pkl" as k8s`,
-			want: `import "../k8s.pkl" as k8s`,
+			want: `import "../subresources.pkl" as k8s`,
 		},
 		{
-			name: "module extends master subresources → per-version sibling",
+			name: "module extends master k8s-subresources → per-version subresources",
 			in:   `module flowschema extends "../k8s-subresources.pkl"`,
-			want: `module flowschema extends "../k8s.pkl"`,
+			want: `module flowschema extends "../subresources.pkl"`,
 		},
 		{
 			name: "bare target sibling extends → climb out one level",
@@ -35,19 +35,14 @@ func TestImportRewrites(t *testing.T) {
 		},
 		{
 			name: "idempotent on already-rewritten subresources import",
-			in:   `import "../k8s.pkl" as k8s`,
-			want: `import "../k8s.pkl" as k8s`,
-		},
-		{
-			name: "flowcontrol-style: extends-on-module gets renamed but not climbed",
-			in:   `module flowschema extends "../k8s-subresources.pkl"`,
-			want: `module flowschema extends "../k8s.pkl"`,
+			in:   `import "../subresources.pkl" as k8s`,
+			want: `import "../subresources.pkl" as k8s`,
 		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := subresourcesRenameRE.ReplaceAllString(c.in, `${1}../k8s.pkl${2}`)
+			got := subresourcesRenameRE.ReplaceAllString(c.in, `${1}../subresources.pkl${2}`)
 			got = targetSiblingClimbRE.ReplaceAllString(got, `${1}../${2}`)
 			if got != c.want {
 				t.Errorf("got %q, want %q", got, c.want)

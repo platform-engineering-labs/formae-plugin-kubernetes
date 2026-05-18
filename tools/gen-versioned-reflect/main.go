@@ -342,10 +342,10 @@ func copyFile(src, dst string) error {
 
 // subresourcesRenameRE matches `import "../k8s-subresources.pkl"` and
 // `module X extends "../k8s-subresources.pkl"` in master resource modules.
-// In the per-version tree the subresources file is renamed to k8s.pkl
-// (emitted as v<X.Y>/k8s.pkl by processTarget), so all references to the
-// master's k8s-subresources.pkl must become ../k8s.pkl (sibling in
-// v<X.Y>/).
+// In the per-version tree the file is renamed to subresources.pkl
+// (emitted as v<X.Y>/subresources.pkl by processTarget), so references
+// to the master's k8s-subresources.pkl must become ../subresources.pkl
+// (sibling in v<X.Y>/).
 var subresourcesRenameRE = regexp.MustCompile(
 	`((?:import|extends)\s+")\.\./k8s-subresources\.pkl(")`)
 
@@ -417,8 +417,13 @@ func processTarget(disc *discoverResult, target, in, out string) error {
 			if rel != "k8s-subresources.pkl" {
 				return nil
 			}
-			// Fall through: emit at v<X.Y>/k8s.pkl (renamed).
-			rel = "k8s.pkl"
+			// Fall through: emit at v<X.Y>/subresources.pkl (renamed).
+			// The per-version filename must NOT collide with the
+			// package root's basename — formae extract's alias
+			// derivation falls back to parent-dir-as-prefix on
+			// basename collision, producing dotted identifiers like
+			// `v1.34_k8s` for our dotted version dirs.
+			rel = "subresources.pkl"
 		}
 
 		stats.files++
@@ -482,9 +487,10 @@ func processTarget(disc *discoverResult, target, in, out string) error {
 //  1. `../k8s-subresources.pkl` → `../k8s.pkl` (the per-version rename).
 //     Covers both `import` and `module X extends` forms.
 //
-//  2. bare `extends "k8s.pkl"` → `extends "../k8s.pkl"`.
-//     Applies to the emitted v<X.Y>/k8s.pkl (formerly k8s-subresources.pkl)
-//     whose module declaration references the root-shared k8s.pkl.
+//  2. bare `extends "target.pkl"` → `extends "../target.pkl"`.
+//     Applies to the emitted v<X.Y>/subresources.pkl (formerly
+//     k8s-subresources.pkl) whose module declaration references the
+//     root-shared target.pkl.
 //
 // Idempotent: re-running on already-rewritten content is a no-op.
 func rewriteImports(path string) error {
@@ -492,7 +498,7 @@ func rewriteImports(path string) error {
 	if err != nil {
 		return err
 	}
-	rewritten := subresourcesRenameRE.ReplaceAll(data, []byte(`${1}../k8s.pkl${2}`))
+	rewritten := subresourcesRenameRE.ReplaceAll(data, []byte(`${1}../subresources.pkl${2}`))
 	rewritten = targetSiblingClimbRE.ReplaceAll(rewritten, []byte(`${1}../${2}`))
 	if bytesEqual(data, rewritten) {
 		return nil

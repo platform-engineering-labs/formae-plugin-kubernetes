@@ -212,19 +212,20 @@ func generateVersion(ver, k8sRoot string) error {
 // files, 3 for v<ver>/mappers/ files.
 //
 // Two rewrites in order so the more specific pattern wins:
-//   - `@k8s/k8s.pkl`               → `<prefix>v<ver>/k8s.pkl`     (per-version subresources)
+//   - `@k8s/k8s.pkl`               → `<prefix>v<ver>/subresources.pkl`
 //   - `@k8s/<group>/<Kind>.pkl`    → `<prefix>v<ver>/<group>/<Kind>.pkl`
 //
 // where prefix = "../" * depth.
 //
-// `@k8s/k8s.pkl` now resolves to the per-version sibling because the
-// schema split moved SubResource classes (PodSpec, Container, ...) out
-// of the root k8s.pkl and into v<X.Y>/k8s.pkl. Helm mappers use those
-// classes as return types, so the package-root k8s.pkl (which holds
-// only Config + Auth) would no longer satisfy them.
+// `@k8s/k8s.pkl` resolves to the per-version `subresources.pkl` because
+// the schema split moved SubResource classes (PodSpec, Container, ...)
+// out of the root k8s.pkl (now `target.pkl`) and into the per-version
+// `subresources.pkl`. Helm mappers use those classes as return types,
+// so the package-root file (which holds only Config + Auth) would no
+// longer satisfy them.
 func rewriteK8sImports(body, ver string, depth int) string {
 	prefix := strings.Repeat("../", depth)
-	body = k8sRootImportRE.ReplaceAllString(body, prefix+ver+"/k8s.pkl")
+	body = k8sRootImportRE.ReplaceAllString(body, prefix+ver+"/subresources.pkl")
 	return k8sImportRE.ReplaceAllString(body, prefix+ver+"/$1/$2")
 }
 

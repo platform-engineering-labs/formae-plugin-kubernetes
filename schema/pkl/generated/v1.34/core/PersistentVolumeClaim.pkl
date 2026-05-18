@@ -14,7 +14,7 @@
 module persistentvolumeclaim
 
 import "@formae/formae.pkl"
-import "../k8s.pkl" as k8s
+import "../subresources.pkl" as k8s
 
 const type = "K8S::Core::PersistentVolumeClaim"
 

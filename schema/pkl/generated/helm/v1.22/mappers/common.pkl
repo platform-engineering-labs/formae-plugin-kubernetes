@@ -5,7 +5,7 @@
 /// Runtime errors from field access are clear and actionable.
 module common
 
-import "../../../v1.22/k8s.pkl" as k8s
+import "../../../v1.22/subresources.pkl" as k8s
 import "../../../v1.22/core/Namespace.pkl" as ns
 
 // =============================================================================
