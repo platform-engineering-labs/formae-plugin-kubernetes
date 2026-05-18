@@ -1,0 +1,143 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * K8S Plugin Schema - Target configuration.
+ *
+ * Holds ONLY the cluster connection / authentication configuration:
+ *   - Config (top-level target config)
+ *   - Auth (abstract base) + KubeconfigAuth / EKSAuth / GKEAuth / AKSAuth / OVHAuth / OCIAuth
+ *
+ * Resource scaffolding (Resource, ObjectMeta, …), typealiases, and the K8sVersion
+ * annotation live in shared.pkl. Shared sub-resource classes (PodSpec, Container,
+ * Volume, JobSpec, …) live in k8s-subresources.pkl and are filtered per K8s minor
+ * by tools/gen-versioned-reflect at generation time.
+ *
+ * Consumers of this file (root, version-agnostic):
+ *   - formae-plugin.pkl (package manifest)
+ *   - Go-side target config marshaling (pkg/config/config.go)
+ *   - Conformance test bootstrap
+ */
+// Extends shared.pkl so this slim root inherits every typealias,
+// helper, the K8sVersion annotation, Resource base, and the ObjectMeta
+// variants. The per-version source `k8s-subresources.pkl` in turn
+// extends THIS module, so the per-version generated `v<X.Y>/k8s.pkl`
+// reaches Config + Auth + every type + every SubResource class through
+// a single `k8s.` alias at consumer sites.
+open module target extends "shared.pkl"
+
+import "@formae/formae.pkl"
+
+// =============================================================================
+// Target Configuration
+// =============================================================================
+
+/// Configuration for the K8S target.
+/// Maps to the Go Config struct in pkg/config/config.go.
+open class Config {
+  hidden fixed type: String = "K8S"
+
+  /// Authentication strategy. Determines how the plugin connects to the
+  /// K8S API server.
+  @formae.ConfigFieldHint { createOnly = true }
+  hidden auth: Auth
+
+  /// Kubernetes minor version of the target cluster, e.g. "1.27".
+  /// Required so formae picks the right schema subtree at extract
+  /// time. Users set this; the convention key `ApiVersion` is derived
+  /// and emitted to the marshaled Config JSON, where formae's
+  /// schema-version resolver reads it.
+  @formae.ConfigFieldHint { createOnly = false }
+  hidden kubernetesVersion: KubernetesMinorVersion
+
+  fixed Type: String = type
+  fixed Auth: Auth = auth
+
+  /// Convention key. Formae's schema-version resolver scans
+  /// target.Config JSON for `ApiVersion`; the K8s plugin derives it
+  /// from `kubernetesVersion` so users never type the `v` prefix.
+  fixed ApiVersion: String = "v\(kubernetesVersion)"
+}
+
+// =============================================================================
+// Auth Strategies
+// =============================================================================
+
+/// Base class for K8S authentication strategies.
+abstract class Auth {
+  /// Discriminator field for Go-side deserialization.
+  hidden fixed type: String
+  fixed Type: String = type
+}
+
+/// Kubeconfig-based auth. Covers vanilla K8S, dev clusters, and any
+/// pre-configured cluster.
+class KubeconfigAuth extends Auth {
+  fixed type = "Kubeconfig"
+  hidden context: String?
+  hidden kubeconfig: String?
+  fixed Context: String? = context
+  fixed Kubeconfig: String? = kubeconfig
+}
+
+/// AWS EKS auth via STS presigned token.
+class EKSAuth extends Auth {
+  fixed type = "EKS"
+  hidden endpoint: (String|formae.Resolvable)
+  hidden certificateAuthority: (String|formae.Resolvable)
+  hidden clusterName: (String|formae.Resolvable)
+  hidden region: (String|formae.Resolvable)?
+  fixed Endpoint: (String|formae.Resolvable) = endpoint
+  fixed CertificateAuthority: (String|formae.Resolvable) = certificateAuthority
+  fixed ClusterName: (String|formae.Resolvable) = clusterName
+  fixed Region: (String|formae.Resolvable)? = region
+}
+
+/// Google GKE auth via OAuth2 access token.
+class GKEAuth extends Auth {
+  fixed type = "GKE"
+  hidden endpoint: (String|formae.Resolvable)
+  hidden certificateAuthority: (String|formae.Resolvable)
+  fixed Endpoint: (String|formae.Resolvable) = endpoint
+  fixed CertificateAuthority: (String|formae.Resolvable) = certificateAuthority
+}
+
+/// Azure AKS auth via Azure AD token.
+class AKSAuth extends Auth {
+  fixed type = "AKS"
+  hidden endpoint: (String|formae.Resolvable)
+  hidden certificateAuthority: (String|formae.Resolvable)
+  hidden resourceGroup: (String|formae.Resolvable)?
+  hidden clusterName: (String|formae.Resolvable)?
+  fixed Endpoint: (String|formae.Resolvable) = endpoint
+  fixed CertificateAuthority: (String|formae.Resolvable) = certificateAuthority
+  fixed ResourceGroup: (String|formae.Resolvable)? = resourceGroup
+  fixed ClusterName: (String|formae.Resolvable)? = clusterName
+}
+
+/// OVH Managed K8S auth.
+class OVHAuth extends Auth {
+  fixed type = "OVH"
+  hidden endpoint: (String|formae.Resolvable)
+  hidden certificateAuthority: (String|formae.Resolvable)
+  hidden serviceName: (String|formae.Resolvable)
+  hidden clusterId: (String|formae.Resolvable)
+  fixed Endpoint: (String|formae.Resolvable) = endpoint
+  fixed CertificateAuthority: (String|formae.Resolvable) = certificateAuthority
+  fixed ServiceName: (String|formae.Resolvable) = serviceName
+  fixed ClusterId: (String|formae.Resolvable) = clusterId
+}
+
+/// Oracle OKE auth via OCI session token.
+class OCIAuth extends Auth {
+  fixed type = "OCI"
+  hidden endpoint: (String|formae.Resolvable)
+  hidden certificateAuthority: (String|formae.Resolvable)
+  hidden clusterOcid: (String|formae.Resolvable)
+  hidden region: (String|formae.Resolvable)?
+  fixed Endpoint: (String|formae.Resolvable) = endpoint
+  fixed CertificateAuthority: (String|formae.Resolvable) = certificateAuthority
+  fixed ClusterOcid: (String|formae.Resolvable) = clusterOcid
+  fixed Region: (String|formae.Resolvable)? = region
+}

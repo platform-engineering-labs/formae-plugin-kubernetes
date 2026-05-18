@@ -22,7 +22,7 @@
 // `className` = "" for module-scoped (top-level) properties.
 
 import "pkl:reflect"
-import "../../schema/pkl/main/k8s.pkl" as k8sBase
+import "../../schema/pkl/main/shared.pkl" as k8sBase
 
 // Glob ALL .pkl files relative to this discover.pkl. Pkl resolves
 // import* paths relative to the file containing the directive.

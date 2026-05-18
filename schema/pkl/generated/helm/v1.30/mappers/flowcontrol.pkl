@@ -1,7 +1,7 @@
 /// Mappers for flowcontrol.apiserver.k8s.io/v1 K8S resource types.
 module flowcontrol
 
-import "../../../k8s.pkl" as k8s
+import "../../../v1.30/subresources.pkl" as k8s
 import "../../../v1.30/flowcontrol/FlowSchema.pkl" as fs
 import "../../../v1.30/flowcontrol/PriorityLevelConfiguration.pkl" as plc
 

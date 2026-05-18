@@ -1,0 +1,211 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * K8S Plugin Schema - Shared types library.
+ *
+ * Holds the version-agnostic content used by every K8s minor:
+ *   - primitive typealiases (Quantity, PortNumber, DNS1123*, ...)
+ *   - K8s Quantity conversion helpers (toK8sQuantity, dataSizeToK8s, ...)
+ *   - the K8sVersion annotation class (consumed by discover.pkl)
+ *   - the Resource base + ObjectMeta + NamespacedObjectMeta classes
+ *   - re-exported formae.* annotation typealiases (ResourceHint, FieldHint, SubResourceHint)
+ *
+ * Consumed by:
+ *   - main/k8s.pkl (for KubernetesMinorVersion on Config.kubernetesVersion)
+ *   - main/k8s-subresources.pkl (amends this module)
+ *   - tools/gen-versioned-reflect/discover.pkl (for K8sVersion)
+ *
+ * No @K8sVersion gates appear in this file — all content is version-agnostic
+ * and lives unchanged at the generated package root.
+ */
+open module shared
+
+import "@formae/formae.pkl"
+
+// =============================================================================
+// Native typealiases
+// =============================================================================
+
+/// Kubernetes minor version: `MAJOR.MINOR` only, no `v` prefix, no patch.
+/// e.g. `"1.27"`. Used for the target `kubernetesVersion` and for the
+/// `@K8sVersion` annotation fields.
+typealias KubernetesMinorVersion = String(matches(Regex(#"^\d+\.\d+$"#)))
+
+/// Kubernetes resource Quantity (`resource.Quantity`). Accepts either:
+///   * a Pkl `DataSize` literal (`1.gib`, `512.mib`, `100.mb`) — preferred for memory/storage,
+///   * or a `String` in K8s wire format (`"100m"`, `"1Gi"`, `"500m"`, `"1.5"`, `"1e3"`).
+/// CPU quantities (with `m` suffix or bare number) must use the `String` form — Pkl `DataSize`
+/// has no concept of millicores.
+/// At extraction time, the [toK8sQuantity] helper renders any `DataSize` value back into a
+/// K8s-compatible string (`1.gib` → `"1Gi"`). String values pass through unchanged, so a
+/// regex check guards their shape.
+typealias QuantityString = String(matches(Regex(#"^[+-]?(\d+(\.\d*)?|\.\d+)((e[+-]?\d+)|([numkMGTPE]i?))?$"#)))
+typealias Quantity = (DataSize|QuantityString)
+
+/// Mapping of resource name (`cpu`, `memory`, `ephemeral-storage`, `hugepages-2Mi`, …) → Quantity.
+/// Combine with `outputTransformation = (it) -> toK8sQuantityMapping(it)` on any field that
+/// needs to be serialised to the K8s wire format.
+typealias ResourceQuantities = Mapping<String, Quantity>
+
+/// TCP/UDP/SCTP port number, 1..65535 inclusive. Disallows port 0.
+typealias PortNumber = Int(isBetween(1, 65535))
+/// L4 protocol accepted by Kubernetes ports.
+typealias Protocol = "TCP"|"UDP"|"SCTP"
+/// Affinity / topology-spread weight. apiserver enforces 1..100.
+typealias Weight = Int(isBetween(1, 100))
+/// HPA `stabilizationWindowSeconds`. apiserver enforces 0..3600.
+typealias StabilizationWindowSeconds = Int(isBetween(0, 3600))
+/// Unix file-permission mode bits. 0..0o777 (0..511 decimal).
+/// K8s serializes file modes as decimal integers, so `0o644` and `420` are equivalent.
+typealias FileMode = Int(isBetween(0, 0o777))
+/// Non-negative 32-bit integer. For replica counts, retention limits, history limits, etc.
+typealias NonNegativeInt = Int(isBetween(0, 2147483647))
+/// Positive 32-bit integer (>= 1). For periods, deadlines, lease durations, etc.
+typealias PositiveInt = Int(isBetween(1, 2147483647))
+/// Signed 32-bit integer. For PriorityClass `value`, container exitCode, etc.
+typealias Int32 = Int(isBetween(-2147483648, 2147483647))
+/// Unix user / group ID. Non-negative 32-bit unsigned integer.
+typealias UnixID = Int(isBetween(0, 4294967295))
+/// Kubernetes `IntOrString`: an int or a percent-style string like `"25%"`.
+typealias IntOrString = (Int|String)
+/// Percentage string, e.g. `"25%"`. 0..100% accepted.
+typealias Percentage = String(matches(Regex(#"^([0-9]|[1-9][0-9]|100)%$"#)))
+/// 0..100 inclusive — used for lendable / utilization percents.
+typealias Percent = Int(isBetween(0, 100))
+/// Flow-control percent: `-1` sentinel allowed (means "unbounded") plus 0..100.
+/// Used for `borrowingLimitPercent`.
+typealias FlowControlPercent = Int(isBetween(-1, 100))
+/// FlowSchema `matchingPrecedence`. apiserver enforces 1..10000.
+typealias MatchingPrecedence = Int(isBetween(1, 10000))
+/// Admission webhook `timeoutSeconds`. apiserver enforces 1..30.
+typealias WebhookTimeoutSeconds = Int(isBetween(1, 30))
+/// IPv4 or IPv6 address (dotted-quad or colon-hex). Lightweight check —
+/// the apiserver does full validation.
+typealias IPAddress = String(matches(Regex(#"^([0-9]{1,3}(\.[0-9]{1,3}){3}|[0-9a-fA-F:]+)$"#)))
+/// Service cluster IP — an `IPAddress`, or the literal `"None"` for headless services.
+typealias ClusterIP = (IPAddress|"None")
+/// CIDR block (IPv4 or IPv6 with prefix length).
+typealias CIDR = String(matches(Regex(#"^([0-9]{1,3}(\.[0-9]{1,3}){3}|[0-9a-fA-F:]+)/\d{1,3}$"#)))
+/// DNS-1123 label — lowercase alphanumeric and hyphens, 1..63 chars.
+/// Used for service names, namespace names, label values.
+typealias DNS1123Label = String(matches(Regex(#"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"#)) && length <= 63)
+/// DNS-1123 subdomain — labels separated by dots, max 253 chars.
+/// Used for most resource `metadata.name` values.
+typealias DNS1123Subdomain = String(matches(Regex(#"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"#)) && length <= 253)
+/// Cron schedule string (5- or 6-field cron, or `@hourly`/`@daily`/etc.).
+/// Non-empty check only — full cron grammar is validated by the apiserver.
+typealias CronSchedule = String(!isEmpty)
+
+// =============================================================================
+// Annotation aliases for K8S resources (re-exported from formae.pkl)
+// =============================================================================
+
+typealias ResourceHint = formae.ResourceHint
+typealias FieldHint = formae.FieldHint
+typealias SubResourceHint = formae.SubResourceHint
+
+// =============================================================================
+// K8sVersion annotation
+// =============================================================================
+
+/// Marks a field or class as gated by a Kubernetes API version range.
+/// Mirrors the pattern used by `apple/pkl-k8s` (the canonical PKL+K8s reference).
+///
+/// `introducedIn` is the first K8s minor (e.g., "1.26") in which the field
+/// or resource is available. Users on earlier clusters will receive an
+/// API server error; the plugin uses this hint to emit a preflight warning.
+///
+/// `deprecatedIn` is the K8s minor in which the API was marked deprecated.
+/// `removedIn` is the K8s minor in which the API was removed.
+/// `reference` is an optional pointer to a KEP, deprecation guide, or release note.
+///
+/// All version values are MAJOR.MINOR (e.g., "1.30"), no patch.
+class K8sVersion extends Annotation {
+  introducedIn: KubernetesMinorVersion?
+  deprecatedIn: KubernetesMinorVersion?
+  removedIn: KubernetesMinorVersion?
+  reference: String?
+}
+
+// =============================================================================
+// Base Resource class
+// =============================================================================
+
+/// Base class for all K8S resources.
+/// Provides common structure: apiVersion, kind, metadata.
+open class Resource extends formae.Resource {
+  /// API version of the resource (e.g., "v1", "apps/v1")
+  @FieldHint { required = true }
+  apiVersion: String
+
+  /// Kind of the resource (e.g., "Namespace", "Pod")
+  @FieldHint { required = true }
+  kind: String
+
+  /// Standard K8S metadata
+  @FieldHint { required = true }
+  metadata: ObjectMeta
+}
+
+// =============================================================================
+// ObjectMeta
+// =============================================================================
+
+/// Kubernetes ObjectMeta - standard metadata for all K8S resources.
+/// Used directly by cluster-scoped resources (PersistentVolume, ClusterRole,
+/// StorageClass, etc.) where the namespace field is unused.
+///
+/// Namespaced resources MUST use `NamespacedObjectMeta` instead, which
+/// requires `metadata.namespace` at PKL validation time. The K8S plugin
+/// rejects namespaced resources without `metadata.namespace` at Create time.
+@SubResourceHint {}
+open class ObjectMeta extends formae.SubResource {
+  /// Name must be unique within a namespace.
+  @FieldHint { required = true; createOnly = true }
+  name: String
+
+  /// Namespace defines the space within which each name must be unique.
+  /// Empty for cluster-scoped resources. Accepts resolvable references.
+  @FieldHint {}
+  namespace: (String|formae.Resolvable)?
+
+  /// Labels are key/value pairs for resource organization.
+  @FieldHint { hasProviderDefault = true }
+  labels: Mapping<String, String>?
+
+  /// Annotations are key/value pairs for arbitrary metadata.
+  @FieldHint { hasProviderDefault = true }
+  annotations: Mapping<String, String>?
+}
+
+/// ObjectMeta variant for namespaced resources. Narrows `namespace` to a
+/// non-null type so that omitting it surfaces as a PKL validation error
+/// (`Tried to assign null to a non-nullable property`) at `pkl eval` time
+/// rather than at apply time.
+///
+/// All namespaced resource modules (Pod, ConfigMap, Service, Deployment,
+/// Job, Ingress, Role, PDB, HPA, Lease, NetworkPolicy, ...) use this for
+/// their top-level `metadata` field. Reference a `K8S::Core::Namespace`
+/// resource declared in the same Forma for the value, e.g.
+/// `metadata { namespace = appNs.res.name }`.
+@SubResourceHint {}
+open class NamespacedObjectMeta extends ObjectMeta {
+  /// Name must be unique within a namespace.
+  @FieldHint { required = true; createOnly = true }
+  name: String
+
+  /// Namespace defines the space within which each name must be unique.
+  /// Required for namespaced resources; accepts resolvable references.
+  @FieldHint { required = true }
+  namespace: (String|formae.Resolvable)
+
+  /// Labels are key/value pairs for resource organization.
+  @FieldHint { hasProviderDefault = true }
+  labels: Mapping<String, String>?
+
+  /// Annotations are key/value pairs for arbitrary metadata.
+  @FieldHint { hasProviderDefault = true }
+  annotations: Mapping<String, String>?
+}

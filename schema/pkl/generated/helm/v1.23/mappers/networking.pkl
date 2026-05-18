@@ -1,7 +1,7 @@
 /// Mappers for networking.k8s.io/v1 K8S resource types.
 module networking
 
-import "../../../k8s.pkl" as k8s
+import "../../../v1.23/subresources.pkl" as k8s
 import "../../../v1.23/apps/ReplicaSet.pkl" as rs
 import "../../../v1.23/networking/Ingress.pkl" as ing
 import "../../../v1.23/networking/IngressClass.pkl" as ic

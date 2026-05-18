@@ -1,7 +1,7 @@
 /// Mappers for node.k8s.io/v1 K8S resource types.
 module node
 
-import "../../../k8s.pkl" as k8s
+import "../../../v1.33/subresources.pkl" as k8s
 import "../../../v1.33/node/RuntimeClass.pkl" as rc
 
 import "common.pkl"
