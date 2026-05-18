@@ -1,0 +1,55 @@
+/*
+ * Conformance Update: modify the matchConditions CEL expression.
+ * Replaces the original "exclude-system-config" condition with one
+ * that excludes ConfigMaps in kube-system. Confirms matchConditions
+ * is mutable on update.
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.36/admissionregistration/ValidatingWebhookConfiguration.pkl" as vwc
+import "@k8s/v1.36/subresources.pkl" as k8s
+import "../../shared/config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new vwc.ValidatingWebhookConfiguration {
+    label = "test-vwc-mc"
+    metadata = new k8s.ObjectMeta {
+      name = "test-vwc-mc-\(v.testRunID)"
+    }
+    webhooks = new Listing {
+      new vwc.ValidatingWebhook {
+        name = "test-vwc-mc-\(v.testRunID).formae.io"
+        admissionReviewVersions = new Listing { "v1" }
+        sideEffects = "None"
+        failurePolicy = "Ignore"
+        clientConfig = new k8s.WebhookClientConfig {
+          url = "https://localhost:9443/test-validate"
+        }
+        namespaceSelector = new k8s.LabelSelector {
+          matchLabels = new Mapping {
+            ["test-run"] = v.testRunID
+          }
+        }
+        objectSelector = new k8s.LabelSelector {}
+        matchConditions = new Listing {
+          new k8s.MatchCondition {
+            name = "exclude-kube-system"
+            expression = "request.namespace != 'kube-system'"
+          }
+        }
+        rules = new Listing {
+          new k8s.RuleWithOperations {
+            operations = new Listing { "CREATE" }
+            apiGroups = new Listing { "" }
+            apiVersions = new Listing { "v1" }
+            resources = new Listing { "configmaps" }
+            scope = "*"
+          }
+        }
+      }
+    }
+  }
+}

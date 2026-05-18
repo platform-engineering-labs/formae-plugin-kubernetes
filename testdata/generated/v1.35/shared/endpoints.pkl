@@ -1,0 +1,50 @@
+/*
+ * Conformance Test: Endpoints (Create)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.35/core/Namespace.pkl" as ns
+import "@k8s/v1.35/core/Endpoints.pkl" as ep
+import "@k8s/v1.35/subresources.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local ns = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  ns
+
+  new ep.Endpoints {
+    label = "test-endpoints"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "test-ep-\(v.testRunID)"
+      namespace = ns.res.name
+    }
+    subsets = new Listing {
+      new ep.EndpointSubset {
+        addresses = new Listing {
+          new ep.EndpointAddress {
+            ip = "10.0.0.1"
+          }
+        }
+        ports = new Listing {
+          new ep.EndpointPort {
+            port = 80
+            protocol = "TCP"
+          }
+        }
+      }
+    }
+  }
+}

@@ -8,7 +8,7 @@ Kubernetes resource plugin for
 enables formae to manage Kubernetes resources via
 [Server-Side Apply](https://kubernetes.io/docs/reference/using-api/server-side-apply/),
 with strongly-typed Pkl schemas pinned to your cluster's exact K8s minor
-(v1.21 → v1.34, 14 minors).
+(v1.21 → v1.36, 16 minors).
 
 ## Supported Resources
 
@@ -59,7 +59,7 @@ target: formae.Target = new formae.Target {
 
 | Field | Type | Purpose |
 |---|---|---|
-| `kubernetesVersion` | `String` | K8s minor (e.g. `"1.31"`). Selects the schema subtree the plugin validates against. Supported: `"1.21"`, `"1.22"`, `"1.23"`, `"1.24"`, `"1.25"`, `"1.26"`, `"1.27"`, `"1.28"`, `"1.29"`, `"1.30"`, `"1.31"`, `"1.32"`, `"1.33"`, `"1.34"`. Omitted ⇒ assumes the most recent supported minor (currently `1.34`). |
+| `kubernetesVersion` | `String` | K8s minor (e.g. `"1.31"`). Selects the schema subtree the plugin validates against. Supported: `"1.21"`, `"1.22"`, `"1.23"`, `"1.24"`, `"1.25"`, `"1.26"`, `"1.27"`, `"1.28"`, `"1.29"`, `"1.30"`, `"1.31"`, `"1.32"`, `"1.33"`, `"1.34"`, `"1.35"`, `"1.36"`. Omitted ⇒ assumes the most recent supported minor (currently `1.36`). |
 | `auth` | `Auth` | One of `KubeconfigAuth`, `EKSAuth`, `GKEAuth`, `AKSAuth`, `OVHAuth`, `OCIAuth`, `InClusterAuth`. |
 
 Every namespaced resource MUST set `metadata.namespace`. Reference a

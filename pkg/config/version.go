@@ -17,8 +17,8 @@ import (
 // Supported Kubernetes version range. Updated in lockstep with client-go bumps.
 const (
 	MinSupportedK8sVersion = "1.31"
-	MaxSupportedK8sVersion = "1.34"
-	ClientGoVersion        = "0.34.0"
+	MaxSupportedK8sVersion = "1.36"
+	ClientGoVersion        = "0.36.0"
 )
 
 // EnvK8sVersion is the env var that overrides the K8s version used for

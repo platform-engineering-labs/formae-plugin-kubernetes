@@ -1,0 +1,171 @@
+/// Mappers for flowcontrol.apiserver.k8s.io/v1 K8S resource types.
+module flowcontrol
+
+import "../../../v1.36/subresources.pkl" as k8s
+import "../../../v1.36/flowcontrol/FlowSchema.pkl" as fs
+import "../../../v1.36/flowcontrol/PriorityLevelConfiguration.pkl" as plc
+
+import "common.pkl"
+
+// =============================================================================
+// FlowSchema (cluster-scoped)
+// =============================================================================
+
+function mapFlowSchema(src: Any, prefix: String, _namespace: String): fs.FlowSchema =
+  new fs.FlowSchema {
+    label = common.makeLabel(prefix, "flowschema", src.metadata.name)
+    metadata = common.mapClusterMeta(src.metadata)
+    when (src.spec != null) {
+      spec = mapFlowSchemaSpec(src.spec)
+    }
+  }
+
+function mapFlowSchemaSpec(src: Any): fs.FlowSchemaSpec =
+  new fs.FlowSchemaSpec {
+    priorityLevelConfiguration = new fs.PriorityLevelConfigurationReference {
+      name = src.priorityLevelConfiguration.name
+    }
+    when (src.matchingPrecedence != null) {
+      matchingPrecedence = src.matchingPrecedence
+    }
+    when (src.distinguisherMethod != null) {
+      distinguisherMethod = new fs.FlowDistinguisherMethod {
+        `type` = src.distinguisherMethod.type
+      }
+    }
+    when (src.rules != null) {
+      rules = new Listing {
+        for (_r in src.rules) {
+          mapPolicyRulesWithSubjects(_r)
+        }
+      }
+    }
+  }
+
+function mapPolicyRulesWithSubjects(src: Any): fs.PolicyRulesWithSubjects =
+  new fs.PolicyRulesWithSubjects {
+    subjects = new Listing {
+      for (_s in src.subjects) {
+        mapFlowSchemaSubject(_s)
+      }
+    }
+    when (src.resourceRules != null) {
+      resourceRules = new Listing {
+        for (_r in src.resourceRules) {
+          mapResourcePolicyRule(_r)
+        }
+      }
+    }
+    when (src.nonResourceRules != null) {
+      nonResourceRules = new Listing {
+        for (_r in src.nonResourceRules) {
+          mapNonResourcePolicyRule(_r)
+        }
+      }
+    }
+  }
+
+function mapFlowSchemaSubject(src: Any): fs.Subject =
+  new fs.Subject {
+    kind = src.kind
+    when (src.serviceAccount != null) {
+      serviceAccount = new fs.ServiceAccountSubject {
+        name = src.serviceAccount.name
+        namespace = src.serviceAccount.namespace
+      }
+    }
+    when (src.user != null) {
+      user = new fs.UserSubject {
+        name = src.user.name
+      }
+    }
+    when (src.group != null) {
+      group = new fs.GroupSubject {
+        name = src.group.name
+      }
+    }
+  }
+
+function mapResourcePolicyRule(src: Any): fs.ResourcePolicyRule =
+  new fs.ResourcePolicyRule {
+    apiGroups = common.mapStringListing(src.apiGroups)
+    resources = common.mapStringListing(src.resources)
+    verbs = common.mapStringListing(src.verbs)
+    when (src.clusterScope != null) {
+      clusterScope = src.clusterScope
+    }
+    when (src.namespaces != null) {
+      namespaces = common.mapStringListing(src.namespaces)
+    }
+  }
+
+function mapNonResourcePolicyRule(src: Any): fs.NonResourcePolicyRule =
+  new fs.NonResourcePolicyRule {
+    verbs = common.mapStringListing(src.verbs)
+    nonResourceURLs = common.mapStringListing(src.nonResourceURLs)
+  }
+
+// =============================================================================
+// PriorityLevelConfiguration (cluster-scoped)
+// =============================================================================
+
+function mapPriorityLevelConfiguration(src: Any, prefix: String, _namespace: String): plc.PriorityLevelConfiguration =
+  new plc.PriorityLevelConfiguration {
+    label = common.makeLabel(prefix, "prioritylevelconfiguration", src.metadata.name)
+    metadata = common.mapClusterMeta(src.metadata)
+    when (src.spec != null) {
+      spec = mapPriorityLevelConfigurationSpec(src.spec)
+    }
+  }
+
+function mapPriorityLevelConfigurationSpec(src: Any): plc.PriorityLevelConfigurationSpec =
+  new plc.PriorityLevelConfigurationSpec {
+    `type` = src.type
+    when (src.limited != null) {
+      limited = mapLimitedPriorityLevelConfiguration(src.limited)
+    }
+    when (src.exempt != null) {
+      exempt = new plc.ExemptPriorityLevelConfiguration {
+        when (src.exempt.lendablePercent != null) {
+          lendablePercent = src.exempt.lendablePercent
+        }
+        when (src.exempt.nominalConcurrencyShares != null) {
+          nominalConcurrencyShares = src.exempt.nominalConcurrencyShares
+        }
+      }
+    }
+  }
+
+function mapLimitedPriorityLevelConfiguration(src: Any): plc.LimitedPriorityLevelConfiguration =
+  new plc.LimitedPriorityLevelConfiguration {
+    when (src.nominalConcurrencyShares != null) {
+      nominalConcurrencyShares = src.nominalConcurrencyShares
+    }
+    when (src.lendablePercent != null) {
+      lendablePercent = src.lendablePercent
+    }
+    when (src.borrowingLimitPercent != null) {
+      borrowingLimitPercent = src.borrowingLimitPercent
+    }
+    when (src.limitResponse != null) {
+      limitResponse = mapLimitResponse(src.limitResponse)
+    }
+  }
+
+function mapLimitResponse(src: Any): plc.LimitResponse =
+  new plc.LimitResponse {
+    `type` = src.type
+    when (src.queuing != null) {
+      queuing = new plc.QueuingConfiguration {
+        when (src.queuing.queues != null) {
+          queues = src.queuing.queues
+        }
+        when (src.queuing.handSize != null) {
+          handSize = src.queuing.handSize
+        }
+        when (src.queuing.queueLengthLimit != null) {
+          queueLengthLimit = src.queuing.queueLengthLimit
+        }
+      }
+    }
+  }

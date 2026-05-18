@@ -264,7 +264,9 @@ open class Volume extends formae.SubResource {
   @FieldHint {}
   gcePersistentDisk : Mapping?
 
+  /// Image volume source. GA in K8s 1.36 (KEP-4639).
   @FieldHint {}
+  @K8sVersion { introducedIn = "1.36"; reference = "https://kep.k8s.io/4639" }
   image: ImageVolumeSource?
 
   @FieldHint {}

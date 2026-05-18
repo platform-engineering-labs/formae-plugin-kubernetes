@@ -267,9 +267,6 @@ open class Volume extends formae.SubResource {
   gcePersistentDisk : Mapping?
 
   @FieldHint {}
-  image: ImageVolumeSource?
-
-  @FieldHint {}
   photonPersistentDisk : Mapping?
 
   @FieldHint {}

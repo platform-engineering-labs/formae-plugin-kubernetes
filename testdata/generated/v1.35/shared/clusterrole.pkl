@@ -1,0 +1,27 @@
+/*
+ * Conformance Test: ClusterRole (Create)
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.35/rbac/ClusterRole.pkl" as cr
+import "@k8s/v1.35/subresources.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new cr.ClusterRole {
+    label = "test-clusterrole"
+    metadata = new k8s.ObjectMeta {
+      name = "test-cr-\(v.testRunID)"
+    }
+    rules = new Listing {
+      new k8s.PolicyRule {
+        apiGroups = new Listing { "" }
+        resources = new Listing { "nodes" }
+        verbs = new Listing { "get"; "list" }
+      }
+    }
+  }
+}
