@@ -175,7 +175,11 @@ open class PodSpec extends formae.SubResource {
   @FieldHint {}
   volumes: Listing<Volume>?
 
+  /// Pod-level resource requirements. Alpha in K8s 1.32, Beta in 1.36
+  /// (KEP-2837: InPlacePodLevelResourcesVerticalScaling). Applied to the
+  /// pod's cgroup; per-container resources stay in `containers[].resources`.
   @FieldHint {}
+  @K8sVersion { introducedIn = "1.32"; reference = "https://kep.k8s.io/2837" }
   resources: ResourceRequirements?
 
   @FieldHint { updateMethod = "EntitySet"; indexField = "name" }
@@ -264,7 +268,9 @@ open class Volume extends formae.SubResource {
   @FieldHint {}
   gcePersistentDisk : Mapping?
 
+  /// Image volume source. Alpha in K8s 1.31, Beta in 1.33, GA in 1.36.
   @FieldHint {}
+  @K8sVersion { introducedIn = "1.31"; reference = "https://kep.k8s.io/4639" }
   image: ImageVolumeSource?
 
   @FieldHint {}

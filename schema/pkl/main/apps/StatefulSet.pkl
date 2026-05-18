@@ -135,7 +135,11 @@ open class RollingUpdateStatefulSetStrategy extends formae.SubResource {
   @k8s.FieldHint {}
   partition: k8s.NonNegativeInt?
 
+  /// StatefulSet rolling-update `maxUnavailable`.
+  /// Alpha in K8s 1.24 (`MaxUnavailableStatefulSet`), Beta default-on in 1.35
+  /// (regressed and disabled by default later in the 1.35 series).
   @k8s.FieldHint {}
+  @k8s.K8sVersion { introducedIn = "1.24"; reference = "https://kep.k8s.io/961" }
   maxUnavailable: k8s.IntOrString?
 }
 

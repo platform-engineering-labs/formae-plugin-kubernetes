@@ -195,6 +195,13 @@ open class HPAScalingRules extends formae.SubResource {
 
   @k8s.FieldHint {}
   policies: Listing<HPAScalingPolicy>?
+
+  /// Per-direction tolerance for HPA scaling decisions. Alpha in K8s 1.33,
+  /// Beta default-on in 1.35 (KEP-4951: HPAConfigurableTolerance). Quantity
+  /// expressed as a ratio (e.g. "0.1" for 10%).
+  @k8s.FieldHint { outputTransformation = (it) -> k8s.toK8sQuantity(it) }
+  @k8s.K8sVersion { introducedIn = "1.33"; reference = "https://kep.k8s.io/4951" }
+  tolerance: k8s.Quantity?
 }
 
 @k8s.SubResourceHint {}
