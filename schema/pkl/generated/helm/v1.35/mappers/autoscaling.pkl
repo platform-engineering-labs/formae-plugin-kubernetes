@@ -1,0 +1,54 @@
+/// Mappers for autoscaling/v2 K8S resource types.
+module autoscaling
+
+import "../../../v1.35/subresources.pkl" as k8s
+import "../../../v1.35/autoscaling/HorizontalPodAutoscaler.pkl" as hpa
+
+import "common.pkl"
+
+// =============================================================================
+// HorizontalPodAutoscaler
+// =============================================================================
+
+function mapHorizontalPodAutoscaler(src: Any, prefix: String, namespace: String): hpa.HorizontalPodAutoscaler =
+  new hpa.HorizontalPodAutoscaler {
+    label = common.makeLabel(prefix, "horizontalpodautoscaler", src.metadata.name)
+    metadata = common.mapObjectMeta(src.metadata, namespace)
+    spec = mapHPASpec(src.spec)
+  }
+
+function mapHPASpec(src: Any): hpa.HorizontalPodAutoscalerSpec =
+  new hpa.HorizontalPodAutoscalerSpec {
+    scaleTargetRef = new hpa.CrossVersionObjectReference {
+      apiVersion = src.scaleTargetRef.apiVersion
+      kind = src.scaleTargetRef.kind
+      name = src.scaleTargetRef.name
+    }
+    when (src.minReplicas != null) {
+      minReplicas = src.minReplicas
+    }
+    maxReplicas = src.maxReplicas
+    when (src.metrics != null) {
+      metrics = new Listing {
+        for (_m in src.metrics) {
+          new hpa.MetricSpec {
+            type = _m.type
+            when (_m.resource != null) {
+              resource = new hpa.ResourceMetricSource {
+                name = _m.resource.name
+                target = new hpa.MetricTarget {
+                  type = _m.resource.target.type
+                  when (_m.resource.target.averageUtilization != null) {
+                    averageUtilization = _m.resource.target.averageUtilization
+                  }
+                  when (_m.resource.target.averageValue != null) {
+                    averageValue = "\(_m.resource.target.averageValue)"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
