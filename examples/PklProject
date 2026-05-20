@@ -11,7 +11,7 @@ dependencies {
     uri = "package://hub.platform.engineering/plugins/azure/schema/pkl/azure/azure@0.1.2"
   }
   ["gcp"] {
-    uri = "package://hub.platform.engineering/plugins/gcp/schema/pkl/gcp/gcp@0.1.4"
+    uri = "package://hub.platform.engineering/plugins/gcp/schema/pkl/gcp/gcp@0.1.5"
   }
   ["oci"] {
     uri = "package://hub.platform.engineering/plugins/oci/schema/pkl/oci/oci@0.1.3"

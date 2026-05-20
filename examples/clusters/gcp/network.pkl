@@ -1,5 +1,7 @@
 import "@gcp/compute/network.pkl"
 import "@gcp/compute/subnetwork.pkl"
+import "@gcp/compute/router.pkl"
+import "@gcp/compute/routerNat.pkl"
 
 import "vars.pkl"
 
@@ -35,4 +37,22 @@ function subnet(properties: Dynamic?): subnetwork.Subnetwork = new subnetwork.Su
       ipCidrRange = properties.servicesCidr.value
     }
   }
+}
+
+function gkeRouter(properties: Dynamic?): router.Router = new router.Router {
+  target = vars.target.res
+  label = "gke-router"
+  name = "\(properties.name.value)-router"
+  network = vpc(properties).res.selfLink
+  region = properties.region.value
+}
+
+function nat(properties: Dynamic?): routerNat.RouterNat = new routerNat.RouterNat {
+  target = vars.target.res
+  label = "gke-nat"
+  name = "\(properties.name.value)-nat"
+  router = gkeRouter(properties).res.name
+  region = properties.region.value
+  natIpAllocateOption = "AUTO_ONLY"
+  sourceSubnetworkIpRangesToNat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
 }
