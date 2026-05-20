@@ -26,6 +26,8 @@ resources: Listing = new {
   vars.target
   network.vpc(vars.props)
   network.subnet(vars.props)
+  network.gkeRouter(vars.props)
+  network.nat(vars.props)
   gkeCluster
 }
 
