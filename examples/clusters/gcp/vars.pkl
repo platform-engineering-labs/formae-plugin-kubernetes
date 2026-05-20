@@ -20,11 +20,11 @@ props = new Dynamic {
   }
   region = new formae.Prop {
     flag = "region"
-    default = "europe-west4"
+    default = read?("env:GCP_REGION") ?? "us-central1"
   }
   zone = new formae.Prop {
     flag = "zone"
-    default = "europe-west4-a"
+    default = read?("env:GCP_ZONE") ?? "us-central1-a"
   }
   subnetCidr = new formae.Prop {
     flag = "subnetCidr"
