@@ -68,40 +68,49 @@ var pklProjectRewrites = func(_ string) []struct{ Old, New string } {
 // references that target an api-group subdirectory.
 var fixtureSchemaImportRE = regexp.MustCompile(`(import\s+"@k8s/)([a-z][a-z0-9_-]*\/)`)
 
+// fixtureSubresourcesImportRE matches `import "@k8s/k8s-subresources.pkl"`
+// (with or without an `as <alias>` suffix) — the master tree's
+// version-agnostic subresources file used by chart-conformance fixtures
+// that run against `testdata/main/` directly (not the per-version
+// generated tree).
+var fixtureSubresourcesImportRE = regexp.MustCompile(`(import\s+"@k8s/)k8s-subresources\.pkl(")`)
+
 // fixtureK8sRootImportWithAliasRE matches `import "@k8s/k8s.pkl" as <alias>`
 // — preserves whatever alias the fixture already declared. Applied first.
 var fixtureK8sRootImportWithAliasRE = regexp.MustCompile(`(import\s+"@k8s/)k8s\.pkl(")(\s+as\s+\w+)`)
 
 // fixtureK8sRootImportRE matches the bare `import "@k8s/k8s.pkl"` form
 // (no `as <alias>`). Applied AFTER the with-alias pass to catch only the
-// remaining bare imports. Added `as k8s` keeps fixtures using k8s.* refs
-// working since the per-version basename (`subresources`) no longer
-// matches the implicit-alias `k8s`.
+// remaining bare imports.
 var fixtureK8sRootImportRE = regexp.MustCompile(`(import\s+"@k8s/)k8s\.pkl(")`)
 
 // rewriteFixtureSchemaImports rewrites fixture imports under a generated
 // per-version testdata tree to address the matching schema version
 // subtree:
 //
-//	import "@k8s/core/Pod.pkl"           ->  import "@k8s/v1.30/core/Pod.pkl"
-//	import "@k8s/k8s.pkl" as foo         ->  import "@k8s/v1.30/subresources.pkl" as foo
-//	import "@k8s/k8s.pkl"                ->  import "@k8s/v1.30/subresources.pkl" as k8s
+//	import "@k8s/core/Pod.pkl"                       ->  import "@k8s/v1.30/core/Pod.pkl"
+//	import "@k8s/k8s-subresources.pkl" as k8s        ->  import "@k8s/v1.30/k8s.pkl" as k8s
+//	import "@k8s/k8s.pkl" as foo                     ->  import "@k8s/v1.30/k8s.pkl" as foo
+//	import "@k8s/k8s.pkl"                            ->  import "@k8s/v1.30/k8s.pkl"
 //
 // After the schema split the package root holds only Config + Auth (in
 // target.pkl); SubResource classes (PodSpec, Container, …) live in the
-// per-version v<X.Y>/subresources.pkl. Fixtures reach Config + Auth +
-// SubResources through subresources.pkl via the extends chain
-// (subresources → target → shared).
+// master tree's k8s-subresources.pkl and the per-version v<X.Y>/k8s.pkl.
+// Fixtures reach Config + Auth + SubResources through the per-version
+// k8s.pkl via the extends chain (v<X.Y>/k8s.pkl → target → shared).
 //
-// Idempotent: re-running on already-rewritten content is a no-op.
+// Order matters: the subresources pattern runs before the bare k8s.pkl
+// pattern so the more-specific match wins. Idempotent: re-running on
+// already-rewritten content is a no-op.
 func rewriteFixtureSchemaImports(path, version string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
 	rewritten := fixtureSchemaImportRE.ReplaceAll(data, []byte(fmt.Sprintf(`${1}v%s/${2}`, version)))
-	rewritten = fixtureK8sRootImportWithAliasRE.ReplaceAll(rewritten, []byte(fmt.Sprintf(`${1}v%s/subresources.pkl${2}${3}`, version)))
-	rewritten = fixtureK8sRootImportRE.ReplaceAll(rewritten, []byte(fmt.Sprintf(`${1}v%s/subresources.pkl${2} as k8s`, version)))
+	rewritten = fixtureSubresourcesImportRE.ReplaceAll(rewritten, []byte(fmt.Sprintf(`${1}v%s/k8s.pkl${2}`, version)))
+	rewritten = fixtureK8sRootImportWithAliasRE.ReplaceAll(rewritten, []byte(fmt.Sprintf(`${1}v%s/k8s.pkl${2}${3}`, version)))
+	rewritten = fixtureK8sRootImportRE.ReplaceAll(rewritten, []byte(fmt.Sprintf(`${1}v%s/k8s.pkl${2}`, version)))
 	if bytesEqual(data, rewritten) {
 		return nil
 	}

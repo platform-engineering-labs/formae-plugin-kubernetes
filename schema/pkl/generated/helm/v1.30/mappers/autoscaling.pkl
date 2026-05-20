@@ -1,7 +1,7 @@
 /// Mappers for autoscaling/v2 K8S resource types.
 module autoscaling
 
-import "../../../v1.30/subresources.pkl" as k8s
+import "../../../v1.30/k8s.pkl" as k8s
 import "../../../v1.30/autoscaling/HorizontalPodAutoscaler.pkl" as hpa
 
 import "common.pkl"

@@ -7,7 +7,7 @@ import "@k8s/v1.34/core/Namespace.pkl" as ns
 import "@k8s/v1.34/core/Service.pkl" as svc
 import "@k8s/v1.34/core/PersistentVolumeClaim.pkl" as pvc
 import "@k8s/v1.34/apps/StatefulSet.pkl" as ss
-import "@k8s/k8s.pkl" as k8s
+import "@k8s/v1.34/k8s.pkl" as k8s
 
 local appName = "minio"
 local imageRef = "docker.io/minio/minio:RELEASE.2024-12-18T13-15-44Z"

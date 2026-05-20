@@ -14,7 +14,7 @@
 module priorityclass
 
 import "@formae/formae.pkl"
-import "../subresources.pkl" as k8s
+import "../k8s.pkl" as k8s
 
 const type = "K8S::Scheduling::PriorityClass"
 

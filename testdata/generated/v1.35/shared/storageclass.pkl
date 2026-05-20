@@ -4,7 +4,7 @@
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
 import "@k8s/v1.35/storage/StorageClass.pkl" as sc
-import "@k8s/v1.35/subresources.pkl" as k8s
+import "@k8s/v1.35/k8s.pkl" as k8s
 import "./config/vars.pkl" as v
 
 forma {

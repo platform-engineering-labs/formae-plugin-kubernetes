@@ -1,7 +1,7 @@
 /// Mappers for policy/v1 K8S resource types.
 module policy
 
-import "../../../v1.21/subresources.pkl" as k8s
+import "../../../v1.21/k8s.pkl" as k8s
 import "../../../v1.21/policy/PodDisruptionBudget.pkl" as pdb
 import "../../../v1.21/apps/ReplicaSet.pkl" as rs
 

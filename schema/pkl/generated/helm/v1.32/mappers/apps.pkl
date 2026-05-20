@@ -1,7 +1,7 @@
 /// Mappers for apps/v1 K8S resource types.
 module apps
 
-import "../../../v1.32/subresources.pkl" as k8s
+import "../../../v1.32/k8s.pkl" as k8s
 import "../../../v1.32/apps/Deployment.pkl" as dep
 import "../../../v1.32/apps/ReplicaSet.pkl" as rs
 import "../../../v1.32/apps/StatefulSet.pkl" as sts
