@@ -38,6 +38,11 @@ props = new Dynamic {
     flag = "servicesCidr"
     default = "10.2.32.0/20"
   }
+  applyAs = new formae.Prop {
+    flag = "apply-as"
+    default = read?("env:GCP_APPLY_AS")
+      ?? throw("GCP apply principal not set. Pass --apply-as=user:foo@bar.com or set GCP_APPLY_AS.")
+  }
 }
 
 target: formae.Target = new formae.Target {
