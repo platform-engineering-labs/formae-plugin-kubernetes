@@ -60,12 +60,18 @@ open class StorageClass extends k8s.Resource {
   @k8s.FieldHint { hasProviderDefault = true; createOnly = true }
   reclaimPolicy: String? = "Delete"
 
-  @k8s.FieldHint {}
+  /// `mountOptions` is immutable on StorageClass — the apiserver rejects
+  /// any update to spec fields other than `allowVolumeExpansion`.
+  /// terraform-provider-kubernetes marks this `ForceNew: true`.
+  @k8s.FieldHint { createOnly = true }
   mountOptions: Listing<String>?
 
   @k8s.FieldHint { createOnly = true }
   parameters: Mapping<String, String>?
 
-  @k8s.FieldHint {}
+  /// `allowedTopologies` is immutable on StorageClass — the apiserver
+  /// rejects any update to spec fields other than `allowVolumeExpansion`.
+  /// terraform-provider-kubernetes marks this `ForceNew: true`.
+  @k8s.FieldHint { createOnly = true }
   allowedTopologies: Listing<k8s.TopologySelectorTerm>?
 }

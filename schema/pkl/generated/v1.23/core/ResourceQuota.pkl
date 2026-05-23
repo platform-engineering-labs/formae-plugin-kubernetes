@@ -62,7 +62,10 @@ open class ResourceQuotaSpec extends formae.SubResource {
   @k8s.FieldHint { outputTransformation = (it) -> k8s.toK8sQuantityMapping(it) }
   hard: k8s.ResourceQuantities?
 
-  @k8s.FieldHint {}
+  /// `scopes` is set at creation on ResourceQuota — the apiserver rejects
+  /// post-create modifications. terraform-provider-kubernetes marks this
+  /// `ForceNew: true`.
+  @k8s.FieldHint { createOnly = true }
   scopes: Listing<String>?
 }
 
