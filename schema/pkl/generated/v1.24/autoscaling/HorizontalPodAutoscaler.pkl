@@ -176,7 +176,17 @@ open class CrossVersionObjectReference extends formae.SubResource {
   @k8s.FieldHint { required = true }
   kind: String
 
-  @k8s.FieldHint { required = true }
+  /// The HPA observes and scales the target Deployment/StatefulSet/ReplicaSet
+  /// at runtime — the target's pods are "reachable" to the autoscaler via
+  /// this reference. Annotate as `attachesTo` so destroying the scale target
+  /// is ordered after destroying the HPA, preventing a window where the HPA
+  /// dangles against a removed target. See RFC-0043 §3.1.
+  ///
+  /// Note: `CrossVersionObjectReference` is also used by HPA metric sources
+  /// (`ObjectMetricSource.describedObject`) for "scale on metrics from another
+  /// object" semantics. The `attachesTo` annotation applies uniformly there
+  /// too — the referenced object must outlive the HPA that observes it.
+  @k8s.FieldHint { required = true; edgeKind = "attachesTo" }
   name: (String|formae.Resolvable)
 }
 

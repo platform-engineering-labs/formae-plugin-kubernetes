@@ -94,7 +94,13 @@ open class StatefulSetSpec extends formae.SubResource {
   minReadySeconds: k8s.NonNegativeInt?
 
   /// `serviceName` is immutable on StatefulSet.
-  @k8s.FieldHint { required = true; createOnly = true }
+  ///
+  /// StatefulSet pods are reached via the headless governing Service's DNS
+  /// (e.g. `pod-0.svc.namespace.svc.cluster.local`) at runtime. Removing the
+  /// Service before its StatefulSet pods breaks stable pod DNS — annotate as
+  /// `attachesTo` so the Service is destroyed after the StatefulSet, not
+  /// before. See RFC-0043 §3.1.
+  @k8s.FieldHint { required = true; createOnly = true; edgeKind = "attachesTo" }
   serviceName: (String|formae.Resolvable)
 
   /// `volumeClaimTemplates` is immutable post-create — adding,
