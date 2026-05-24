@@ -64,7 +64,10 @@ open class ServiceSpec extends formae.SubResource {
   @k8s.FieldHint { createOnly = true }
   clusterIPs: Listing<k8s.ClusterIP>?
 
-  @k8s.FieldHint {}
+  /// `healthCheckNodePort` is set-once on Service (only for type=LoadBalancer
+  /// with externalTrafficPolicy=Local). Once allocated the apiserver rejects
+  /// changes. terraform-provider-kubernetes marks this `ForceNew: true`.
+  @k8s.FieldHint { createOnly = true }
   healthCheckNodePort: k8s.PortNumber?
 
   /// `ipFamilyPolicy` is immutable once set.

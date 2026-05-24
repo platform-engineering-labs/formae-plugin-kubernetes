@@ -415,7 +415,11 @@ open class JobSpec extends formae.SubResource {
   @FieldHint { hasProviderDefault = true }
   backoffLimit: NonNegativeInt?
 
-  @FieldHint {}
+  /// `backoffLimitPerIndex` is immutable on Job — only settable when
+  /// completionMode=Indexed at create time. K8s docs and
+  /// terraform-provider-kubernetes both flag it as immutable
+  /// (`ForceNew: true`).
+  @FieldHint { createOnly = true }
   backoffLimitPerIndex: NonNegativeInt?
 
   /// `manualSelector` is immutable on Job.

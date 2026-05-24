@@ -168,7 +168,11 @@ open class ObjectMeta extends formae.SubResource {
 
   /// Namespace defines the space within which each name must be unique.
   /// Empty for cluster-scoped resources. Accepts resolvable references.
-  @FieldHint {}
+  /// `metadata.namespace` is part of the resource's URL — the apiserver
+  /// cannot move a resource between namespaces. terraform-provider-kubernetes
+  /// marks this `ForceNew: true`; createOnly surfaces the constraint at
+  /// plan time rather than at apply.
+  @FieldHint { createOnly = true }
   namespace: (String|formae.Resolvable)?
 
   /// Labels are key/value pairs for resource organization.
@@ -198,7 +202,11 @@ open class NamespacedObjectMeta extends ObjectMeta {
 
   /// Namespace defines the space within which each name must be unique.
   /// Required for namespaced resources; accepts resolvable references.
-  @FieldHint { required = true }
+  /// `metadata.namespace` is part of the resource's URL — the apiserver
+  /// cannot move a resource between namespaces. terraform-provider-kubernetes
+  /// marks this `ForceNew: true`; createOnly surfaces the constraint at
+  /// plan time rather than at apply.
+  @FieldHint { required = true; createOnly = true }
   namespace: (String|formae.Resolvable)
 
   /// Labels are key/value pairs for resource organization.
