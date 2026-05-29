@@ -235,18 +235,22 @@ func (svc *Service) List(ctx context.Context, request *resource.ListRequest) (*r
 		return nil, fmt.Errorf("failed to list services: %w", err)
 	}
 
-
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,
 	}, nil
 }
 
 // operationStatus maps Service state to Formae OperationStatus.
-// All Services are Success once the API server accepts the object. Whether a
-// LoadBalancer controller eventually provisions an external address depends
-// on cluster configuration (cloud-provider, MetalLB, etc.) and may take an
-// unbounded amount of time — Formae apply should not block on it.
+// ClusterIP/NodePort/ExternalName Services are Success once the API server
+// accepts the object. LoadBalancer Services stay InProgress until the cloud
+// controller assigns an external address — cross-plugin Resolvables
+// ($ref on status.loadBalancer.ingress) need a populated status to read.
+// Formae's plugin retry policy bounds the wait; if the cluster lacks an LB
+// controller, the apply will eventually error out rather than hang.
 func (svc *Service) operationStatus(s *v1.Service) resource.OperationStatus {
+	if s.Spec.Type == v1.ServiceTypeLoadBalancer && len(s.Status.LoadBalancer.Ingress) == 0 {
+		return resource.OperationStatusInProgress
+	}
 	return resource.OperationStatusSuccess
 }
 

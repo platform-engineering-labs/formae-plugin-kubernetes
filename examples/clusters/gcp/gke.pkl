@@ -12,10 +12,10 @@ function gkeCluster(properties: Dynamic?): cluster.Cluster = new cluster.Cluster
   network = net.vpc(properties).res.selfLink
   subnetwork = net.subnet(properties).res.selfLink
 
-  // 1 e2-medium isn't enough for bookstore's 4 pods after GKE system overhead.
-  initialNodeCount = 2
+  // Sized for the lgtm stack (~27 pods + demo traffic). Matches PR #12.
+  initialNodeCount = 3
   nodeConfig = new cluster.NodeConfig {
-    machineType = "e2-medium"
+    machineType = "e2-standard-2"
     diskSizeGb = 50
     diskType = "pd-standard"
     oauthScopes = new Listing {

@@ -16,6 +16,15 @@ const type = "K8S::Core::Service"
 open class ServiceResolvable extends formae.Resolvable {
   hidden type = module.type
   hidden name: ServiceResolvable = (this) { property = "metadata.name" }
+  hidden lbIngressIp: ServiceResolvable = (this) { property = "status.loadBalancer.ingress[0].ip" }
+  hidden lbIngressHostname: ServiceResolvable = (this) { property = "status.loadBalancer.ingress[0].hostname" }
+  /// Fully-formed URL ("http://<host>[:port]") synthesized by the K8s plugin
+  /// from the first ingress address + first spec.ports[].port. Use this when
+  /// a cross-plugin Target needs the Grafana/etc endpoint — Pkl can't
+  /// compose a literal scheme with a Resolvable IP at user level, and
+  /// Formae's property-path resolver doesn't support `[0]` indexing, so the
+  /// URL is assembled plugin-side and exposed at a flat path.
+  hidden lbIngressUrl: ServiceResolvable = (this) { property = "status.loadBalancer.url" }
 }
 /// K8S Service resource.
 /// A Service exposes a set of Pods as a network service.

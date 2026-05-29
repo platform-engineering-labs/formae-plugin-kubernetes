@@ -52,12 +52,11 @@ local stack: formae.Stack = new {
 
 local cloud = dispatch.For(providerName)
 
-local lgtm = new {
-  resources = lgtmApp.allResources(
-    cloud.target,
-    properties.enableDemoTraffic.value as Boolean
-  )
-}
+local lgtm = lgtmApp.allResources(
+  cloud.target,
+  properties.enableDemoTraffic.value as Boolean,
+  false
+)
 
 forma {
   stack
