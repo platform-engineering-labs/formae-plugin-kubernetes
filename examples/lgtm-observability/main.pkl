@@ -69,25 +69,16 @@ local stack: formae.Stack = new {
 
 local cloud = dispatch.For(providerName)
 
-// Pass enableGrafanaAdminAuth=true so the k8s grafana boots with admin/password
-// auth (from a managed Secret) instead of anonymous mode. This is what lets the
-// grafana plugin authenticate via GRAFANA_AUTH at agent start. Returns an object
-// with .resources (the Listing) AND .grafanaSvc (a handle to the LB Service).
+// enableGrafanaAdminAuth=true so Grafana boots with admin/password auth from a
+// managed Secret. The grafana plugin authenticates via GRAFANA_AUTH at agent start.
 local lgtm = lgtmApp.allResources(
   cloud.target,
   properties.enableDemoTraffic.value as Boolean,
   true
 )
 
-// Grafana plugin target — URL is a $ref on the Grafana K8s Service's
-// synthesized lbIngressUrl ("http://<host>[:port]"). The K8s plugin's Read
-// preserves status.loadBalancer.ingress AND synthesizes ingress[0].url from
-// the address + first port (see pkg/resources/prov/livestate.go). Pkl can't
-// concatenate a literal scheme with a Resolvable IP at user level, so the
-// URL has to come from a single Resolvable.
-// Per-provider labels so parallel multi-cloud applies don't collide on a single
-// inventory entry. UIDs stay stable across providers — they're scoped to the
-// per-provider Grafana instance, not the formae inventory.
+// URL is a $ref on the Grafana Service's synthesized lbIngressUrl. Per-provider
+// label so parallel multi-cloud applies don't collide on one inventory entry.
 local grafanaTarget: formae.Target = new {
   label = "grafana-target-\(providerName)"
   namespace = "GRAFANA"
@@ -103,10 +94,8 @@ local dashboardsFolder = new folder.Folder {
   title = "Formae Dashboards"
 }
 
-// Three datasources pointing at the cluster-internal LGTM read tiers. URLs use
-// in-cluster DNS — Grafana's server proxies queries through, so callers don't
-// need these reachable from outside the cluster. UIDs match the references the
-// shipped dashboards in formae-grafana-dashboards expect.
+// Datasources point at the cluster-internal LGTM read tiers (Grafana proxies
+// queries server-side). UIDs match the shipped dashboards' refs.
 local lokiDataSource = new datasource.DataSource {
   target = grafanaTarget.res
   label = "lgtm-loki-datasource-\(providerName)"
@@ -140,8 +129,8 @@ local mimirDataSource = new datasource.DataSource {
   isDefault = true
 }
 
-// Dashboards loaded from the formae-grafana-dashboards repo. `read()` fetches
-// at Pkl-eval time — the JSON gets embedded into the resource's configJson.
+// Dashboards from formae-grafana-dashboards. `read()` fetches at Pkl-eval
+// time and embeds the JSON into configJson.
 local dashboardRepo = "https://raw.githubusercontent.com/platform-engineering-labs/formae-grafana-dashboards/main/dashboards"
 local overviewJson = read("\(dashboardRepo)/formae-overview.json").text
 local pluginsJson = read("\(dashboardRepo)/formae-plugin.json").text

@@ -80,9 +80,8 @@ const serviceAccountMountPrefix = "/var/run/secrets/kubernetes.io/serviceaccount
 // false "Resource properties changed" detections in Formae.
 //
 // Additionally strips K8S server defaults that leak through apply config types:
-//   - status (entirely server-managed) — exception: Service preserves
-//     status.loadBalancer.ingress so cross-plugin Resolvables can read the
-//     assigned LB endpoint
+//   - status (server-managed); Service preserves status.loadBalancer.ingress so
+//     cross-plugin Resolvables can read the assigned LB endpoint
 //   - empty objects {} (e.g. resources:{}, objectSelector:{})
 //   - imagePullPolicy on containers (K8S-defaulted based on image tag)
 //   - auto-injected service account volumeMounts
@@ -478,11 +477,9 @@ func firstServicePort(result map[string]interface{}) int {
 	return 0
 }
 
-// firstIngressURL returns "http://<host>[:port]" built from the first ingress
-// entry's ip/hostname + the given port. Empty string if no usable host.
-// Lives at status.loadBalancer.url (not nested in the array) so Formae's
-// property-path resolver — which doesn't support `[0]` indexing — can reach
-// it from a Resolvable.
+// firstIngressURL returns "http://<host>[:port]" from the first ingress entry.
+// Exposed at status.loadBalancer.url (flat) so Formae's property-path resolver,
+// which lacks `[0]` indexing, can reach it from a Resolvable.
 func firstIngressURL(ingress []interface{}, port int) string {
 	if len(ingress) == 0 {
 		return ""

@@ -332,10 +332,9 @@ open class HostPathVolumeSource extends formae.SubResource {
   @FieldHint { required = true }
   path: String
 
-  // kube-apiserver defaults this to "" when the user omits it, then echoes it
-  // back on every Get. Without hasProviderDefault, every reconcile of a
-  // workload using hostPath (DaemonSet log scrapers, etc.) plans a spurious
-  // volumes[*] remove+add.
+  // kube-apiserver defaults this to "" when omitted, so every Get echoes it
+  // back. Without hasProviderDefault, reconcile plans spurious volumes[*]
+  // remove+add for workloads using hostPath.
   @FieldHint { hasProviderDefault = true }
   type: String?
 }

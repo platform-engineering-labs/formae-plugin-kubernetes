@@ -1,6 +1,6 @@
 # LGTM Observability Example
 
-Deploy LGTM (Loki, Grafana, Tempo, Mimir) on a managed Kubernetes cluster on any of {AWS, Azure, GCP, OCI}, then provision Grafana via the grafana plugin — Folder, three DataSources, two Dashboards — in a single forma.
+Deploy LGTM (Loki, Grafana, Tempo, Mimir) on a managed Kubernetes cluster on any of {AWS, Azure, GCP, OCI}, then provision Grafana via the grafana plugin (Folder, three DataSources, two Dashboards) in a single forma.
 
 Three plugins compose: the cloud plugin provisions the cluster, the k8s plugin deploys the stack, the grafana plugin configures Grafana over its HTTP API. Target chaining wires it together: the K8s Target's auth is a `$ref` on the cluster endpoint; the Grafana Target's URL is a `$ref` on the Grafana Service's LoadBalancer ingress URL (`http://<host>[:port]`), synthesized by the k8s plugin's Read.
 
@@ -9,7 +9,7 @@ Three plugins compose: the cloud plugin provisions the cluster, the k8s plugin d
 - formae ≥ 0.86.0
 - `formae-plugin-kubernetes`, `formae-plugin-grafana`, and the cloud plugin for your chosen provider installed
 - Cloud credentials in your environment (e.g. `gcloud auth application-default login` for GCP)
-- `--provider local` (OrbStack / kind / minikube) works too — uses the current kubectl context and skips cloud provisioning. Fastest iteration path.
+- `--provider local` (OrbStack / kind / minikube) works too. Uses the current kubectl context and skips cloud provisioning. Fastest iteration path.
 
 ## Environment Variables
 
@@ -17,7 +17,7 @@ Three plugins compose: the cloud plugin provisions the cluster, the k8s plugin d
 |---|---|---|
 | `GRAFANA_AUTH` | `admin:admin-change-me` | Matches the password baked into the `lgtm-grafana-admin` Secret. Must be set **before** starting the agent. |
 | `FORMAE_PROVIDER` | `gcp` (or another provider) | Optional shortcut for `--provider`. |
-| `GCP_PROJECT`, `GCP_APPLY_AS` | (varies) | Required only for the GCP provider — see `clusters/gcp/vars.pkl`. |
+| `GCP_PROJECT`, `GCP_APPLY_AS` | (varies) | Required only for the GCP provider. See `clusters/gcp/vars.pkl`. |
 
 ## Usage
 
@@ -78,7 +78,7 @@ Issue a few formae commands (`formae inventory resources`, etc.) and the panels 
 | (cluster bundle) | varies | cloud | VPC, subnet, NAT, cluster, IAM |
 | `lgtm-grafana-admin` | `K8S::Core::Secret` | k8s | Holds the admin password |
 | (LGTM stack) | varies | k8s | ~48 resources: Grafana, Loki, Tempo, Mimir, MinIO, OTel, namespace |
-| `grafana-target-{provider}` | `Formae::Target` | — | URL is `$ref` on the Grafana Service's `lbIngressUrl` |
+| `grafana-target-{provider}` | `Formae::Target` | - | URL is `$ref` on the Grafana Service's `lbIngressUrl` |
 | `formae-dashboards-{provider}` | `Grafana::Core::Folder` | grafana | `uid = "formae-dashboards"` (UIDs are scoped to the per-provider Grafana, so they don't need provider suffixes) |
 | `lgtm-{loki,tempo,mimir}-datasource-{provider}` | `Grafana::Core::DataSource` (×3) | grafana | UIDs match dashboards' references |
 | `formae-{overview,plugins}-dashboard-{provider}` | `Grafana::Core::Dashboard` (×2) | grafana | Loaded from [formae-grafana-dashboards](https://github.com/platform-engineering-labs/formae-grafana-dashboards) |
@@ -105,7 +105,7 @@ The cascade flag picks up the telemetrygen Deployments that depend on the observ
 - **Anonymous-mode users**: this example forces admin-auth on Grafana so the plugin can authenticate. The legacy `examples/lgtm/main.pkl` retains the original anonymous-admin shape. The two should not be applied to the same stack.
 - **First-apply Grafana wait**: the grafana plugin retries on connect failures, so it's safe for the apply to reach the grafana resources before the LB has its public IP. In practice the apply takes 8-10 minutes; LB provisioning lands around minute 5.
 - **AWS NLB hostnames**: AWS exposes a `hostname` instead of an `ip` on `status.loadBalancer.ingress`. The synthesized `lbIngressUrl` uses whichever is non-empty, so this works on AWS too.
-- **Grafana runs as one replica**: the lgtm bundle pins `replicas = 1` because Grafana's embedded SQLite diverges across pods; an external DB would be required for HA. Restarting the Grafana pod resets its in-pod state — re-apply (or wait for sync) to repopulate.
+- **Grafana runs as one replica**: the lgtm bundle pins `replicas = 1` because Grafana's embedded SQLite diverges across pods; an external DB would be required for HA. Restarting the Grafana pod resets its in-pod state; re-apply (or wait for sync) to repopulate.
 
 ## How the URL Resolvable works
 
