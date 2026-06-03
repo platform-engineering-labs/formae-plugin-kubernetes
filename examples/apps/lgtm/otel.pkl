@@ -338,7 +338,7 @@ function agentDaemonSet(k8sTarget: formae.Target, appNs: ns.Namespace): ds.Daemo
             }
             new k8s.Volume {
               name = "varlogpods"
-              hostPath = new Mapping { ["path"] = "/var/log/pods" }
+              hostPath = new k8s.HostPathVolumeSource { path = "/var/log/pods" }
             }
           }
         }
