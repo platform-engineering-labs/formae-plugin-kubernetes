@@ -29,6 +29,9 @@ function aksCluster(properties: Dynamic?): mc.ManagedCluster = new mc.ManagedClu
       mode = "System"
       osType = "Linux"
       enableAutoScaling = false
+      // AKS server-side defaults this to 128 when omitted. Set explicitly so
+      // the desired-state matches actual on reconcile (no phantom diff).
+      osDiskSizeGB = 128
     }
   }
 
