@@ -17,6 +17,7 @@ import "@formae/formae.pkl"
 import "@k8s/v1.34/k8s.pkl" as k8s
 
 import "gke.pkl"
+import "iam.pkl"
 import "network.pkl"
 import "vars.pkl"
 
@@ -24,8 +25,11 @@ local gkeCluster = gke.gkeCluster(vars.props)
 
 resources: Listing = new {
   vars.target
+  iam.containerAdmin(vars.props)
   network.vpc(vars.props)
   network.subnet(vars.props)
+  network.gkeRouter(vars.props)
+  network.nat(vars.props)
   gkeCluster
 }
 

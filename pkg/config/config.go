@@ -52,10 +52,51 @@ type KubeconfigAuthConfig struct {
 	Kubeconfig string `json:"Kubeconfig,omitempty"`
 }
 
-// CloudAuthConfig holds fields common to all cloud auth types.
+// ResolvedString unmarshals either a plain JSON string or a formae
+// resolvable envelope ({"$ref":..., "$value":"..."} or
+// {"$res":true, "$value":"..."}) into a flat string. Targets created
+// from a Forma's $ref reach plugins with the envelope shape; the K8s
+// plugin's auth parsing previously expected the bare string and failed
+// to construct a client when the envelope leaked through.
+type ResolvedString string
+
+// UnmarshalJSON accepts either a quoted string or an object with a
+// "$value" key (the formae resolvable envelope).
+func (rs *ResolvedString) UnmarshalJSON(data []byte) error {
+	if len(data) == 0 {
+		*rs = ""
+		return nil
+	}
+	if data[0] == '"' {
+		var s string
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
+		*rs = ResolvedString(s)
+		return nil
+	}
+	if data[0] == '{' {
+		var envelope struct {
+			Value string `json:"$value"`
+		}
+		if err := json.Unmarshal(data, &envelope); err != nil {
+			return err
+		}
+		*rs = ResolvedString(envelope.Value)
+		return nil
+	}
+	return fmt.Errorf("ResolvedString: unsupported JSON shape: %s", string(data))
+}
+
+// String returns the resolved value as a plain string.
+func (rs ResolvedString) String() string { return string(rs) }
+
+// CloudAuthConfig holds fields common to all cloud auth types. Endpoint
+// and CertificateAuthority are ResolvedString so they accept both literal
+// strings and formae resolvable envelopes.
 type CloudAuthConfig struct {
-	Endpoint             string `json:"Endpoint"`
-	CertificateAuthority string `json:"CertificateAuthority"`
+	Endpoint             ResolvedString `json:"Endpoint"`
+	CertificateAuthority ResolvedString `json:"CertificateAuthority"`
 }
 
 // EKSAuthConfig holds EKS-specific auth fields.
@@ -274,13 +315,13 @@ func (c *Config) buildCloudConfig(providerFn func() (auth.AuthProvider, *CloudAu
 		return nil, err
 	}
 
-	caData, err := base64.StdEncoding.DecodeString(cloud.CertificateAuthority)
+	caData, err := base64.StdEncoding.DecodeString(string(cloud.CertificateAuthority))
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode certificate authority: %w", err)
 	}
 
 	cfg := &rest.Config{
-		Host: cloud.Endpoint,
+		Host: string(cloud.Endpoint),
 		TLSClientConfig: rest.TLSClientConfig{
 			CAData: caData,
 		},
@@ -308,7 +349,7 @@ func (c *Config) newEKSProvider() (auth.AuthProvider, *CloudAuthConfig, error) {
 	}
 	region := ac.Region
 	if region == "" {
-		region = eks.RegionFromEndpoint(ac.Endpoint)
+		region = eks.RegionFromEndpoint(string(ac.Endpoint))
 	}
 	return eks.NewProvider(ac.ClusterName, region), &ac.CloudAuthConfig, nil
 }

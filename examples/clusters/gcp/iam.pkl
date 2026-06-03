@@ -1,0 +1,16 @@
+import "@gcp/iam/projectIamMember.pkl"
+
+import "vars.pkl"
+
+// containerAdmin grants the applying principal `roles/container.admin` on
+// the project so subsequent K8s RBAC patches (ClusterRoles,
+// ClusterRoleBindings) clear GKE's IAM webhook authorizer. Without this
+// the lgtm forma fails on otel-agent's RBAC objects with
+// `requires container.clusterRoles.update`.
+function containerAdmin(properties: Dynamic?): projectIamMember.ProjectIamMember = new projectIamMember.ProjectIamMember {
+  target = vars.target.res
+  label = "gke-apply-as-container-admin"
+  project = properties.project.value
+  role = "roles/container.admin"
+  member = properties.applyAs.value
+}

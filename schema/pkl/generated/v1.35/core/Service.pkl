@@ -21,6 +21,13 @@ const type = "K8S::Core::Service"
 open class ServiceResolvable extends formae.Resolvable {
   hidden type = module.type
   hidden name: ServiceResolvable = (this) { property = "metadata.name" }
+  hidden lbIngressIp: ServiceResolvable = (this) { property = "status.loadBalancer.ingress[0].ip" }
+  hidden lbIngressHostname: ServiceResolvable = (this) { property = "status.loadBalancer.ingress[0].hostname" }
+  /// Synthesized "http://<host>[:port]" from the first ingress address + first
+  /// spec.ports[].port. Use when a cross-plugin Target needs the endpoint:
+  /// Pkl can't compose a scheme with a Resolvable IP at user level, and the
+  /// property-path resolver lacks `[0]` indexing.
+  hidden lbIngressUrl: ServiceResolvable = (this) { property = "status.loadBalancer.url" }
 }
 /// K8S Service resource.
 /// A Service exposes a set of Pods as a network service.
@@ -64,10 +71,7 @@ open class ServiceSpec extends formae.SubResource {
   @k8s.FieldHint { createOnly = true }
   clusterIPs: Listing<k8s.ClusterIP>?
 
-  /// `healthCheckNodePort` is set-once on Service (only for type=LoadBalancer
-  /// with externalTrafficPolicy=Local). Once allocated the apiserver rejects
-  /// changes. terraform-provider-kubernetes marks this `ForceNew: true`.
-  @k8s.FieldHint { createOnly = true }
+  @k8s.FieldHint {}
   healthCheckNodePort: k8s.PortNumber?
 
   /// `ipFamilyPolicy` is immutable once set.

@@ -80,7 +80,8 @@ const serviceAccountMountPrefix = "/var/run/secrets/kubernetes.io/serviceaccount
 // false "Resource properties changed" detections in Formae.
 //
 // Additionally strips K8S server defaults that leak through apply config types:
-//   - status (entirely server-managed)
+//   - status (server-managed); Service preserves status.loadBalancer.ingress so
+//     cross-plugin Resolvables can read the assigned LB endpoint
 //   - empty objects {} (e.g. resources:{}, objectSelector:{})
 //   - imagePullPolicy on containers (K8S-defaulted based on image tag)
 //   - auto-injected service account volumeMounts
@@ -106,7 +107,40 @@ func LiveState[T any](apiObject any, kind, apiVersion string) ([]byte, error) {
 		return nil, fmt.Errorf("failed to unmarshal for field stripping: %w", err)
 	}
 
+	// Status is entirely server-managed and stripped to avoid drift noise.
+	// Service is the one exception: loadBalancer.ingress carries the assigned
+	// external endpoint, which cross-plugin Resolvables ($ref) need to read.
+	// We extract that subpath before stripping, then re-attach it. We also
+	// synthesize a flat status.loadBalancer.url ("http://<host>[:port]") from
+	// the first ingress entry + spec.ports[0].port. Formae's property-path
+	// resolver doesn't support array indexing (`[0]`), so a Resolvable
+	// pointing at the ingress URL has to use the flat path. Pkl string
+	// interpolation also can't compose a literal scheme with a Resolvable,
+	// so the URL has to be assembled here.
+	var preservedStatus map[string]interface{}
+	if kind == "Service" {
+		if status, ok := result["status"].(map[string]interface{}); ok {
+			if lb, ok := status["loadBalancer"].(map[string]interface{}); ok {
+				if ingress, ok := lb["ingress"].([]interface{}); ok && len(ingress) > 0 {
+					port := firstServicePort(result)
+					url := firstIngressURL(ingress, port)
+					preservedLB := map[string]interface{}{
+						"ingress": ingress,
+					}
+					if url != "" {
+						preservedLB["url"] = url
+					}
+					preservedStatus = map[string]interface{}{
+						"loadBalancer": preservedLB,
+					}
+				}
+			}
+		}
+	}
 	delete(result, "status")
+	if preservedStatus != nil {
+		result["status"] = preservedStatus
+	}
 
 	// Inject kind and apiVersion — client-go typed clients strip TypeMeta
 	// from returned objects, but Formae requires these as required fields.
@@ -178,8 +212,8 @@ var containerListPaths = map[string]bool{
 // scope the deprecated-serviceAccount stripping rather than duck-typing on
 // "has a containers field".
 var podSpecPaths = map[string]bool{
-	"spec":                              true,
-	"spec.template.spec":                true,
+	"spec":                                true,
+	"spec.template.spec":                  true,
 	"spec.jobTemplate.spec.template.spec": true,
 }
 
@@ -417,6 +451,54 @@ func stripControllerInjectedFields(result map[string]interface{}, kind string) {
 	case "PersistentVolumeClaim":
 		// storageClassName and volumeMode are now handled by hasProviderDefault in the schema
 	}
+}
+
+// firstServicePort returns the first port number declared in spec.ports, or 0
+// if none. Used to synthesize a Service's lbIngressUrl Resolvable.
+func firstServicePort(result map[string]interface{}) int {
+	spec, ok := result["spec"].(map[string]interface{})
+	if !ok {
+		return 0
+	}
+	ports, ok := spec["ports"].([]interface{})
+	if !ok || len(ports) == 0 {
+		return 0
+	}
+	first, ok := ports[0].(map[string]interface{})
+	if !ok {
+		return 0
+	}
+	switch p := first["port"].(type) {
+	case float64:
+		return int(p)
+	case int:
+		return p
+	}
+	return 0
+}
+
+// firstIngressURL returns "http://<host>[:port]" from the first ingress entry.
+// Exposed at status.loadBalancer.url (flat) so Formae's property-path resolver,
+// which lacks `[0]` indexing, can reach it from a Resolvable.
+func firstIngressURL(ingress []interface{}, port int) string {
+	if len(ingress) == 0 {
+		return ""
+	}
+	m, ok := ingress[0].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	host, _ := m["ip"].(string)
+	if host == "" {
+		host, _ = m["hostname"].(string)
+	}
+	if host == "" {
+		return ""
+	}
+	if port == 0 || port == 80 {
+		return "http://" + host
+	}
+	return fmt.Sprintf("http://%s:%d", host, port)
 }
 
 // stripServiceAccountVolumes removes auto-injected service account token

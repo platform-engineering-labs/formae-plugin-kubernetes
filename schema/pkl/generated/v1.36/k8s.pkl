@@ -325,7 +325,19 @@ open class Volume extends formae.SubResource {
   fc : Mapping?
 
   @FieldHint {}
-  hostPath : Mapping?
+  hostPath: HostPathVolumeSource?
+}
+
+@SubResourceHint {}
+open class HostPathVolumeSource extends formae.SubResource {
+  @FieldHint { required = true }
+  path: String
+
+  // kube-apiserver defaults this to "" when omitted, so every Get echoes it
+  // back. Without hasProviderDefault, reconcile plans spurious volumes[*]
+  // remove+add for workloads using hostPath.
+  @FieldHint { hasProviderDefault = true }
+  type: String?
 }
 
 @SubResourceHint {}
@@ -436,11 +448,7 @@ open class JobSpec extends formae.SubResource {
   @FieldHint { hasProviderDefault = true }
   backoffLimit: NonNegativeInt?
 
-  /// `backoffLimitPerIndex` is immutable on Job — only settable when
-  /// completionMode=Indexed at create time. K8s docs and
-  /// terraform-provider-kubernetes both flag it as immutable
-  /// (`ForceNew: true`).
-  @FieldHint { createOnly = true }
+  @FieldHint {}
   backoffLimitPerIndex: NonNegativeInt?
 
   /// `manualSelector` is immutable on Job.

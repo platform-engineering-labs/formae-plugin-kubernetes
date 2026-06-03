@@ -2,19 +2,22 @@ amends "pkl:Project"
 
 dependencies {
   ["formae"] {
-    uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.85.2"
+    uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.86.0"
   }
   ["aws"] {
     uri = "package://hub.platform.engineering/plugins/aws/schema/pkl/aws/aws@0.1.7"
   }
   ["azure"] {
-    uri = "package://hub.platform.engineering/plugins/azure/schema/pkl/azure/azure@0.1.2"
+    uri = "package://hub.platform.engineering/plugins/azure/schema/pkl/azure/azure@0.1.3"
   }
   ["gcp"] {
-    uri = "package://hub.platform.engineering/plugins/gcp/schema/pkl/gcp/gcp@0.1.4"
+    uri = "package://hub.platform.engineering/plugins/gcp/schema/pkl/gcp/gcp@0.1.7"
   }
   ["oci"] {
     uri = "package://hub.platform.engineering/plugins/oci/schema/pkl/oci/oci@0.1.3"
+  }
+  ["grafana"] {
+    uri = "package://hub.platform.engineering/plugins/grafana/schema/pkl/grafana/grafana@0.1.3"
   }
   ["k8s"] = import("../schema/pkl/generated/PklProject")
   ["clusters"] = import("./clusters/PklProject")
