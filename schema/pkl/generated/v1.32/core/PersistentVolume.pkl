@@ -22,10 +22,35 @@ open class PersistentVolumeResolvable extends formae.Resolvable {
   hidden type = module.type
   hidden name: PersistentVolumeResolvable = (this) { property = "metadata.name" }
 }
+/// PersistentVolume is structurally cluster-scoped, but at runtime each PV is
+/// owned by the PVC it is bound to (`spec.claimRef`). Declaring PVC as the
+/// parent lets the changeset planner synthesise `runtimeDependency` containment
+/// edges from Pods → PV when a Pod references the PVC via
+/// `volumes[].persistentVolumeClaim.claimName` (RFC-0043).
+///
+/// Caveat: statically-provisioned PVs that exist *before* a PVC binds to them
+/// have no `claimRef.name`, so `parentRefs` returns no match and the PV is
+/// treated as parentless — which is correct. The annotation primarily benefits
+/// dynamically-provisioned PVs, the common case in production K8s.
 @k8s.ResourceHint {
   type = module.type
   identifier = "$.metadata.name"
   discoverable = true
+  parent = "K8S::Core::PersistentVolumeClaim"
+  // AND-combined: a PV identifies its PVC parent by both `name` and
+  // `namespace`. Name alone is not unique across namespaces, so the
+  // namespace mapping disambiguates PVCs with the same name in different
+  // namespaces.
+  parentRefs = List(
+    new formae.ParentRef {
+      parentProperty = "metadata.name"
+      childProperty = "spec.claimRef.name"
+    },
+    new formae.ParentRef {
+      parentProperty = "metadata.namespace"
+      childProperty = "spec.claimRef.namespace"
+    }
+  )
 }
 open class PersistentVolume extends k8s.Resource {
   hidden parent = this

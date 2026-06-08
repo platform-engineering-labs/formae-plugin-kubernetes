@@ -61,7 +61,12 @@ open class IngressSpec extends formae.SubResource {
   @k8s.FieldHint {}
   defaultBackend: IngressBackend?
 
-  @k8s.FieldHint {}
+  /// The Ingress is reachable to external traffic through the controller bound
+  /// to its IngressClass at runtime. Destroying the IngressClass before its
+  /// Ingresses orphans them — annotate as `attachesTo` so the changeset
+  /// planner orders producer (IngressClass) destruction after consumer
+  /// (Ingress) destruction. See RFC-0043 §3.1.
+  @k8s.FieldHint { edgeKind = "attachesTo" }
   ingressClassName: (String|formae.Resolvable)?
 
   @k8s.FieldHint {}
@@ -85,7 +90,12 @@ open class IngressServiceBackend extends formae.SubResource {
   @k8s.FieldHint { required = true }
   port: ServiceBackendPort
 
-  @k8s.FieldHint { required = true }
+  /// The backend Service is the reachability hop for HTTP requests entering
+  /// through the Ingress. Removing the Service before the Ingress strands
+  /// inbound traffic — annotate as `attachesTo` so destroy ordering preserves
+  /// the producer (Service) until after the consumer (Ingress) is gone.
+  /// See RFC-0043 §3.1.
+  @k8s.FieldHint { required = true; edgeKind = "attachesTo" }
   name: (String|formae.Resolvable)
 }
 

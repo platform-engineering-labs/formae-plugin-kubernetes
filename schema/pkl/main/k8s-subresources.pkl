@@ -1294,7 +1294,15 @@ open class CSIVolumeSource extends formae.SubResource {
 
 @SubResourceHint {}
 open class PersistentVolumeClaimVolumeSource extends formae.SubResource {
-  @FieldHint { required = true }
+  /// Reference to a PersistentVolumeClaim in the same namespace. The Pod (and
+  /// any controller that owns it via a PodTemplateSpec — Deployment,
+  /// StatefulSet, Job, DaemonSet, ReplicaSet) holds the PVC open at runtime;
+  /// the PVC in turn holds its bound PV open via the `kubernetes.io/pv-protection`
+  /// finalizer. `runtimeDependency` tells the changeset planner to destroy the
+  /// consumer first and then walk PVC's containment children (PV) before
+  /// destroying the PVC itself, so deletion respects the K8s finalizer chain.
+  /// See RFC-0043 §3.2.
+  @FieldHint { required = true; edgeKind = "runtimeDependency" }
   claimName: (String|formae.Resolvable)
 
   @FieldHint {}
