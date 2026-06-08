@@ -22,16 +22,16 @@ on:
         required: true
 
 jobs:
-  # Prepare job: install formae binary via the official setup script,
-  # build the plugin once, populate caches, ship everything matrix
-  # entries need as a single `test-runtime` artifact.
+  # Prepare job: build formae from main once, build the plugin, populate
+  # caches, ship everything matrix entries need as a single `test-runtime`
+  # artifact.
   #
-  # Replaces the previous build-formae+source-clone+replace-directive
-  # pattern. The setup/formae.sh installer pulls the latest published
-  # binary from hub.platform.engineering; PklProjects resolve against
-  # hub-hosted Pkl packages (no source-mount needed). To pin a specific
-  # formae version locally, pass `-v <X.Y.Z>` to bash in the install
-  # step below.
+  # Builds formae from source (mirrors nightly.yml) instead of installing
+  # the latest stable release, so PR + per-version conformance picks up
+  # fixes on formae main that haven't shipped in a release yet — notably
+  # the `pklGenerator.pkl` alias sanitization that escapes `.` in path
+  # segments. Without that fix, the rename to per-version `k8s.pkl` emits
+  # invalid aliases like `v1.35_k8s` during `formae extract`.
   prepare:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -57,16 +57,25 @@ jobs:
         with:
           save: 'true'  # prepare is allowed to save (single writer per run)
 
-      - name: Install formae
-        # Use the pelmgr-based installer (get/formae.sh) — it pulls
-        # from repos/platform.engineering/pel which tracks current
-        # releases. The alternate setup/formae.sh reads
-        # binaries/repo.json and lags behind. `--yes` skips pelmgr's
-        # interactive bubbletea prompt (no tty in CI). Default
-        # install-path is /opt/pel; binary lands at /opt/pel/bin/formae.
+      - name: Build formae
+        # Clone formae main and build a binary stamped with the canonical
+        # version of the latest tag (including dev tags, e.g. 0.86.0-dev.N
+        # → 0.86.0). That version must match a schema published on the hub;
+        # the schema-prerelease workflow publishes both stable and dev tags
+        # to formae@<X.Y.Z>. Drops the binary at /opt/pel/bin/formae so the
+        # existing pel-binary.tgz bundle + restore-test-runtime composite
+        # work unchanged.
         run: |
           set -euo pipefail
-          curl -fsSL https://hub.platform.engineering/get/formae.sh | bash -s -- --yes
+          git clone --branch main --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          cd /tmp/formae
+          git fetch --tags
+          LATEST_TAG=$(git tag -l "[0-9]*" --sort=-version:refname | head -1)
+          VERSION=$(echo "$LATEST_TAG" | cut -d'-' -f1)
+          echo "latest tag=${LATEST_TAG}, canonical VERSION=${VERSION}"
+          make build VERSION="${VERSION}"
+          sudo mkdir -p /opt/pel/bin
+          sudo install -m 0755 /tmp/formae/formae /opt/pel/bin/formae
           echo "/opt/pel/bin" >> "$GITHUB_PATH"
           /opt/pel/bin/formae --version
 

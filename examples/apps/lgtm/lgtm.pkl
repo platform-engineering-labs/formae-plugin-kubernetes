@@ -79,33 +79,46 @@ local bucketsCsv = "\(buckets["loki"]),\(buckets["tempo"]),\(buckets["mimir"])"
 
 /// Build all LGTM stack resources for a given K8S target.
 ///
-/// [enableDemoTraffic] — when true, also deploys three `telemetrygen`
-/// Deployments that continuously emit synthetic logs, metrics, and traces
-/// to the OTel gateway. Set to `false` when pointing the stack at real
-/// workloads, so dashboards show only genuine traffic.
-function allResources(k8sTarget: formae.Target, enableDemoTraffic: Boolean) =
+/// [enableDemoTraffic]: deploy three `telemetrygen` Deployments emitting
+/// synthetic logs/metrics/traces. Set false for real workloads.
+///
+/// [enableGrafanaAdminAuth]: run Grafana with admin/password from a managed
+/// Secret and drop the datasource/dashboard ConfigMaps. Required when an
+/// external grafana plugin Target owns datasources + dashboards via the
+/// HTTP API (see examples/lgtm-observability/). False leaves Grafana in
+/// anonymous-admin mode with provisioned ConfigMaps.
+///
+/// Returns `{ resources, grafanaSvc }`. `grafanaSvc` is the LB Service
+/// handle for cross-plugin Resolvables on `lbIngressIp`.
+function allResources(k8sTarget: formae.Target, enableDemoTraffic: Boolean, enableGrafanaAdminAuth: Boolean) =
   let (_ns = appNamespace(k8sTarget))
   let (_creds = minioCredsSecret(k8sTarget, _ns))
-    new Listing {
-      _ns
-      _creds
+  let (_grafanaSvc = grafana.grafanaService(k8sTarget, _ns))
+  let (_grafanaRest = grafana.allResourcesExceptSvc(k8sTarget, _ns, namespaceName, enableGrafanaAdminAuth))
+    new {
+      grafanaSvc = _grafanaSvc
+      resources = new Listing {
+        _ns
+        _creds
 
-      // Storage
-      for (r in minio.allResources(k8sTarget, _ns, minioCredsSecretName, bucketsCsv)) { r }
+        // Storage
+        for (r in minio.allResources(k8sTarget, _ns, minioCredsSecretName, bucketsCsv)) { r }
 
-      // Data plane (9 Deployments total)
-      for (r in loki.allResources(k8sTarget, _ns, namespaceName, minioCredsSecretName, minioEndpoint, buckets["loki"])) { r }
-      for (r in tempo.allResources(k8sTarget, _ns, namespaceName, minioCredsSecretName, minioEndpoint, buckets["tempo"])) { r }
-      for (r in mimir.allResources(k8sTarget, _ns, namespaceName, minioCredsSecretName, minioEndpoint, buckets["mimir"])) { r }
+        // Data plane (9 Deployments total)
+        for (r in loki.allResources(k8sTarget, _ns, namespaceName, minioCredsSecretName, minioEndpoint, buckets["loki"])) { r }
+        for (r in tempo.allResources(k8sTarget, _ns, namespaceName, minioCredsSecretName, minioEndpoint, buckets["tempo"])) { r }
+        for (r in mimir.allResources(k8sTarget, _ns, namespaceName, minioCredsSecretName, minioEndpoint, buckets["mimir"])) { r }
 
-      // Telemetry ingest
-      for (r in otel.allResources(k8sTarget, _ns, namespaceName)) { r }
+        // Telemetry ingest
+        for (r in otel.allResources(k8sTarget, _ns, namespaceName)) { r }
 
-      // Viz
-      for (r in grafana.allResources(k8sTarget, _ns, namespaceName)) { r }
+        // Viz
+        for (r in _grafanaRest) { r }
+        _grafanaSvc
 
-      // Demo traffic — opt-out for real-workload deployments
-      when (enableDemoTraffic) {
-        for (r in demo.allResources(k8sTarget, _ns, namespaceName)) { r }
+        // Demo traffic: opt-out for real-workload deployments
+        when (enableDemoTraffic) {
+          for (r in demo.allResources(k8sTarget, _ns, namespaceName)) { r }
+        }
       }
     }

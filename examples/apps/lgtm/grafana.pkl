@@ -1,14 +1,23 @@
-// Grafana with pre-provisioned datasources + a demo dashboard.
+// Grafana with two auth modes:
+//   - Anonymous-admin (default): datasources + dashboards provisioned via
+//     mounted ConfigMaps. Self-contained, no extra env required.
+//   - Admin-auth (when enableAdminAuth = true): drops the anonymous env, mounts
+//     no datasources/dashboards ConfigMaps. The agent's GRAFANA_AUTH env must
+//     carry "admin:<password>" so the grafana plugin can manage datasources +
+//     dashboards via the HTTP API. Used by examples/lgtm-observability.
 
 import "@formae/formae.pkl"
 import "@k8s/v1.34/core/Namespace.pkl" as ns
 import "@k8s/v1.34/core/ConfigMap.pkl" as cm
+import "@k8s/v1.34/core/Secret.pkl" as sec
 import "@k8s/v1.34/core/Service.pkl" as svc
 import "@k8s/v1.34/apps/Deployment.pkl" as dep
 import "@k8s/v1.34/k8s.pkl" as k8s
 
 local appName = "grafana"
 local imageRef = "docker.io/grafana/grafana:11.4.0"
+local adminSecretName = "grafana-admin"
+local adminPassword = "admin-change-me"
 
 local grafanaLabels = new Mapping {
   ["app.kubernetes.io/part-of"] = "lgtm"
@@ -132,13 +141,28 @@ function demoDashboardConfig(k8sTarget: formae.Target, appNs: ns.Namespace): cm.
     }
   }
 
-function grafanaDeployment(k8sTarget: formae.Target, appNs: ns.Namespace): dep.Deployment =
+function adminSecret(k8sTarget: formae.Target, appNs: ns.Namespace): sec.Secret =
+  new sec.Secret {
+    target = k8sTarget.res
+    label = "lgtm-grafana-admin"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = adminSecretName
+      namespace = appNs.res.name
+      labels = grafanaLabels
+    }
+    stringData = new Mapping {
+      ["admin-password"] = adminPassword
+    }
+  }
+
+function grafanaDeployment(k8sTarget: formae.Target, appNs: ns.Namespace, enableAdminAuth: Boolean): dep.Deployment =
   new dep.Deployment {
     target = k8sTarget.res
     label = "lgtm-grafana"
     metadata = new k8s.NamespacedObjectMeta { name = appName; namespace = appNs.res.name; labels = grafanaLabels }
     spec = new dep.DeploymentSpec {
-      replicas = 2
+      // Single replica: Grafana's embedded SQLite diverges across pods.
+      replicas = 1
       selector = new k8s.LabelSelector { matchLabels = grafanaLabels }
       template = new k8s.PodTemplateSpec {
         metadata = new k8s.ObjectMeta { name = appName; labels = grafanaLabels }
@@ -147,66 +171,86 @@ function grafanaDeployment(k8sTarget: formae.Target, appNs: ns.Namespace): dep.D
             new k8s.Container {
               name = "grafana"
               image = imageRef
-              env = new Listing {
-                new k8s.EnvVar { name = "GF_AUTH_ANONYMOUS_ENABLED"; value = "true" }
-                new k8s.EnvVar { name = "GF_AUTH_ANONYMOUS_ORG_ROLE"; value = "Admin" }
-                new k8s.EnvVar { name = "GF_AUTH_DISABLE_LOGIN_FORM"; value = "true" }
-              }
+              env = if (enableAdminAuth)
+                new Listing {
+                  new k8s.EnvVar { name = "GF_SECURITY_ADMIN_USER"; value = "admin" }
+                  new k8s.EnvVar {
+                    name = "GF_SECURITY_ADMIN_PASSWORD"
+                    valueFrom = new k8s.EnvVarSource {
+                      secretKeyRef = new k8s.SecretKeySelector {
+                        name = adminSecretName
+                        key = "admin-password"
+                      }
+                    }
+                  }
+                }
+              else
+                new Listing {
+                  new k8s.EnvVar { name = "GF_AUTH_ANONYMOUS_ENABLED"; value = "true" }
+                  new k8s.EnvVar { name = "GF_AUTH_ANONYMOUS_ORG_ROLE"; value = "Admin" }
+                  new k8s.EnvVar { name = "GF_AUTH_DISABLE_LOGIN_FORM"; value = "true" }
+                }
               ports = new Listing {
                 new k8s.ContainerPort { name = "http"; containerPort = 3000 }
               }
-              volumeMounts = new Listing {
-                new k8s.VolumeMount {
-                  name = "datasources"
-                  mountPath = "/etc/grafana/provisioning/datasources"
-                  readOnly = true
+              volumeMounts = if (enableAdminAuth)
+                new Listing {}
+              else
+                new Listing {
+                  new k8s.VolumeMount {
+                    name = "datasources"
+                    mountPath = "/etc/grafana/provisioning/datasources"
+                    readOnly = true
+                  }
+                  new k8s.VolumeMount {
+                    name = "dashboard-provider"
+                    mountPath = "/etc/grafana/provisioning/dashboards"
+                    readOnly = true
+                  }
+                  new k8s.VolumeMount {
+                    name = "demo-dashboard"
+                    mountPath = "/var/lib/grafana/dashboards"
+                    readOnly = true
+                  }
                 }
-                new k8s.VolumeMount {
-                  name = "dashboard-provider"
-                  mountPath = "/etc/grafana/provisioning/dashboards"
-                  readOnly = true
-                }
-                new k8s.VolumeMount {
-                  name = "demo-dashboard"
-                  mountPath = "/var/lib/grafana/dashboards"
-                  readOnly = true
-                }
-              }
               resources = new k8s.ResourceRequirements {
                 requests = new Mapping { ["cpu"] = "100m"; ["memory"] = 256.mib }
                 limits = new Mapping { ["cpu"] = "500m"; ["memory"] = 512.mib }
               }
             }
           }
-          volumes = new Listing {
-            new k8s.Volume {
-              name = "datasources"
-              configMap = new k8s.ConfigMapVolumeSource {
-                name = "grafana-datasources"
-                items = new Listing {
-                  new k8s.KeyToPath { key = "datasources-yaml"; path = "datasources.yaml" }
+          volumes = if (enableAdminAuth)
+            new Listing {}
+          else
+            new Listing {
+              new k8s.Volume {
+                name = "datasources"
+                configMap = new k8s.ConfigMapVolumeSource {
+                  name = "grafana-datasources"
+                  items = new Listing {
+                    new k8s.KeyToPath { key = "datasources-yaml"; path = "datasources.yaml" }
+                  }
+                }
+              }
+              new k8s.Volume {
+                name = "dashboard-provider"
+                configMap = new k8s.ConfigMapVolumeSource {
+                  name = "grafana-dashboard-provider"
+                  items = new Listing {
+                    new k8s.KeyToPath { key = "dashboards-yaml"; path = "dashboards.yaml" }
+                  }
+                }
+              }
+              new k8s.Volume {
+                name = "demo-dashboard"
+                configMap = new k8s.ConfigMapVolumeSource {
+                  name = "grafana-demo-dashboard"
+                  items = new Listing {
+                    new k8s.KeyToPath { key = "lgtm-demo-json"; path = "lgtm-demo.json" }
+                  }
                 }
               }
             }
-            new k8s.Volume {
-              name = "dashboard-provider"
-              configMap = new k8s.ConfigMapVolumeSource {
-                name = "grafana-dashboard-provider"
-                items = new Listing {
-                  new k8s.KeyToPath { key = "dashboards-yaml"; path = "dashboards.yaml" }
-                }
-              }
-            }
-            new k8s.Volume {
-              name = "demo-dashboard"
-              configMap = new k8s.ConfigMapVolumeSource {
-                name = "grafana-demo-dashboard"
-                items = new Listing {
-                  new k8s.KeyToPath { key = "lgtm-demo-json"; path = "lgtm-demo.json" }
-                }
-              }
-            }
-          }
         }
       }
     }
@@ -235,10 +279,26 @@ function grafanaService(k8sTarget: formae.Target, appNs: ns.Namespace): svc.Serv
     }
   }
 
-function allResources(k8sTarget: formae.Target, appNs: ns.Namespace, nsName: String) = new Listing {
-  datasourcesConfig(k8sTarget, appNs, nsName)
-  dashboardProviderConfig(k8sTarget, appNs)
-  demoDashboardConfig(k8sTarget, appNs)
-  grafanaDeployment(k8sTarget, appNs)
-  grafanaService(k8sTarget, appNs)
-}
+function allResources(k8sTarget: formae.Target, appNs: ns.Namespace, nsName: String, enableAdminAuth: Boolean) =
+  new Listing {
+    for (r in allResourcesExceptSvc(k8sTarget, appNs, nsName, enableAdminAuth)) { r }
+    grafanaService(k8sTarget, appNs)
+  }
+
+/// Same as allResources but omits the LoadBalancer Service so the caller can
+/// construct it externally and reference its `.res.lbIngressIp` Resolvable
+/// (e.g. for a cross-plugin grafana Target). lgtm.pkl uses this to expose the
+/// service handle to multi-plugin callers.
+function allResourcesExceptSvc(k8sTarget: formae.Target, appNs: ns.Namespace, nsName: String, enableAdminAuth: Boolean) =
+  if (enableAdminAuth)
+    new Listing {
+      adminSecret(k8sTarget, appNs)
+      grafanaDeployment(k8sTarget, appNs, true)
+    }
+  else
+    new Listing {
+      datasourcesConfig(k8sTarget, appNs, nsName)
+      dashboardProviderConfig(k8sTarget, appNs)
+      demoDashboardConfig(k8sTarget, appNs)
+      grafanaDeployment(k8sTarget, appNs, false)
+    }
