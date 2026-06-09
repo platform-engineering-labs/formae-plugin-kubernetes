@@ -1,9 +1,9 @@
 # Examples
 
 End-to-end examples deploying real workloads to Kubernetes using formae and
-the K8S plugin. Each workload entry is **one forma file that runs on any
-provider** — pick AWS, Azure, GCP, OCI, or a local kubeconfig-accessible
-cluster at apply time with `--provider`.
+the K8S plugin. Each workload is a **directory of per-cloud entry files** —
+pick AWS, Azure, GCP, OCI, or a local kubeconfig-accessible cluster by
+applying the matching file (e.g. `examples/bookstore/aws.pkl`).
 
 ```
 examples/
@@ -11,16 +11,30 @@ examples/
 │   ├── bookstore.pkl
 │   ├── crossplane.pkl
 │   └── lgtm/                   # Sub-modules: minio, loki, tempo, mimir, otel, grafana, demo
-├── clusters/                   # Per-provider managed-cluster bundles
-│   ├── dispatch.pkl            # Provider picker (typealias Provider, function For)
-│   ├── aws/                    # VPC, subnets, IAM, EKS
-│   ├── azure/                  # Resource group, VNet, AKS, RBAC
-│   ├── gcp/                    # VPC, subnet, GKE
-│   ├── oci/                    # VCN, subnets, gateways, security list, OKE
-│   └── local/                  # KubeconfigAuth (no provisioning)
-├── bookstore/                  # Workload entry: frontend + backend webapp
-├── crossplane/                 # Workload entry: Crossplane control plane
-├── lgtm/                       # Workload entry: observability stack
+├── clusters/                   # Per-cloud managed-cluster modules
+│   ├── aws.pkl                 # VPC, subnets, IAM, EKS
+│   ├── azure.pkl               # Resource group, VNet, AKS, RBAC
+│   ├── gcp.pkl                 # VPC, subnet, GKE
+│   ├── oci.pkl                 # VCN, subnets, gateways, security list, OKE
+│   └── local.pkl               # KubeconfigAuth (no provisioning)
+├── bookstore/                  # Workload: frontend + backend webapp
+│   ├── aws.pkl
+│   ├── azure.pkl
+│   ├── gcp.pkl
+│   ├── oci.pkl
+│   └── local.pkl
+├── crossplane/                 # Workload: Crossplane control plane
+│   ├── aws.pkl
+│   ├── azure.pkl
+│   ├── gcp.pkl
+│   ├── oci.pkl
+│   └── local.pkl
+├── lgtm-observability/         # Workload: observability stack
+│   ├── aws.pkl
+│   ├── azure.pkl
+│   ├── gcp.pkl
+│   ├── oci.pkl
+│   └── local.pkl
 ├── formations/                 # Native Pkl charts (no Helm)
 └── helm/                       # Helm bridge examples
 ```
@@ -49,7 +63,7 @@ pkl project resolve examples/clusters/
 # Resolve the workload entry you are about to run, e.g.:
 pkl project resolve examples/bookstore/
 pkl project resolve examples/crossplane/
-pkl project resolve examples/lgtm/
+pkl project resolve examples/lgtm-observability/
 
 # Helm bridge examples need their own resolve (also pulls in ../../helm).
 pkl project resolve examples/helm/
@@ -59,16 +73,19 @@ Each example file's doc-block lists the exact resolve commands it needs.
 
 ## How it fits together
 
-Workload `main.pkl` files declare a `provider` `formae.Prop` and call
-`dispatch.For(provider)` to pick a cluster bundle. The bundle exposes
-`resources` (everything needed to provision the cluster, including its
-cloud-side target) and `target` (the Kubernetes target authenticated against
-the just-provisioned cluster). The workload's resources reference that K8S
-target; the `forma { }` block spreads everything into a single deploy.
-
-A typo like `--provider awz` is rejected at evaluation time by the
-literal-union `Provider` typealias — no runtime throw, real Pkl type error
-pointing at the allowed values.
+Each workload entry file imports one `clusters/<cloud>.pkl` module — the cloud
+is chosen by which file you apply, not by a flag. The module exposes two
+functions taking a `slug`: `resources(slug)` returns everything needed to
+provision the cluster (including its cloud-side target), and `target(slug)`
+returns the Kubernetes target authenticated against the just-provisioned
+cluster. The entry file calls `cluster.target("<workload>")` and spreads
+`cluster.resources("<workload>")` alongside the workload's own resources in a
+single `forma { }` block. The `slug` makes the managed-cluster name and both
+target labels (cloud-side `<cloud>-target-<slug>` and K8s-side
+`k8s-target-<cloud>-<slug>`) unique, so bookstore, crossplane, and
+lgtm-observability can co-exist on one cloud account without colliding.
+`local.pkl` provisions nothing — `resources` is empty and only a
+`KubeconfigAuth` target is exposed.
 
 ## Workloads
 
@@ -76,10 +93,10 @@ pointing at the allowed values.
 |---------|------------|-----------------|
 | [bookstore](bookstore/) | Namespace, ConfigMaps, Secret, ServiceAccount, two Deployments + Services | `apps/bookstore.pkl` |
 | [crossplane](crossplane/) | Namespace, RBAC, Crossplane core Deployment + Service | `apps/crossplane.pkl` |
-| [lgtm](lgtm/) | MinIO + Loki + Tempo + Mimir + OTel + Grafana (~25 pods) | `apps/lgtm/lgtm.pkl` |
+| [lgtm-observability](lgtm-observability/) | MinIO + Loki + Tempo + Mimir + OTel + Grafana (~25 pods) | `apps/lgtm/lgtm.pkl` |
 
 Each workload has a per-directory README with prerequisites, exact deploy
-commands per provider, smoke test, and tear-down.
+commands per cloud, smoke test, and tear-down.
 
 ## Providers
 
@@ -91,19 +108,18 @@ commands per provider, smoke test, and tear-down.
 | `oci`    | OKE (VCN + subnets + gateways + security + cluster + node pool) | `oci session authenticate`; set `OCI_COMPARTMENT_ID=ocid1...` |
 | `local`  | None — uses your current kubectl context | kubectl configured locally |
 
-Cluster-side knobs (region, cidrs, cluster name, etc.) live in
-`examples/clusters/<provider>/vars.pkl` (or `clusters/aws/bundle.pkl`).
-A subset have env-var fallbacks; for everything else, edit the
-`vars.pkl` file directly.
+Cluster-side knobs (region, CIDRs, k8s version, etc.) live in
+`examples/clusters/<cloud>.pkl` and remain overridable at apply time via
+`--prop <name>=<value>`. A subset also have env-var fallbacks.
 
 ## Adding a new provider
 
-1. Create `examples/clusters/<provider>/bundle.pkl` exposing top-level
-   `resources: Listing` and `target: formae.Target`.
-2. Add `<provider>` to the `Provider` typealias in
-   `examples/clusters/dispatch.pkl`.
-3. Add an `else if` branch to `dispatch.For` returning the new bundle.
-4. Add the provider's plugin to `examples/clusters/PklProject` and to each
+1. Create `examples/clusters/<provider>.pkl` as a plain Pkl module exposing
+   `resources(slug: String): Listing` and `target(slug: String): formae.Target`.
+2. Add a `<provider>.pkl` entry file in each workload directory
+   (`bookstore/`, `crossplane/`, `lgtm-observability/`) that imports the new
+   cluster module and calls `cluster.resources(...)` / `cluster.target(...)`.
+3. Add the provider's plugin to `examples/clusters/PklProject` and to each
    workload's `PklProject` under `dependencies`.
 
 ## Formations and Helm

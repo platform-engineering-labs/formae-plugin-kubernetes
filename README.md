@@ -131,24 +131,26 @@ patterns.
 
 ### Cross-cloud workloads
 
-Each workload example accepts a `--provider` flag and runs against any of AWS,
-Azure, GCP, OCI, or a local kubeconfig-accessible cluster.
+Each workload is a directory of per-cloud entry files —
+`examples/<workload>/<cloud>.pkl`, where `<cloud>` is one of `aws`, `azure`,
+`gcp`, `oci`, or `local` (a kubeconfig-accessible cluster). Pick a cloud by
+choosing the matching file.
 
 | Example | Description |
 |---------|-------------|
 | [bookstore](examples/bookstore/) | Frontend + backend webapp on a managed cluster |
 | [crossplane](examples/crossplane/) | Crossplane control plane on a managed cluster |
-| [lgtm](examples/lgtm/) | Grafana + Loki + Tempo + Mimir + OTel + MinIO observability stack |
+| [lgtm-observability](examples/lgtm-observability/) | Grafana + Loki + Tempo + Mimir + OTel + MinIO observability stack |
 
 ```bash
 # Resolve Pkl deps once per fresh clone
 pkl project resolve examples/
 
-# Pick a cloud at apply time
-formae apply --mode reconcile --watch --provider local examples/bookstore/main.pkl
-formae apply --mode reconcile --watch --provider aws   examples/bookstore/main.pkl
-formae apply --mode reconcile --watch --provider azure examples/lgtm/main.pkl
-formae apply --mode reconcile --watch --provider gcp   examples/crossplane/main.pkl
+# Pick a cloud by choosing the matching file
+formae apply --mode reconcile --watch examples/bookstore/local.pkl
+formae apply --mode reconcile --watch examples/bookstore/aws.pkl
+formae apply --mode reconcile --watch examples/lgtm-observability/azure.pkl
+formae apply --mode reconcile --watch examples/crossplane/gcp.pkl
 ```
 
 Each workload example has a per-directory README with prerequisites, smoke
@@ -174,7 +176,7 @@ formae destroy examples/helm/nginx-v1.31.pkl --yes --watch
 
 ## Targets
 
-The `--provider` flag selects one of five managed-cluster bundles:
+Pick a cloud by choosing `examples/<workload>/<cloud>.pkl`:
 
 | Provider | Auth class | Cluster type | Required setup |
 |----------|------------|--------------|----------------|
@@ -185,11 +187,11 @@ The `--provider` flag selects one of five managed-cluster bundles:
 | `local`  | `KubeconfigAuth` | none — uses your kubectl context | `kubectl config current-context` should resolve to the target cluster |
 
 The cluster-provisioning code lives under [examples/clusters/](examples/clusters/);
-each provider's `bundle.pkl` exposes a top-level `resources` listing and a
-Kubernetes `target` that the workload examples consume via the dispatcher in
-`examples/clusters/dispatch.pkl`. To add a new provider, add
-`examples/clusters/<provider>/bundle.pkl`, then a branch in `dispatch.For`
-and the literal-union `Provider` typealias.
+each provider's `<cloud>.pkl` is a Pkl module exposing `resources(slug)` and
+`target(slug)` functions that the workload examples consume. To add a new
+provider, create `examples/clusters/<provider>.pkl` exposing `resources(slug)`
+and `target(slug)`, then add a `<provider>.pkl` entry file in each workload
+directory.
 
 ## License
 

@@ -1,0 +1,46 @@
+amends "@formae/forma.pkl"
+
+import "@apps/crossplane.pkl" as crossplaneApp
+import "@formae/formae.pkl"
+import "@clusters/azure.pkl" as cluster
+
+description {
+  text = """
+    Crossplane control plane on a managed AKS cluster (Azure).
+
+      formae apply --mode reconcile examples/crossplane/azure.pkl
+
+    Deploys Crossplane core (Namespace, RBAC, Deployment, Service). Crossplane's
+    init container installs its CRDs at first start; those are NOT managed by
+    formae. Install a provider via `kubectl apply` of a Provider CR once
+    Crossplane is running.
+
+    Teardown:
+      formae destroy --on-dependents=cascade --yes examples/crossplane/azure.pkl
+    """
+  confirm = true
+}
+
+// Provider = this file's path. `clusterName` makes the cluster + target
+// labels unique so crossplane can co-exist with other workloads on one account.
+local clusterName = "crossplane"
+
+local k8sTarget = cluster.target(clusterName)
+
+local stack: formae.Stack = new {
+  label = "k8s-crossplane-azure"
+  description = "Crossplane control plane on a managed Kubernetes cluster (azure)."
+}
+
+local crossplane = new {
+  resources = crossplaneApp.allResources(k8sTarget)
+}
+
+forma {
+  stack
+
+  ...cluster.resources(clusterName)
+  k8sTarget
+
+  ...crossplane.resources
+}

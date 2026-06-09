@@ -1,0 +1,247 @@
+// GCP managed-Kubernetes cluster — flattened, file-as-picker shape.
+//
+// One self-contained module: a project IAM grant, VPC, subnet, Cloud Router,
+// Cloud NAT, and a Standard zonal GKE cluster, plus the Kubernetes target
+// authenticated via `GKEAuth` (OAuth2-token refresh through the K8S plugin's
+// WrapTransport). No `dispatch.pkl`, no `Bundle` class, no sub-files.
+//
+// Standard (not Autopilot) because Autopilot uses a Google-managed node
+// service account often blocked by the `compute.vmExternalIpAccess` org
+// policy. A single zonal node pool is enough for the demo workloads.
+//
+// Consumed by workload entries (examples/<workload>/gcp.pkl), which select
+// THIS provider by importing THIS file:
+//
+//   import "@clusters/gcp.pkl" as cluster
+//   local k8sTarget = cluster.target("bookstore")
+//   forma {
+//     ...cluster.resources("bookstore")
+//     k8sTarget
+//   }
+//
+// `slug` is a per-workload identifier (NOT a `--name` flag): it makes the GKE
+// cluster name, the VPC/subnet/router/nat names, and both target labels
+// unique, so multiple workloads (lgtm/bookstore/crossplane) can co-exist on
+// ONE GCP project without colliding on the same physical cluster or inventory
+// target. It is named `slug` rather than `name` to avoid Pkl self-reference
+// shadowing with the resource `.name` properties it feeds. Project/region/
+// zone/CIDRs/apply-as stay as `--prop`-overridable knobs.
+
+import "@gcp/gcp.pkl"
+import "@gcp/iam/projectIamMember.pkl"
+import "@gcp/compute/network.pkl"
+import "@gcp/compute/subnetwork.pkl"
+import "@gcp/compute/router.pkl"
+import "@gcp/compute/routerNat.pkl"
+import "@gcp/container/cluster.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.34/k8s.pkl" as k8s
+
+// Tunable knobs (shared across workloads on a cloud; override with --prop).
+local knobs = new Dynamic {
+  project = new formae.Prop {
+    flag = "project"
+    default = read?("env:GCP_PROJECT") ?? read?("env:GOOGLE_CLOUD_PROJECT")
+      ?? throw("GCP project not set. Pass --project=<project-id> or set GCP_PROJECT / GOOGLE_CLOUD_PROJECT.")
+  }
+  region = new formae.Prop {
+    flag = "region"
+    default = "europe-west4"
+  }
+  zone = new formae.Prop {
+    flag = "zone"
+    default = "europe-west4-a"
+  }
+  subnetCidr = new formae.Prop {
+    flag = "subnetCidr"
+    default = "10.2.1.0/24"
+  }
+  podsCidr = new formae.Prop {
+    flag = "podsCidr"
+    default = "10.2.16.0/20"
+  }
+  servicesCidr = new formae.Prop {
+    flag = "servicesCidr"
+    default = "10.2.32.0/20"
+  }
+  applyAs = new formae.Prop {
+    flag = "apply-as"
+    default = read?("env:GCP_APPLY_AS")
+      ?? throw("GCP apply principal not set. Pass --apply-as=user:foo@bar.com or set GCP_APPLY_AS.")
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cloud-side provisioning target (GCP project / region / zone). GCP resources
+// bind to this target's `.res` explicitly for provisioning.
+// ---------------------------------------------------------------------------
+function gcpTarget(slug: String): formae.Target = new formae.Target {
+  label = "gcp-target-\(slug)"
+  config = new gcp.Config {
+    project = knobs.project.value
+    region = knobs.region.value
+    zone = knobs.zone.value
+  }
+}
+
+// ---------------------------------------------------------------------------
+// IAM: grant the applying principal `roles/container.admin` on the project so
+// subsequent K8s RBAC patches (ClusterRoles, ClusterRoleBindings) clear GKE's
+// IAM webhook authorizer. Without this the lgtm forma fails on otel-agent's
+// RBAC objects with `requires container.clusterRoles.update`.
+// ---------------------------------------------------------------------------
+function containerAdmin(slug: String): projectIamMember.ProjectIamMember = new projectIamMember.ProjectIamMember {
+  target = gcpTarget(slug).res
+  label = "gke-apply-as-container-admin"
+  project = knobs.project.value
+  role = "roles/container.admin"
+  member = knobs.applyAs.value
+}
+
+// ---------------------------------------------------------------------------
+// Networking: VPC -> subnet (with pods/services secondary ranges) -> Cloud
+// Router -> Cloud NAT. `subnet`/`gkeRouter`/`nat` each reference `vpc(slug)`
+// internally for the network self-link.
+// ---------------------------------------------------------------------------
+function vpc(slug: String): network.Network = new network.Network {
+  target = gcpTarget(slug).res
+  label = "gke-vpc"
+  name = "\(slug)-vpc"
+  description = "VPC for \(slug) GKE cluster"
+  autoCreateSubnetworks = false
+  networkFirewallPolicyEnforcementOrder = "AFTER_CLASSIC_FIREWALL"
+  routingConfig {
+    routingMode = "REGIONAL"
+    bgpBestPathSelectionMode = "LEGACY"
+  }
+}
+
+function subnet(slug: String): subnetwork.Subnetwork = new subnetwork.Subnetwork {
+  target = gcpTarget(slug).res
+  label = "gke-subnet"
+  name = "\(slug)-subnet"
+  description = "Subnet for \(slug) GKE cluster"
+  network = vpc(slug).res.selfLink
+  region = knobs.region.value
+  ipCidrRange = knobs.subnetCidr.value
+  privateIpGoogleAccess = true
+  secondaryIpRanges = new Listing {
+    new subnetwork.SecondaryIpRange {
+      rangeName = "pods"
+      ipCidrRange = knobs.podsCidr.value
+    }
+    new subnetwork.SecondaryIpRange {
+      rangeName = "services"
+      ipCidrRange = knobs.servicesCidr.value
+    }
+  }
+}
+
+function gkeRouter(slug: String): router.Router = new router.Router {
+  target = gcpTarget(slug).res
+  label = "gke-router"
+  name = "\(slug)-router"
+  network = vpc(slug).res.selfLink
+  region = knobs.region.value
+}
+
+function nat(slug: String): routerNat.RouterNat = new routerNat.RouterNat {
+  target = gcpTarget(slug).res
+  label = "gke-nat"
+  name = "\(slug)-nat"
+  router = gkeRouter(slug).res.name
+  region = knobs.region.value
+  natIpAllocateOption = "AUTO_ONLY"
+  sourceSubnetworkIpRangesToNat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+}
+
+// ---------------------------------------------------------------------------
+// Standard zonal GKE cluster — physical name = `slug`, so workloads don't
+// collide.
+// ---------------------------------------------------------------------------
+function gkeCluster(slug: String): cluster.Cluster = new cluster.Cluster {
+  target = gcpTarget(slug).res
+  label = "gke-cluster"
+  name = slug
+  description = "Standard zonal GKE cluster for \(slug)"
+  location = knobs.zone.value
+  network = vpc(slug).res.selfLink
+  subnetwork = subnet(slug).res.selfLink
+
+  // Sized for the lgtm stack (~27 pods + demo traffic). Matches PR #12.
+  initialNodeCount = 3
+  nodeConfig = new cluster.NodeConfig {
+    machineType = "e2-standard-2"
+    diskSizeGb = 50
+    diskType = "pd-standard"
+    oauthScopes = new Listing {
+      "https://www.googleapis.com/auth/cloud-platform"
+    }
+  }
+
+  releaseChannel = new cluster.ReleaseChannel {
+    channel = "REGULAR"
+  }
+
+  ipAllocationPolicy = new cluster.IPAllocationPolicy {
+    useIpAliases = true
+    clusterSecondaryRangeName = "pods"
+    servicesSecondaryRangeName = "services"
+  }
+
+  addonsConfig = new cluster.AddonsConfig {
+    httpLoadBalancing = new cluster.HttpLoadBalancing {
+      disabled = false
+    }
+    horizontalPodAutoscaling = new cluster.HorizontalPodAutoscaling {
+      disabled = false
+    }
+  }
+
+  // Private nodes: required in projects with the
+  // `constraints/compute.vmExternalIpAccess` org policy. Image pulls go
+  // through Private Google Access (subnet has privateIpGoogleAccess=true);
+  // bookstore uses `mirror.gcr.io/library/...` so they resolve.
+  privateClusterConfig = new cluster.PrivateClusterConfig {
+    enablePrivateNodes = true
+    enablePrivateEndpoint = false
+    masterIpv4CidrBlock = "172.16.0.0/28"
+  }
+
+  // GKE auto-enables masterAuthorizedNetworks with an empty allowlist when
+  // privateClusterConfig.enablePrivateNodes = true, blocking all external
+  // traffic to the apiserver. Disable enforcement so local kubectl and the
+  // K8S plugin can reach the control plane from any IP. Tighten in prod.
+  masterAuthorizedNetworksConfig = new cluster.MasterAuthorizedNetworksConfig {
+    enabled = false
+  }
+
+  resourceLabels = new Mapping {
+    ["managed-by"] = "formae"
+    ["environment"] = "demo"
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public surface consumed by workload entries: resources(slug) + target(slug).
+// ---------------------------------------------------------------------------
+function resources(slug: String): Listing = new Listing {
+  gcpTarget(slug)
+  containerAdmin(slug)
+  vpc(slug)
+  subnet(slug)
+  gkeRouter(slug)
+  nat(slug)
+  gkeCluster(slug)
+}
+
+function target(slug: String): formae.Target = new formae.Target {
+  label = "k8s-target-gcp-\(slug)"
+  config = new k8s.Config {
+    kubernetesVersion = "1.34"
+    auth = new k8s.GKEAuth {
+      endpoint = gkeCluster(slug).res.endpoint
+      certificateAuthority = gkeCluster(slug).res.clusterCaCertificate
+    }
+  }
+}

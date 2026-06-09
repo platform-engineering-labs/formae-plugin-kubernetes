@@ -1,8 +1,9 @@
 # Crossplane
 
 Crossplane control plane on a managed Kubernetes cluster. Pick a cloud at
-apply time with `--provider`. Same forma file works on AWS, Azure, GCP, OCI,
-or any kubeconfig-accessible cluster.
+apply time by choosing the matching entry file — `examples/crossplane/<cloud>.pkl`,
+where `<cloud>` is one of `aws`, `azure`, `gcp`, `oci`, or `local`. The same
+workload runs on AWS, Azure, GCP, OCI, or any kubeconfig-accessible cluster.
 
 Crossplane's init container installs its CRDs (Provider, Configuration,
 Composition, ...) on first start — formae deliberately does NOT manage those
@@ -28,43 +29,35 @@ installed; `formae-plugin-kubernetes` is required for all providers.
 
 ## Configuration
 
-Declared CLI flags (auto-generated from `formae.Prop` declarations):
-
-| Flag | Type | Default | Notes |
-|------|------|---------|-------|
-| `--provider` | string | `$FORMAE_PROVIDER` or `aws` | One of `aws`, `azure`, `gcp`, `oci`, `local`. |
-
-Cluster-side knobs live in `clusters/<provider>/vars.pkl` and are not
-exposed as CLI flags — see the bookstore [Configuration](../bookstore/README.md#configuration)
-for the env-var support matrix.
+The cluster module is `examples/clusters/<cloud>.pkl`. Cluster-side knobs
+(region, CIDRs, k8s version, etc.) are overridable via `--prop <name>=<value>`
+— see the bookstore [Configuration](../bookstore/README.md#configuration) for
+the env-var support matrix.
 
 ## Deploy
 
 ```bash
 # Local cluster
 formae apply --mode reconcile --yes --watch \
-  --provider local \
-  examples/crossplane/main.pkl
+  examples/crossplane/local.pkl
 
 # AWS EKS
 formae apply --mode reconcile --yes --watch \
-  --provider aws \
-  examples/crossplane/main.pkl
+  examples/crossplane/aws.pkl
 
 # Azure AKS
 formae apply --mode reconcile --yes --watch \
-  --provider azure \
-  examples/crossplane/main.pkl
+  examples/crossplane/azure.pkl
 
 # GCP GKE
 GCP_PROJECT=my-gcp-project \
   formae apply --mode reconcile --yes --watch \
-  --provider gcp examples/crossplane/main.pkl
+  examples/crossplane/gcp.pkl
 
 # Oracle OKE
 OCI_COMPARTMENT_ID=ocid1.compartment.oc1..xxx \
   formae apply --mode reconcile --yes --watch \
-  --provider oci examples/crossplane/main.pkl
+  examples/crossplane/oci.pkl
 ```
 
 ## Smoke Test
@@ -97,7 +90,7 @@ EOF
 ## Tear Down
 
 ```bash
-formae destroy --yes --provider <p> examples/crossplane/main.pkl
+formae destroy --on-dependents=cascade --yes examples/crossplane/<cloud>.pkl
 ```
 
 Removes Crossplane core + the cluster + cloud infra.

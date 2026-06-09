@@ -9,14 +9,13 @@ Three plugins compose: the cloud plugin provisions the cluster, the k8s plugin d
 - formae ≥ 0.86.0
 - `formae-plugin-kubernetes`, `formae-plugin-grafana`, and the cloud plugin for your chosen provider installed
 - Cloud credentials in your environment (e.g. `gcloud auth application-default login` for GCP)
-- `--provider local` (OrbStack / kind / minikube) works too. Uses the current kubectl context and skips cloud provisioning. Fastest iteration path.
+- `examples/lgtm-observability/local.pkl` (OrbStack / kind / minikube) works too. Uses the current kubectl context and skips cloud provisioning. Fastest iteration path.
 
 ## Environment Variables
 
 | Variable | Value | Description |
 |---|---|---|
 | `GRAFANA_AUTH` | `admin:admin-change-me` | Matches the password baked into the `lgtm-grafana-admin` Secret. Must be set **before** starting the agent. |
-| `FORMAE_PROVIDER` | `gcp` (or another provider) | Optional shortcut for `--provider`. |
 | `GCP_PROJECT`, `GCP_APPLY_AS` | (varies) | Required only for the GCP provider. See `clusters/gcp/vars.pkl`. |
 
 ## Usage
@@ -25,15 +24,15 @@ Three plugins compose: the cloud plugin provisions the cluster, the k8s plugin d
 formae agent stop
 GRAFANA_AUTH=admin:admin-change-me formae agent start
 
-formae apply --mode reconcile --provider gcp --enable-demo-traffic examples/lgtm-observability/main.pkl
+formae apply --mode reconcile --enable-demo-traffic examples/lgtm-observability/gcp.pkl
 ```
 
 The apply creates ~55 resources: the cloud bundle (VPC, subnet, router, NAT, cluster, optional IAM grant), the LGTM stack (~48 K8s resources), and the grafana plugin resources (1 Target, 1 Folder, 3 DataSources, 2 Dashboards).
 
-After apply, fetch the Grafana URL from the inventory (the target is labelled per provider so parallel multi-cloud applies don't collide on a single inventory entry):
+After apply, fetch the Grafana URL from the inventory (the target is labelled per cloud so parallel multi-cloud applies don't collide on a single inventory entry):
 
 ```bash
-formae inventory targets --query 'label:grafana-target-aws' --output-consumer machine --output-schema json | jq -r '.[0].Config.Url."$value"'
+formae inventory targets --query 'label:grafana-target-gcp' --output-consumer machine --output-schema json | jq -r '.[0].Config.Url."$value"'
 ```
 
 Open it in a browser. Log in as `admin / admin-change-me`. Navigate to **Dashboards → Formae Dashboards**.
@@ -78,31 +77,31 @@ Issue a few formae commands (`formae inventory resources`, etc.) and the panels 
 | (cluster bundle) | varies | cloud | VPC, subnet, NAT, cluster, IAM |
 | `lgtm-grafana-admin` | `K8S::Core::Secret` | k8s | Holds the admin password |
 | (LGTM stack) | varies | k8s | ~48 resources: Grafana, Loki, Tempo, Mimir, MinIO, OTel, namespace |
-| `grafana-target-{provider}` | `Formae::Target` | - | URL is `$ref` on the Grafana Service's `lbIngressUrl` |
-| `formae-dashboards-{provider}` | `Grafana::Core::Folder` | grafana | `uid = "formae-dashboards"` (UIDs are scoped to the per-provider Grafana, so they don't need provider suffixes) |
-| `lgtm-{loki,tempo,mimir}-datasource-{provider}` | `Grafana::Core::DataSource` (×3) | grafana | UIDs match dashboards' references |
-| `formae-{overview,plugins}-dashboard-{provider}` | `Grafana::Core::Dashboard` (×2) | grafana | Loaded from [formae-grafana-dashboards](https://github.com/platform-engineering-labs/formae-grafana-dashboards) |
+| `grafana-target-<cloud>` | `Formae::Target` | - | URL is `$ref` on the Grafana Service's `lbIngressUrl` |
+| `formae-dashboards-<cloud>` | `Grafana::Core::Folder` | grafana | `uid = "formae-dashboards"` (UIDs are scoped to the per-cloud Grafana, so they don't need cloud suffixes) |
+| `lgtm-{loki,tempo,mimir}-datasource-<cloud>` | `Grafana::Core::DataSource` (×3) | grafana | UIDs match dashboards' references |
+| `formae-{overview,plugins}-dashboard-<cloud>` | `Grafana::Core::Dashboard` (×2) | grafana | Loaded from [formae-grafana-dashboards](https://github.com/platform-engineering-labs/formae-grafana-dashboards) |
 
 ## Idempotency
 
 A second apply with no edits should detect zero changes:
 
 ```bash
-formae apply --mode reconcile --provider gcp examples/lgtm-observability/main.pkl
+formae apply --mode reconcile examples/lgtm-observability/gcp.pkl
 # Expect "no changes"
 ```
 
 ## Destroy
 
 ```bash
-formae destroy --on-dependents=cascade --yes --provider gcp examples/lgtm-observability/main.pkl
+formae destroy --on-dependents=cascade --yes examples/lgtm-observability/gcp.pkl
 ```
 
 The cascade flag picks up the telemetrygen Deployments that depend on the observability namespace. The teardown order: grafana plugin resources → k8s resources → cloud bundle.
 
 ## Limitations / known caveats
 
-- **Anonymous-mode users**: this example forces admin-auth on Grafana so the plugin can authenticate. The legacy `examples/lgtm/main.pkl` retains the original anonymous-admin shape. The two should not be applied to the same stack.
+- **Anonymous-mode users**: this example forces admin-auth on Grafana so the plugin can authenticate.
 - **First-apply Grafana wait**: the grafana plugin retries on connect failures, so it's safe for the apply to reach the grafana resources before the LB has its public IP. In practice the apply takes 8-10 minutes; LB provisioning lands around minute 5.
 - **AWS NLB hostnames**: AWS exposes a `hostname` instead of an `ip` on `status.loadBalancer.ingress`. The synthesized `lbIngressUrl` uses whichever is non-empty, so this works on AWS too.
 - **Grafana runs as one replica**: the lgtm bundle pins `replicas = 1` because Grafana's embedded SQLite diverges across pods; an external DB would be required for HA. Restarting the Grafana pod resets its in-pod state; re-apply (or wait for sync) to repopulate.
