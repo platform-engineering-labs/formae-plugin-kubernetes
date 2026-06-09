@@ -1,0 +1,159 @@
+amends "@formae/forma.pkl"
+
+import "@formae/formae.pkl"
+import "@apps/lgtm/lgtm.pkl" as lgtmApp
+import "@clusters/gcp.pkl" as cluster
+import "@grafana/grafana.pkl"
+import "@grafana/core/folder.pkl"
+import "@grafana/core/datasource.pkl"
+import "@grafana/core/dashboard.pkl"
+
+description {
+  text = """
+    LGTM observability stack on a managed GKE cluster (GCP), with Grafana
+    Folder + DataSources + Dashboards provisioned by the grafana plugin.
+
+    Three plugins compose in one forma:
+      - The gcp plugin provisions the GKE cluster
+      - The k8s plugin deploys LGTM (Loki, Tempo, Mimir, Grafana, MinIO, OTel)
+      - The grafana plugin configures Grafana via its HTTP API
+
+    Target chaining wires it together: the K8s Target's auth is a $ref on the
+    cluster endpoint; the Grafana Target's URL is a $ref on the Grafana
+    Service's LoadBalancer ingress URL. No hardcoded endpoints.
+
+    Prereq: GRAFANA_AUTH=admin:admin-change-me set before starting the agent
+    (matches the password baked into the lgtm-grafana-admin Secret):
+
+      formae agent stop
+      GRAFANA_AUTH=admin:admin-change-me formae agent start
+
+    Apply (--enable-demo-traffic runs synthetic telemetry through telemetrygen):
+
+      formae apply --mode reconcile --enable-demo-traffic examples/lgtm-observability/gcp.pkl
+
+    Teardown:
+      formae destroy --on-dependents=cascade --yes examples/lgtm-observability/gcp.pkl
+    """
+  confirm = true
+}
+
+properties {
+  enableDemoTraffic = new formae.Prop {
+    flag = "enable-demo-traffic"
+    default = false
+  }
+}
+
+// Provider = this file's path. `clusterName` makes the cluster + target labels
+// unique so this workload can co-exist with bookstore/crossplane on one account.
+local clusterName = "lgtm"
+
+local k8sTarget = cluster.target(clusterName)
+
+local stack: formae.Stack = new {
+  label = "k8s-lgtm-observability-gcp"
+  description = "LGTM observability stack + plugin-managed Grafana dashboards (gcp)."
+}
+
+// enableGrafanaAdminAuth=true so Grafana boots with admin/password auth from a
+// managed Secret. The grafana plugin authenticates via GRAFANA_AUTH at agent start.
+local lgtm = lgtmApp.allResources(
+  k8sTarget,
+  properties.enableDemoTraffic.value as Boolean,
+  true
+)
+
+// URL is a $ref on the Grafana Service's synthesized lbIngressUrl. Per-cloud
+// label so parallel multi-cloud applies don't collide on one inventory entry.
+local grafanaTarget: formae.Target = new {
+  label = "grafana-target-gcp"
+  namespace = "GRAFANA"
+  config = new grafana.Config {
+    url = lgtm.grafanaSvc.res.lbIngressUrl
+  }
+}
+
+local dashboardsFolder = new folder.Folder {
+  target = grafanaTarget.res
+  label = "formae-dashboards-gcp"
+  uid = "formae-dashboards"
+  title = "Formae Dashboards"
+}
+
+// Datasources point at the cluster-internal LGTM read tiers (Grafana proxies
+// queries server-side). UIDs match the shipped dashboards' refs.
+local lokiDataSource = new datasource.DataSource {
+  target = grafanaTarget.res
+  label = "lgtm-loki-datasource-gcp"
+  uid = "loki"
+  name = "Loki"
+  datasourceType = "loki"
+  url = "http://loki-read.observability.svc.cluster.local:3100"
+  access = "proxy"
+}
+
+local tempoDataSource = new datasource.DataSource {
+  target = grafanaTarget.res
+  label = "lgtm-tempo-datasource-gcp"
+  uid = "tempo"
+  name = "Tempo"
+  datasourceType = "tempo"
+  url = "http://tempo-read.observability.svc.cluster.local:3200"
+  access = "proxy"
+}
+
+// Mimir is served via Prometheus-API protocol. UID `prometheus` matches the
+// shipped dashboards' datasource references.
+local mimirDataSource = new datasource.DataSource {
+  target = grafanaTarget.res
+  label = "lgtm-mimir-datasource-gcp"
+  uid = "prometheus"
+  name = "Mimir"
+  datasourceType = "prometheus"
+  url = "http://mimir-read.observability.svc.cluster.local:8080/prometheus"
+  access = "proxy"
+  isDefault = true
+}
+
+// Dashboards from formae-grafana-dashboards. `read()` fetches at Pkl-eval time
+// and embeds the JSON into configJson.
+local dashboardRepo = "https://raw.githubusercontent.com/platform-engineering-labs/formae-grafana-dashboards/main/dashboards"
+local overviewJson = read("\(dashboardRepo)/formae-overview.json").text
+local pluginsJson = read("\(dashboardRepo)/formae-plugin.json").text
+
+local formaeOverviewDashboard = new dashboard.Dashboard {
+  target = grafanaTarget.res
+  label = "formae-overview-dashboard-gcp"
+  uid = "formae-overview"
+  title = "Formae Agent"
+  folderUid = dashboardsFolder.res.uid
+  configJson = overviewJson
+}
+
+local formaePluginsDashboard = new dashboard.Dashboard {
+  target = grafanaTarget.res
+  label = "formae-plugins-dashboard-gcp"
+  uid = "formae-plugins"
+  title = "Formae Plugins"
+  folderUid = dashboardsFolder.res.uid
+  configJson = pluginsJson
+}
+
+forma {
+  stack
+
+  ...cluster.resources(clusterName)
+  k8sTarget
+
+  ...lgtm.resources
+
+  grafanaTarget
+
+  dashboardsFolder
+  lokiDataSource
+  tempoDataSource
+  mimirDataSource
+  formaeOverviewDashboard
+  formaePluginsDashboard
+}

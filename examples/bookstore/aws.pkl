@@ -1,0 +1,45 @@
+amends "@formae/forma.pkl"
+
+import "@apps/bookstore.pkl" as bookstoreApp
+import "@formae/formae.pkl"
+import "@clusters/aws.pkl" as cluster
+
+description {
+  text = """
+    Bookstore on a managed EKS cluster (AWS).
+
+      formae apply --mode reconcile examples/bookstore/aws.pkl
+
+    Provisions a full-stack managed cluster (VPC + IAM + EKS AutoMode), then
+    deploys an nginx frontend + Node API. See examples/bookstore/README.md
+    for per-provider prerequisites.
+
+    Teardown:
+      formae destroy --on-dependents=cascade --yes examples/bookstore/aws.pkl
+    """
+  confirm = true
+}
+
+// Provider = this file's path. `clusterName` makes the cluster + target
+// labels unique so bookstore can co-exist with other workloads on one account.
+local clusterName = "bookstore"
+
+local k8sTarget = cluster.target(clusterName)
+
+local stack: formae.Stack = new {
+  label = "k8s-bookstore-aws"
+  description = "Bookstore on a managed Kubernetes cluster (aws)."
+}
+
+local bookstore = new {
+  resources = bookstoreApp.allResources(k8sTarget)
+}
+
+forma {
+  stack
+
+  ...cluster.resources(clusterName)
+  k8sTarget
+
+  ...bookstore.resources
+}

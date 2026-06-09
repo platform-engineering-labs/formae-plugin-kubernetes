@@ -1,0 +1,46 @@
+amends "@formae/forma.pkl"
+
+import "@apps/bookstore.pkl" as bookstoreApp
+import "@formae/formae.pkl"
+import "@clusters/local.pkl" as cluster
+
+description {
+  text = """
+    Bookstore on a local/kubeconfig Kubernetes cluster.
+
+      formae apply --mode reconcile examples/bookstore/local.pkl
+
+    Provisions no cluster — deploys to whatever your current kubeconfig
+    context is pointing at (OrbStack, kind, minikube, ...), then deploys an
+    nginx frontend + Node API. See examples/bookstore/README.md for
+    per-provider prerequisites.
+
+    Teardown:
+      formae destroy --on-dependents=cascade --yes examples/bookstore/local.pkl
+    """
+  confirm = true
+}
+
+// Provider = this file's path. `clusterName` makes the target label unique so
+// bookstore can co-exist with other workloads on one local cluster.
+local clusterName = "bookstore"
+
+local k8sTarget = cluster.target(clusterName)
+
+local stack: formae.Stack = new {
+  label = "k8s-bookstore-local"
+  description = "Bookstore on a managed Kubernetes cluster (local)."
+}
+
+local bookstore = new {
+  resources = bookstoreApp.allResources(k8sTarget)
+}
+
+forma {
+  stack
+
+  ...cluster.resources(clusterName)
+  k8sTarget
+
+  ...bookstore.resources
+}

@@ -1,8 +1,9 @@
 # Bookstore
 
 Full-stack bookstore webapp on a managed Kubernetes cluster. Pick a cloud at
-apply time with `--provider`. The same forma file runs on AWS, Azure, GCP,
-OCI, or any kubeconfig-accessible cluster.
+apply time by choosing the matching entry file — `examples/bookstore/<cloud>.pkl`,
+where `<cloud>` is one of `aws`, `azure`, `gcp`, `oci`, or `local`. The same
+workload runs on AWS, Azure, GCP, OCI, or any kubeconfig-accessible cluster.
 
 ## What You Get
 
@@ -38,16 +39,12 @@ OCI, or any kubeconfig-accessible cluster.
 
 ## Configuration
 
-Declared CLI flags (auto-generated from `formae.Prop` declarations):
+The cloud is selected by which entry file you apply — there is no provider
+flag. Each `examples/bookstore/<cloud>.pkl` imports the matching cluster
+module `examples/clusters/<cloud>.pkl`.
 
-| Flag | Type | Default | Notes |
-|------|------|---------|-------|
-| `--provider` | string | `$FORMAE_PROVIDER` or `aws` | One of `aws`, `azure`, `gcp`, `oci`, `local`. Invalid values fail fast. |
-
-Cluster-side knobs live in the `clusters/<provider>/vars.pkl` (or
-`clusters/aws/bundle.pkl` for AWS) and are *not* exposed as CLI flags —
-override them either by setting the env vars below, or by editing the
-`vars.pkl` file directly.
+Cluster-side knobs (region, CIDRs, k8s version, etc.) can be overridden either
+by setting the env vars below, or with `--prop <name>=<value>` at apply time.
 
 **Env vars supported by default:**
 
@@ -59,36 +56,33 @@ override them either by setting the env vars below, or by editing the
 | `local`  | `K8S_CONTEXT` | kubectl context to target |
 
 For knobs without env-var support (AWS `region`/`vpcCidr`/etc., GCP
-`region`/`zone`/CIDRs, Azure `location`/`vnetCidr`/etc.), edit the
-relevant `vars.pkl`.
+`region`/`zone`/CIDRs, Azure `location`/`vnetCidr`/etc.), pass them with
+`--prop <name>=<value>`.
 
 ## Deploy
 
 ```bash
 # Local cluster (OrbStack / kind / minikube)
 formae apply --mode reconcile --yes --watch \
-  --provider local \
-  examples/bookstore/main.pkl
+  examples/bookstore/local.pkl
 
 # AWS EKS
 formae apply --mode reconcile --yes --watch \
-  --provider aws \
-  examples/bookstore/main.pkl
+  examples/bookstore/aws.pkl
 
 # Azure AKS
 formae apply --mode reconcile --yes --watch \
-  --provider azure \
-  examples/bookstore/main.pkl
+  examples/bookstore/azure.pkl
 
 # GCP GKE
 GCP_PROJECT=my-gcp-project \
   formae apply --mode reconcile --yes --watch \
-  --provider gcp examples/bookstore/main.pkl
+  examples/bookstore/gcp.pkl
 
 # Oracle OKE
 OCI_COMPARTMENT_ID=ocid1.compartment.oc1..xxx \
   formae apply --mode reconcile --yes --watch \
-  --provider oci examples/bookstore/main.pkl
+  examples/bookstore/oci.pkl
 ```
 
 Cluster spin-up: ~5 min (GKE) to ~15 min (EKS). `local` is seconds.
@@ -114,7 +108,7 @@ The frontend page calls the backend `/api` and renders the JSON response.
 ## Tear Down
 
 ```bash
-formae destroy --yes --provider <p> examples/bookstore/main.pkl
+formae destroy --on-dependents=cascade --yes examples/bookstore/<cloud>.pkl
 ```
 
 This removes the workload AND the cluster + supporting cloud infra. Tear-down
@@ -143,7 +137,7 @@ formae.Stack: k8s-bookstore
 
 | Symptom | Cause / Fix |
 |---------|-------------|
-| `Expected value of type "aws"\|"azure"\|...` | Typo in `--provider`. Allowed: `aws`, `azure`, `gcp`, `oci`, `local`. |
+| `cannot find module` / no such file | Wrong entry file path. Pick one of `examples/bookstore/{aws,azure,gcp,oci,local}.pkl`. |
 | AKS apply fails on RBAC step | `AZURE_PRINCIPAL_ID` is unset or wrong. Run `az ad signed-in-user show --query id -o tsv` and export it. |
 | GKE apply hangs / fails on cluster create | Confirm your project has the Container Engine API enabled; check `compute.vmExternalIpAccess` org policy. The example uses private nodes + private Google access by default. |
 | OKE apply fails immediately | Default `OCI_NODE_IMAGE_ID` is region-specific. Look up an OKE-optimized image for your region: `oci ce node-pool-options get --node-pool-option-id all --compartment-id <id>` and export it. |

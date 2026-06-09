@@ -1,0 +1,625 @@
+// OCI managed-Kubernetes cluster — flattened, file-as-picker shape.
+//
+// One self-contained module: VCN, subnets, internet/NAT/service gateways,
+// route tables, security list, and an OKE cluster + node pool, plus the
+// Kubernetes target authenticated via `OCIAuth` (OCI session-token refresh
+// through the K8S plugin's WrapTransport). No `dispatch.pkl`, no `Bundle`
+// class, no sub-files.
+//
+// The four helper classes (VcnResources, SecurityResources, NetworkResources,
+// OkeResources) are kept inline — they form a dependency chain where each
+// consumes the prior: vcn -> security(vcn) -> network(security) -> oke(network).
+//
+// Consumed by workload entries (examples/<workload>/oci.pkl), which select
+// THIS provider by importing THIS file:
+//
+//   import "@clusters/oci.pkl" as cluster
+//   local k8sTarget = cluster.target("bookstore")
+//   forma {
+//     ...cluster.resources("bookstore")
+//     k8sTarget
+//   }
+//
+// `slug` is a per-workload identifier (NOT a `--name` flag): it makes the OKE
+// cluster name, VCN display names, and both target labels unique, so multiple
+// workloads (lgtm/bookstore/crossplane) can co-exist on ONE OCI tenancy
+// without colliding on the same physical cluster or inventory target. It is
+// named `slug` rather than `name` to avoid Pkl self-reference shadowing with
+// the resource `.name` / `.displayName` properties it feeds. Region/CIDR/
+// version stay as `--prop`-overridable knobs (separate clusters can share a
+// region; VCNs are isolated).
+
+import "@formae/formae.pkl"
+import "@oci/oci.pkl"
+import "@oci/core/vcn.pkl"
+import "@oci/core/subnet.pkl"
+import "@oci/core/internetgateway.pkl"
+import "@oci/core/natgateway.pkl"
+import "@oci/core/servicegateway.pkl"
+import "@oci/core/routetable.pkl"
+import "@oci/core/securitylist.pkl"
+import "@oci/containerengine/cluster.pkl"
+import "@oci/containerengine/nodepool.pkl"
+import "@k8s/v1.34/k8s.pkl" as k8s
+
+// ---------------------------------------------------------------------------
+// Tunable knobs (shared across workloads on a cloud; override with --prop).
+// Non-identity values only — region, CIDRs, k8s version, shape, and the
+// env-backed identifiers (compartment, availability domain, image, service).
+// ---------------------------------------------------------------------------
+local knobs = new Dynamic {
+  ociRegion = new formae.Prop {
+    flag = "ociRegion"
+    default = "us-chicago-1"
+  }
+  k8sVersion = new formae.Prop {
+    flag = "k8sVersion"
+    default = "v1.34.1"
+  }
+  vcnCidr = new formae.Prop {
+    flag = "vcnCidr"
+    default = "10.0.0.0/16"
+  }
+  serviceLbSubnetCidr = new formae.Prop {
+    flag = "serviceLbSubnetCidr"
+    default = "10.0.1.0/24"   // K8s LoadBalancer services (public)
+  }
+  workerNodeSubnetCidr = new formae.Prop {
+    flag = "workerNodeSubnetCidr"
+    default = "10.0.2.0/24"  // worker nodes (private)
+  }
+  vmShape = new formae.Prop {
+    flag = "vmShape"
+    default = "VM.Standard.E4.Flex"
+  }
+  nodeOcpus = new formae.Prop {
+    flag = "nodeOcpus"
+    default = 2.0
+  }
+  nodeMemoryGBs = new formae.Prop {
+    flag = "nodeMemoryGBs"
+    default = 16.0
+  }
+  nodePoolSize = new formae.Prop {
+    flag = "nodePoolSize"
+    default = 2
+  }
+
+  compartmentId = new formae.Prop {
+    flag = "compartmentId"
+    default = read?("env:OCI_COMPARTMENT_ID")
+      ?? throw("OCI compartment not set. Pass --compartmentId=<ocid> or set OCI_COMPARTMENT_ID.")
+  }
+
+  availabilityDomain = new formae.Prop {
+    flag = "availabilityDomain"
+    default = read?("env:OCI_AVAILABILITY_DOMAIN") ?? "Twhb:US-CHICAGO-1-AD-1"
+  }
+
+  // OKE-optimized node image for region + K8s version.
+  // Find images: oci ce node-pool-options get --node-pool-option-id all --compartment-id <id>
+  nodeImageId = new formae.Prop {
+    flag = "nodeImageId"
+    default = read?("env:OCI_NODE_IMAGE_ID")
+      ?? "ocid1.image.oc1.us-chicago-1.aaaaaaaasyjphzjohvvrttbw66amaxx6otldb26fvvn4nsogrvzsq2t6vama"
+  }
+
+  // Service Gateway service ID for OCI services.
+  // Find: oci network service list --compartment-id <id>
+  serviceGatewayServiceId = new formae.Prop {
+    flag = "serviceGatewayServiceId"
+    default = read?("env:OCI_SERVICE_GATEWAY_SERVICE_ID")
+      ?? "ocid1.service.oc1.us-chicago-1.aaaaaaaakalxenk3rcszv74eamyc6dkjq6ngikfsdpctsll4nxw2lnfqbpbq"
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Helper classes (kept inline from the original sub-files). Each carries its
+// own inputs and exposes a hidden `resources` listing plus the outputs the
+// next class in the chain consumes.
+// ---------------------------------------------------------------------------
+
+class VcnResources {
+  compartmentId: String
+  projectName: String
+  vcnCidr: String
+
+  vcn: vcn.VCN = new vcn.VCN {
+    label = "oke-vcn"
+    compartmentId = outer.compartmentId
+    cidrBlock = vcnCidr
+    displayName = projectName + "-vcn"
+    dnsLabel = "okecluster"
+    freeformTags {
+      new oci.FreeformTag { key = "Name"; value = projectName + "-vcn" }
+      new oci.FreeformTag { key = "Project"; value = projectName }
+    }
+  }
+
+  hidden resources: Listing<formae.Resource> = new {
+    vcn
+  }
+}
+
+class SecurityResources {
+  compartmentId: String
+  projectName: String
+  serviceLbSubnetCidr: String
+  workerNodeSubnetCidr: String
+  vcn: vcn.VCN
+
+  securityList: securitylist.SecurityList = new securitylist.SecurityList {
+    label = "oke-security-list"
+    compartmentId = outer.compartmentId
+    vcnId = vcn.res.id
+    displayName = projectName + "-security-list"
+
+    ingressSecurityRules {
+      // Allow worker nodes to communicate with each other
+      new securitylist.IngressSecurityRule {
+        description = "Allow pods on one worker node to communicate with pods on other worker nodes"
+        protocol = "all"
+        source = workerNodeSubnetCidr
+        sourceType = "CIDR_BLOCK"
+      }
+      // Path discovery from control plane
+      new securitylist.IngressSecurityRule {
+        description = "Path discovery from Kubernetes Control Plane"
+        protocol = "1"
+        source = serviceLbSubnetCidr
+        sourceType = "CIDR_BLOCK"
+        icmpOptions = new securitylist.IcmpOptions {
+          type = 3
+          code = 4
+        }
+      }
+      // TCP access from control plane
+      new securitylist.IngressSecurityRule {
+        description = "TCP access from Kubernetes Control Plane"
+        protocol = "6"
+        source = serviceLbSubnetCidr
+        sourceType = "CIDR_BLOCK"
+      }
+      // SSH access (optional - for debugging)
+      new securitylist.IngressSecurityRule {
+        description = "Inbound SSH traffic to worker nodes"
+        protocol = "6"
+        source = "0.0.0.0/0"
+        sourceType = "CIDR_BLOCK"
+        tcpOptions = new securitylist.TcpOptions {
+          destinationPortRange = new securitylist.PortRange { min = 22; max = 22 }
+        }
+      }
+      // External access to Kubernetes API endpoint
+      new securitylist.IngressSecurityRule {
+        description = "External access to Kubernetes API endpoint"
+        protocol = "6"
+        source = "0.0.0.0/0"
+        sourceType = "CIDR_BLOCK"
+        tcpOptions = new securitylist.TcpOptions {
+          destinationPortRange = new securitylist.PortRange { min = 6443; max = 6443 }
+        }
+      }
+      // External HTTP access to public LoadBalancer services
+      new securitylist.IngressSecurityRule {
+        description = "Allow HTTP to public LoadBalancers"
+        protocol = "6"
+        source = "0.0.0.0/0"
+        sourceType = "CIDR_BLOCK"
+        tcpOptions = new securitylist.TcpOptions {
+          destinationPortRange = new securitylist.PortRange { min = 80; max = 80 }
+        }
+      }
+      // External HTTPS access to public LoadBalancer services
+      new securitylist.IngressSecurityRule {
+        description = "Allow HTTPS to public LoadBalancers"
+        protocol = "6"
+        source = "0.0.0.0/0"
+        sourceType = "CIDR_BLOCK"
+        tcpOptions = new securitylist.TcpOptions {
+          destinationPortRange = new securitylist.PortRange { min = 443; max = 443 }
+        }
+      }
+    }
+
+    egressSecurityRules {
+      // Allow worker nodes to communicate with each other
+      new securitylist.EgressSecurityRule {
+        description = "Allow pods on one worker node to communicate with pods on other worker nodes"
+        protocol = "all"
+        destination = workerNodeSubnetCidr
+        destinationType = "CIDR_BLOCK"
+      }
+      // Access to Kubernetes API Endpoint
+      new securitylist.EgressSecurityRule {
+        description = "Access to Kubernetes API Endpoint"
+        protocol = "6"
+        destination = serviceLbSubnetCidr
+        destinationType = "CIDR_BLOCK"
+        tcpOptions = new securitylist.TcpOptions {
+          destinationPortRange = new securitylist.PortRange { min = 6443; max = 6443 }
+        }
+      }
+      // Worker to control plane communication
+      new securitylist.EgressSecurityRule {
+        description = "Kubernetes worker to control plane communication"
+        protocol = "6"
+        destination = serviceLbSubnetCidr
+        destinationType = "CIDR_BLOCK"
+        tcpOptions = new securitylist.TcpOptions {
+          destinationPortRange = new securitylist.PortRange { min = 12250; max = 12250 }
+        }
+      }
+      // Path discovery to control plane
+      new securitylist.EgressSecurityRule {
+        description = "Path discovery"
+        protocol = "1"
+        destination = serviceLbSubnetCidr
+        destinationType = "CIDR_BLOCK"
+        icmpOptions = new securitylist.IcmpOptions {
+          type = 3
+          code = 4
+        }
+      }
+      // Access to OCI services (critical for node registration)
+      new securitylist.EgressSecurityRule {
+        description = "Allow nodes to communicate with OKE to ensure correct start-up and continued functioning"
+        protocol = "6"
+        destination = "all-ord-services-in-oracle-services-network"
+        destinationType = "SERVICE_CIDR_BLOCK"
+        tcpOptions = new securitylist.TcpOptions {
+          destinationPortRange = new securitylist.PortRange { min = 443; max = 443 }
+        }
+      }
+      // ICMP to internet (path discovery)
+      new securitylist.EgressSecurityRule {
+        description = "ICMP Access from Kubernetes Control Plane"
+        protocol = "1"
+        destination = "0.0.0.0/0"
+        destinationType = "CIDR_BLOCK"
+        icmpOptions = new securitylist.IcmpOptions {
+          type = 3
+          code = 4
+        }
+      }
+      // Worker nodes access to internet
+      new securitylist.EgressSecurityRule {
+        description = "Worker Nodes access to Internet"
+        protocol = "all"
+        destination = "0.0.0.0/0"
+        destinationType = "CIDR_BLOCK"
+      }
+    }
+
+    freeformTags {
+      new oci.FreeformTag { key = "Name"; value = projectName + "-security-list" }
+      new oci.FreeformTag { key = "Project"; value = projectName }
+    }
+  }
+
+  hidden resources: Listing<formae.Resource> = new {
+    securityList
+  }
+}
+
+class NetworkResources {
+  compartmentId: String
+  projectName: String
+  serviceLbSubnetCidr: String
+  workerNodeSubnetCidr: String
+  serviceGatewayServiceId: String
+  vcn: vcn.VCN
+  securityList: securitylist.SecurityList
+
+  // Internet Gateway - for public subnet access
+  hidden internetGateway: internetgateway.InternetGateway = new internetgateway.InternetGateway {
+    label = "oke-igw"
+    compartmentId = outer.compartmentId
+    vcnId = vcn.res.id
+    isEnabled = true
+    displayName = projectName + "-igw"
+    freeformTags {
+      new oci.FreeformTag { key = "Name"; value = projectName + "-igw" }
+    }
+  }
+
+  // NAT Gateway - for private subnet egress to internet
+  hidden natGateway: natgateway.NatGateway = new natgateway.NatGateway {
+    label = "oke-nat-gw"
+    compartmentId = outer.compartmentId
+    vcnId = vcn.res.id
+    displayName = projectName + "-nat-gw"
+    blockTraffic = false
+    freeformTags {
+      new oci.FreeformTag { key = "Name"; value = projectName + "-nat-gw" }
+    }
+  }
+
+  // Service Gateway - for OCI services access
+  hidden serviceGateway: servicegateway.ServiceGateway = new servicegateway.ServiceGateway {
+    label = "oke-svc-gw"
+    compartmentId = outer.compartmentId
+    vcnId = vcn.res.id
+    displayName = projectName + "-svc-gw"
+    services {
+      new servicegateway.ServiceGatewayService {
+        serviceId = serviceGatewayServiceId
+      }
+    }
+    freeformTags {
+      new oci.FreeformTag { key = "Name"; value = projectName + "-svc-gw" }
+    }
+  }
+
+  // Public Route Table - for API endpoint and service LB subnets
+  hidden publicRouteTable: routetable.RouteTable = new routetable.RouteTable {
+    label = "oke-public-rt"
+    compartmentId = outer.compartmentId
+    vcnId = vcn.res.id
+    displayName = projectName + "-public-rt"
+    routeRules {
+      new routetable.RouteRule {
+        description = "traffic to/from internet"
+        destination = "0.0.0.0/0"
+        destinationType = "CIDR_BLOCK"
+        networkEntityId = internetGateway.res.id
+      }
+    }
+    freeformTags {
+      new oci.FreeformTag { key = "Name"; value = projectName + "-public-rt" }
+    }
+  }
+
+  // Private Route Table - for worker node subnet
+  hidden privateRouteTable: routetable.RouteTable = new routetable.RouteTable {
+    label = "oke-private-rt"
+    compartmentId = outer.compartmentId
+    vcnId = vcn.res.id
+    displayName = projectName + "-private-rt"
+    routeRules {
+      new routetable.RouteRule {
+        description = "traffic to the internet"
+        destination = "0.0.0.0/0"
+        destinationType = "CIDR_BLOCK"
+        networkEntityId = natGateway.res.id
+      }
+      new routetable.RouteRule {
+        description = "traffic to OCI services"
+        destination = "all-ord-services-in-oracle-services-network"
+        destinationType = "SERVICE_CIDR_BLOCK"
+        networkEntityId = serviceGateway.res.id
+      }
+    }
+    freeformTags {
+      new oci.FreeformTag { key = "Name"; value = projectName + "-private-rt" }
+    }
+  }
+
+  // Service Load Balancer Subnet - for Kubernetes LoadBalancer services (PUBLIC)
+  svcLbSubnet: subnet.Subnet = new subnet.Subnet {
+    label = "oke-svclb-subnet"
+    compartmentId = outer.compartmentId
+    vcnId = vcn.res.id
+    cidrBlock = serviceLbSubnetCidr
+    displayName = projectName + "-svclb-subnet"
+    dnsLabel = "okesvclb"
+    prohibitPublicIpOnVnic = false
+    prohibitInternetIngress = false
+    routeTableId = publicRouteTable.res.id
+    securityListIds {
+      securityList.res.id
+    }
+    freeformTags {
+      new oci.FreeformTag { key = "Name"; value = projectName + "-svclb-subnet" }
+      new oci.FreeformTag { key = "OKECluster"; value = projectName }
+    }
+  }
+
+  // Worker Node Subnet - for OKE node pool worker nodes (PRIVATE)
+  workerSubnet: subnet.Subnet = new subnet.Subnet {
+    label = "oke-worker-subnet"
+    compartmentId = outer.compartmentId
+    vcnId = vcn.res.id
+    cidrBlock = workerNodeSubnetCidr
+    displayName = projectName + "-worker-subnet"
+    dnsLabel = "okeworker"
+    prohibitPublicIpOnVnic = true
+    prohibitInternetIngress = true
+    routeTableId = privateRouteTable.res.id
+    securityListIds {
+      securityList.res.id
+    }
+    freeformTags {
+      new oci.FreeformTag { key = "Name"; value = projectName + "-worker-subnet" }
+      new oci.FreeformTag { key = "OKECluster"; value = projectName }
+    }
+  }
+
+  hidden resources: Listing<formae.Resource> = new {
+    internetGateway
+    natGateway
+    serviceGateway
+    publicRouteTable
+    privateRouteTable
+    svcLbSubnet
+    workerSubnet
+  }
+}
+
+class OkeResources {
+  compartmentId: String
+  projectName: String
+  k8sVersion: String
+  vmShape: String
+  nodeOcpus: Float
+  nodeMemoryGBs: Float
+  nodePoolSize: Int
+  availabilityDomain: String
+  nodeImageId: String
+  vcn: vcn.VCN
+  svcLbSubnet: subnet.Subnet
+  workerSubnet: subnet.Subnet
+
+  // Alias the class property so the deeply-nested NodePoolPlacementConfig can
+  // reach it: that config object has its own `availabilityDomain` property
+  // which would otherwise shadow the class one.
+  local placementAvailabilityDomain: String = availabilityDomain
+
+  okeCluster: cluster.Cluster = new cluster.Cluster {
+    label = "oke-cluster"
+    compartmentId = outer.compartmentId
+    vcnId = vcn.res.id
+    kubernetesVersion = k8sVersion
+    name = projectName
+
+    // API endpoint uses the service LB subnet (public)
+    endpointConfig = new cluster.ClusterEndpointConfig {
+      subnetId = svcLbSubnet.res.id
+      isPublicIpEnabled = true
+    }
+
+    options = new cluster.ClusterCreateOptions {
+      serviceLbSubnetIds {
+        svcLbSubnet.res.id
+      }
+      kubernetesNetworkConfig = new cluster.KubernetesNetworkConfig {
+        podsCidr = "10.244.0.0/16"
+        servicesCidr = "10.96.0.0/16"
+      }
+    }
+
+    freeformTags {
+      new oci.FreeformTag { key = "Name"; value = projectName }
+      new oci.FreeformTag { key = "Project"; value = projectName }
+    }
+  }
+
+  hidden okeNodePool: nodepool.NodePool = new nodepool.NodePool {
+    label = "oke-nodepool"
+    compartmentId = outer.compartmentId
+    clusterId = okeCluster.res.id
+    subnetId = workerSubnet.res.id
+    name = projectName + "-nodepool"
+    kubernetesVersion = k8sVersion
+    nodeShape = vmShape
+
+    nodeShapeConfig = new nodepool.NodeShapeConfig {
+      ocpus = nodeOcpus
+      memoryInGBs = nodeMemoryGBs
+    }
+
+    nodeConfigDetails = new nodepool.NodeConfigDetails {
+      size = nodePoolSize
+      placementConfigs {
+        new nodepool.NodePoolPlacementConfig {
+          availabilityDomain = placementAvailabilityDomain
+          subnetId = workerSubnet.res.id
+        }
+      }
+    }
+
+    nodeSourceDetails = new nodepool.NodeSourceViaImageDetails {
+      imageId = nodeImageId
+      bootVolumeSizeInGBs = 50
+    }
+
+    initialNodeLabels {
+      new nodepool.NodeLabel {
+        key = "environment"
+        value = "example"
+      }
+      new nodepool.NodeLabel {
+        key = "nodepool"
+        value = "default"
+      }
+    }
+
+    freeformTags {
+      new oci.FreeformTag { key = "Name"; value = projectName + "-nodepool" }
+      new oci.FreeformTag { key = "Project"; value = projectName }
+    }
+  }
+
+  hidden resources: Listing<formae.Resource> = new {
+    okeCluster
+    okeNodePool
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cloud-side provisioning target (OCI tenancy/region).
+// ---------------------------------------------------------------------------
+function ociTarget(slug: String): formae.Target = new formae.Target {
+  label = "oci-target-\(slug)"
+  config = new oci.Config {
+    region = knobs.ociRegion.value
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Dependency chain — each bundle consumes the prior:
+//   vcn -> security(vcn) -> network(security) -> oke(network).
+// `projectName` derives from `slug` so physical names (VCN/subnet display
+// names, OKE cluster + node-pool names) don't collide across workloads.
+// ---------------------------------------------------------------------------
+function vcnBundle(slug: String): VcnResources = new VcnResources {
+  compartmentId = knobs.compartmentId.value
+  projectName = slug
+  vcnCidr = knobs.vcnCidr.value
+}
+
+function securityBundle(slug: String): SecurityResources = new SecurityResources {
+  compartmentId = knobs.compartmentId.value
+  projectName = slug
+  serviceLbSubnetCidr = knobs.serviceLbSubnetCidr.value
+  workerNodeSubnetCidr = knobs.workerNodeSubnetCidr.value
+  vcn = vcnBundle(slug).vcn
+}
+
+function networkBundle(slug: String): NetworkResources = new NetworkResources {
+  compartmentId = knobs.compartmentId.value
+  projectName = slug
+  serviceLbSubnetCidr = knobs.serviceLbSubnetCidr.value
+  workerNodeSubnetCidr = knobs.workerNodeSubnetCidr.value
+  serviceGatewayServiceId = knobs.serviceGatewayServiceId.value
+  vcn = vcnBundle(slug).vcn
+  securityList = securityBundle(slug).securityList
+}
+
+function okeBundle(slug: String): OkeResources = new OkeResources {
+  compartmentId = knobs.compartmentId.value
+  projectName = slug
+  k8sVersion = knobs.k8sVersion.value
+  vmShape = knobs.vmShape.value
+  nodeOcpus = knobs.nodeOcpus.value
+  nodeMemoryGBs = knobs.nodeMemoryGBs.value
+  nodePoolSize = knobs.nodePoolSize.value
+  availabilityDomain = knobs.availabilityDomain.value
+  nodeImageId = knobs.nodeImageId.value
+  vcn = vcnBundle(slug).vcn
+  svcLbSubnet = networkBundle(slug).svcLbSubnet
+  workerSubnet = networkBundle(slug).workerSubnet
+}
+
+// ---------------------------------------------------------------------------
+// Public surface consumed by workload entries: resources(slug) + target(slug).
+// ---------------------------------------------------------------------------
+function resources(slug: String): Listing = new Listing {
+  ociTarget(slug)
+  ...vcnBundle(slug).resources
+  ...securityBundle(slug).resources
+  ...networkBundle(slug).resources
+  ...okeBundle(slug).resources
+}
+
+function target(slug: String): formae.Target = new formae.Target {
+  label = "k8s-target-oci-\(slug)"
+  config = new k8s.Config {
+    kubernetesVersion = "1.34"
+    auth = new k8s.OCIAuth {
+      endpoint = okeBundle(slug).okeCluster.res.endpoint
+      certificateAuthority = okeBundle(slug).okeCluster.res.certificateAuthority
+      clusterOcid = okeBundle(slug).okeCluster.res.id
+    }
+  }
+}

@@ -1,0 +1,339 @@
+// AWS managed-Kubernetes cluster — flattened, file-as-picker shape.
+//
+// One self-contained module: VPC, subnets, IGW, route table, IAM roles,
+// security groups, and an EKS AutoMode cluster, plus the Kubernetes target
+// authenticated via `EKSAuth` (STS-token refresh through the K8S plugin's
+// WrapTransport). No `dispatch.pkl`, no `Bundle` class, no sub-files.
+//
+// Consumed by workload entries (examples/<workload>/aws.pkl), which select
+// THIS provider by importing THIS file:
+//
+//   import "@clusters/aws.pkl" as cluster
+//   local k8sTarget = cluster.target("bookstore")
+//   forma {
+//     ...cluster.resources("bookstore")
+//     k8sTarget
+//   }
+//
+// `slug` is a per-workload identifier (NOT a `--name` flag): it makes the EKS
+// cluster name and both target labels unique, so multiple workloads
+// (lgtm/bookstore/crossplane) can co-exist on ONE AWS account without
+// colliding on the same physical cluster or inventory target. It is named
+// `slug` rather than `name` to avoid Pkl self-reference shadowing with the
+// resource `.name` properties it feeds. Region/CIDR/version stay as
+// `--prop`-overridable knobs (separate clusters can share a region; VPCs are
+// isolated).
+
+import "@aws/aws.pkl"
+import "@aws/ec2/vpc.pkl"
+import "@aws/ec2/internetgateway.pkl"
+import "@aws/ec2/route.pkl"
+import "@aws/ec2/routetable.pkl"
+import "@aws/ec2/subnet.pkl"
+import "@aws/ec2/subnetroutetableassociation.pkl"
+import "@aws/ec2/vpcgatewayattachment.pkl"
+import "@aws/ec2/securitygroup.pkl"
+import "@aws/ec2/securitygroupingress.pkl"
+import "@aws/eks/ekscluster.pkl"
+import "@aws/iam/role.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.34/k8s.pkl" as k8s
+import "@k8s/v1.34/storage/StorageClass.pkl" as sc
+
+// Tunable knobs (shared across workloads on a cloud; override with --prop).
+local knobs = new Dynamic {
+  region = new formae.Prop {
+    flag = "region"
+    default = "us-west-2"
+  }
+  vpcCidr = new formae.Prop {
+    flag = "vpcCidr"
+    default = "10.1.0.0/16"
+  }
+  subnetCidr1 = new formae.Prop {
+    flag = "subnetCidr1"
+    default = "10.1.1.0/24"
+  }
+  subnetCidr2 = new formae.Prop {
+    flag = "subnetCidr2"
+    default = "10.1.2.0/24"
+  }
+  clusterVersion = new formae.Prop {
+    flag = "cluster-version"
+    default = "1.31"
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cloud-side provisioning target (AWS account/region).
+// ---------------------------------------------------------------------------
+function awsTarget(slug: String): formae.Target = new formae.Target {
+  label = "aws-target-\(slug)"
+  config = new aws.Config {
+    region = knobs.region.value
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Networking: VPC -> IGW -> subnets -> route table -> route -> associations.
+// ---------------------------------------------------------------------------
+function nvpc(slug: String): vpc.VPC = new vpc.VPC {
+  label = "eks-vpc"
+  cidrBlock = knobs.vpcCidr.value
+  enableDnsHostnames = true
+  enableDnsSupport = true
+  tags {
+    new { key = "Name"; value = "\(slug)-vpc" }
+    new { key = "kubernetes.io/cluster/\(slug)"; value = "shared" }
+  }
+}
+
+function igw(slug: String): internetgateway.InternetGateway = new internetgateway.InternetGateway {
+  label = "eks-igw"
+  tags { new { key = "Name"; value = "\(slug)-igw" } }
+}
+
+function attachIgw(slug: String): vpcgatewayattachment.VPCGatewayAttachment = new vpcgatewayattachment.VPCGatewayAttachment {
+  label = "eks-igw-attachment"
+  vpcId = nvpc(slug).res.id
+  internetGatewayId = igw(slug).res.id
+}
+
+function subnets(slug: String): Listing = new Listing {
+  new subnet.Subnet {
+    label = "eks-public-subnet-1"
+    vpcId = nvpc(slug).res.id
+    cidrBlock = knobs.subnetCidr1.value
+    availabilityZone = "\(knobs.region.value)a"
+    mapPublicIpOnLaunch = true
+    tags {
+      new { key = "Name"; value = "\(slug)-public-subnet-1" }
+      new { key = "kubernetes.io/cluster/\(slug)"; value = "shared" }
+      new { key = "kubernetes.io/role/elb"; value = "1" }
+    }
+  }
+  new subnet.Subnet {
+    label = "eks-public-subnet-2"
+    vpcId = nvpc(slug).res.id
+    cidrBlock = knobs.subnetCidr2.value
+    availabilityZone = "\(knobs.region.value)b"
+    mapPublicIpOnLaunch = true
+    tags {
+      new { key = "Name"; value = "\(slug)-public-subnet-2" }
+      new { key = "kubernetes.io/cluster/\(slug)"; value = "shared" }
+      new { key = "kubernetes.io/role/elb"; value = "1" }
+    }
+  }
+}
+
+function routeTable(slug: String): routetable.RouteTable = new routetable.RouteTable {
+  label = "eks-public-rt"
+  vpcId = nvpc(slug).res.id
+  tags { new { key = "Name"; value = "\(slug)-public-rt" } }
+}
+
+function publicRoute(slug: String): route.Route = new route.Route {
+  label = "eks-public-route"
+  routeTableId = routeTable(slug).res.id
+  destinationCidrBlock = "0.0.0.0/0"
+  gatewayId = attachIgw(slug).res.internetGatewayId
+}
+
+function subnetAssocs(slug: String): Listing = new Listing {
+  for (sn in subnets(slug)) {
+    new subnetroutetableassociation.SubnetRouteTableAssociation {
+      label = "eks-subnet-assoc-\(sn.label)"
+      subnetId = sn.res.subnetId
+      routeTableId = routeTable(slug).res.id
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// IAM: cluster control-plane role + worker node role.
+// ---------------------------------------------------------------------------
+function clusterRole(slug: String): role.Role = new role.Role {
+  label = "eks-cluster-role"
+  assumeRolePolicyDocument {
+    ["Version"] = "2012-10-17"
+    ["Statement"] {
+      new {
+        ["Effect"] = "Allow"
+        ["Principal"] {
+          ["Service"] = "eks.amazonaws.com"
+        }
+        ["Action"] = new Listing { "sts:AssumeRole"; "sts:TagSession" }
+      }
+    }
+  }
+  managedPolicyArns {
+    "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+    "arn:aws:iam::aws:policy/AmazonEKSComputePolicy"
+    "arn:aws:iam::aws:policy/AmazonEKSBlockStoragePolicy"
+    "arn:aws:iam::aws:policy/AmazonEKSLoadBalancingPolicy"
+    "arn:aws:iam::aws:policy/AmazonEKSNetworkingPolicy"
+  }
+  tags { new { key = "Name"; value = "\(slug)-cluster-role" } }
+}
+
+function nodeRole(slug: String): role.Role = new role.Role {
+  label = "eks-node-role"
+  assumeRolePolicyDocument {
+    ["Version"] = "2012-10-17"
+    ["Statement"] {
+      new {
+        ["Effect"] = "Allow"
+        ["Principal"] {
+          ["Service"] = "ec2.amazonaws.com"
+        }
+        ["Action"] = "sts:AssumeRole"
+      }
+    }
+  }
+  managedPolicyArns {
+    "arn:aws:iam::aws:policy/AmazonEKSWorkerNodeMinimalPolicy"
+    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly"
+  }
+  tags { new { key = "Name"; value = "\(slug)-node-role" } }
+}
+
+// ---------------------------------------------------------------------------
+// Security groups: control-plane SG + data-plane SG with ingress rules.
+// ---------------------------------------------------------------------------
+function securityGroups(slug: String): Listing = new Listing {
+  local clusterSg = new securitygroup.SecurityGroup {
+    label = "eks-cluster-sg"
+    groupDescription = "Security group for EKS cluster control plane"
+    vpcId = nvpc(slug).res.id
+    tags { new { key = "Name"; value = "\(slug)-cluster-sg" } }
+  }
+  clusterSg
+
+  local nodeSg = new securitygroup.SecurityGroup {
+    label = "eks-node-sg"
+    groupDescription = "Security group for EKS data plane"
+    vpcId = nvpc(slug).res.id
+    tags { new { key = "Name"; value = "\(slug)-node-sg" } }
+  }
+  nodeSg
+
+  new securitygroupingress.SecurityGroupIngress {
+    label = "eks-cluster-sg-ingress"
+    ipProtocol = "tcp"
+    fromPort = 443
+    toPort = 443
+    cidrIp = "0.0.0.0/0"
+    groupId = clusterSg.res.groupId
+  }
+
+  new securitygroupingress.SecurityGroupIngress {
+    label = "eks-node-sg-ingress"
+    ipProtocol = "tcp"
+    fromPort = 0
+    toPort = 65535
+    sourceSecurityGroupId = clusterSg.res.groupId
+    groupId = nodeSg.res.groupId
+  }
+}
+
+// ---------------------------------------------------------------------------
+// EKS AutoMode cluster — physical name = `slug`, so workloads don't collide.
+// ---------------------------------------------------------------------------
+function eksClusterRes(slug: String): ekscluster.Cluster = new ekscluster.Cluster {
+  label = "eks-cluster"
+  name = slug
+  version = knobs.clusterVersion.value
+  roleArn = clusterRole(slug).res.arn
+
+  accessConfig = new ekscluster.AccessConfig {
+    authenticationMode = "API_AND_CONFIG_MAP"
+  }
+
+  resourcesVpcConfig = new ekscluster.ResourcesVpcConfig {
+    subnetIds {
+      subnets(slug)[0].res.subnetId
+      subnets(slug)[1].res.subnetId
+    }
+    securityGroupIds {
+      securityGroups(slug)[0].res.groupId
+      securityGroups(slug)[1].res.groupId
+    }
+    endpointPrivateAccess = false
+    endpointPublicAccess = true
+  }
+
+  computeConfig = new ekscluster.ComputeConfig {
+    enabled = true
+    nodeRoleArn = nodeRole(slug).res.arn
+    nodePools { "general-purpose" }
+  }
+
+  kubernetesNetworkConfig = new ekscluster.KubernetesNetworkConfig {
+    ipFamily = "ipv4"
+    serviceIpv4Cidr = "10.100.0.0/16"
+    elasticLoadBalancing = new ekscluster.ElasticLoadBalancing {
+      enabled = true
+    }
+  }
+
+  storageConfig = new ekscluster.StorageConfig {
+    blockStorage = new ekscluster.BlockStorage {
+      enabled = true
+    }
+  }
+
+  tags { new { key = "Name"; value = slug } }
+}
+
+// EKS Auto-Mode ships its own EBS CSI driver but does NOT auto-create a
+// StorageClass; PVC-bearing workloads (MinIO, ...) Pend forever without one.
+// This SC fills the gap and marks itself default. It is a K8S resource, so it
+// binds to the Kubernetes target (not the AWS target).
+function autoEbsStorageClass(k8sTarget: formae.Target): sc.StorageClass = new sc.StorageClass {
+  target = k8sTarget.res
+  label = "eks-auto-ebs-sc"
+  metadata = new k8s.ObjectMeta {
+    name = "auto-ebs"
+    annotations = new Mapping {
+      ["storageclass.kubernetes.io/is-default-class"] = "true"
+    }
+  }
+  provisioner = "ebs.csi.eks.amazonaws.com"
+  volumeBindingMode = "WaitForFirstConsumer"
+  reclaimPolicy = "Delete"
+  parameters = new Mapping {
+    ["type"] = "gp3"
+    ["encrypted"] = "true"
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public surface consumed by workload entries: resources(slug) + target(slug).
+// ---------------------------------------------------------------------------
+function resources(slug: String): Listing = new Listing {
+  awsTarget(slug)
+  nvpc(slug)
+  igw(slug)
+  attachIgw(slug)
+  ...subnets(slug)
+  routeTable(slug)
+  publicRoute(slug)
+  ...subnetAssocs(slug)
+  ...securityGroups(slug)
+  clusterRole(slug)
+  nodeRole(slug)
+  eksClusterRes(slug)
+  autoEbsStorageClass(target(slug))
+}
+
+function target(slug: String): formae.Target = new formae.Target {
+  label = "k8s-target-aws-\(slug)"
+  config = new k8s.Config {
+    kubernetesVersion = "1.34"
+    auth = new k8s.EKSAuth {
+      endpoint = eksClusterRes(slug).res.endpoint
+      certificateAuthority = eksClusterRes(slug).res.certificateAuthorityData
+      clusterName = eksClusterRes(slug).res.name
+    }
+  }
+}

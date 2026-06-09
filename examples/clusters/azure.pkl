@@ -1,0 +1,203 @@
+// Azure managed-Kubernetes cluster — flattened, file-as-picker shape.
+//
+// One self-contained module: resource group, VNet, AKS subnet, an AKS
+// ManagedCluster, and an Azure RBAC role assignment that grants the calling
+// user `Azure Kubernetes Service RBAC Cluster Admin` against the new cluster
+// (required when `aadProfile.enableAzureRBAC = true`). Exposes the Kubernetes
+// target authenticated via `AKSAuth` (Azure AD token refresh through the K8S
+// plugin's WrapTransport). No `dispatch.pkl`, no `Bundle` class, no sub-files.
+//
+// Consumed by workload entries (examples/<workload>/azure.pkl), which select
+// THIS provider by importing THIS file:
+//
+//   import "@clusters/azure.pkl" as cluster
+//   local k8sTarget = cluster.target("bookstore")
+//   forma {
+//     ...cluster.resources("bookstore")
+//     k8sTarget
+//   }
+//
+// `slug` is a per-workload identifier (NOT a `--name` flag): it makes the
+// resource-group name, the AKS cluster name, the VNet/subnet names, and both
+// target labels unique, so multiple workloads (lgtm/bookstore/crossplane) can
+// co-exist on ONE Azure subscription without colliding on the same physical
+// cluster or inventory target. It is named `slug` rather than `name` to avoid
+// Pkl self-reference shadowing with the resource `.name` properties it feeds.
+// Location/CIDRs/version stay as `--prop`-overridable knobs.
+//
+// Required env vars (or override with `--prop`):
+//   AZURE_SUBSCRIPTION_ID — your Azure subscription id
+//   AZURE_PRINCIPAL_ID    — your Azure AD object id (`az ad signed-in-user show --query id -o tsv`)
+
+import "@azure/azure.pkl"
+import "@azure/resources/resourcegroup.pkl" as rg
+import "@azure/resources/subnet.pkl" as snet
+import "@azure/resources/virtualnetwork.pkl" as vnet
+import "@azure/containerservice/managedcluster.pkl" as mc
+import "@azure/authorization/roleassignment.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.34/k8s.pkl" as k8s
+
+// Tunable knobs (shared across workloads on a cloud; override with --prop).
+local knobs = new Dynamic {
+  location = new formae.Prop {
+    flag = "location"
+    default = "eastus"
+  }
+  vnetCidr = new formae.Prop {
+    flag = "vnetCidr"
+    default = "10.0.0.0/16"
+  }
+  aksSubnetCidr = new formae.Prop {
+    flag = "aksSubnetCidr"
+    default = "10.0.0.0/22"
+  }
+  dnsPrefix = new formae.Prop {
+    flag = "dnsPrefix"
+    default = "aks"
+  }
+  subscriptionId = new formae.Prop {
+    flag = "subscription-id"
+    default = read?("env:AZURE_SUBSCRIPTION_ID")
+      ?? throw("Azure subscription not set. Pass --subscription-id=<sub-id> or set AZURE_SUBSCRIPTION_ID.")
+  }
+  principalId = new formae.Prop {
+    flag = "principal-id"
+    default = read?("env:AZURE_PRINCIPAL_ID")
+      ?? throw("Azure principal id not set. Pass --principal-id=<object-id> or set AZURE_PRINCIPAL_ID (`az ad signed-in-user show --query id -o tsv`).")
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cloud-side provisioning target (Azure subscription).
+// ---------------------------------------------------------------------------
+function azureTarget(slug: String): formae.Target = new formae.Target {
+  label = "azure-target-\(slug)"
+  config = new azure.Config {
+    subscriptionId = knobs.subscriptionId.value
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Networking: resource group -> VNet -> AKS subnet.
+// ---------------------------------------------------------------------------
+function resourceGroup(slug: String): rg.ResourceGroup = new rg.ResourceGroup {
+  label = "aks-rg"
+  name = "\(slug)-rg"
+  location = knobs.location.value
+  tags {
+    new azure.Tag { key = "project"; value = slug }
+    new azure.Tag { key = "environment"; value = "demo" }
+  }
+}
+
+function virtualNetwork(slug: String): vnet.VirtualNetwork = new vnet.VirtualNetwork {
+  label = "aks-vnet"
+  name = "\(slug)-vnet"
+  location = knobs.location.value
+  resourceGroupName = resourceGroup(slug).res.name
+  addressSpace = new vnet.AddressSpace {
+    addressPrefixes {
+      knobs.vnetCidr.value
+    }
+  }
+  tags {
+    new azure.Tag { key = "project"; value = slug }
+  }
+}
+
+function aksSubnet(slug: String): snet.Subnet = new snet.Subnet {
+  label = "aks-subnet"
+  name = "\(slug)-aks-subnet"
+  resourceGroupName = resourceGroup(slug).res.name
+  virtualNetworkName = virtualNetwork(slug).res.name
+  addressPrefix = knobs.aksSubnetCidr.value
+}
+
+// ---------------------------------------------------------------------------
+// AKS ManagedCluster — physical name = `\(slug)-aks`, so workloads don't collide.
+// ---------------------------------------------------------------------------
+function aksCluster(slug: String): mc.ManagedCluster = new mc.ManagedCluster {
+  label = "aks-cluster"
+  name = "\(slug)-aks"
+  location = knobs.location.value
+  resourceGroupName = resourceGroup(slug).res.name
+
+  sku = new mc.ManagedClusterSKU {
+    name = "Base"
+    tier = "Free"
+  }
+
+  identity = new mc.ManagedClusterIdentity {
+    type = "SystemAssigned"
+  }
+
+  dnsPrefix = knobs.dnsPrefix.value
+
+  agentPoolProfiles {
+    new mc.AgentPoolProfile {
+      name = "systempool"
+      count = 3
+      vmSize = "Standard_D2s_v3"
+      mode = "System"
+      osType = "Linux"
+      enableAutoScaling = false
+      // AKS server-side defaults this to 128 when omitted. Set explicitly so
+      // the desired-state matches actual on reconcile (no phantom diff).
+      osDiskSizeGB = 128
+    }
+  }
+
+  networkProfile = new mc.NetworkProfile {
+    networkPlugin = "azure"
+    loadBalancerSku = "standard"
+  }
+
+  enableRBAC = true
+
+  aadProfile = new mc.AADProfile {
+    managed = true
+    enableAzureRBAC = true
+  }
+
+  tags {
+    new azure.Tag { key = "project"; value = slug }
+    new azure.Tag { key = "environment"; value = "demo" }
+  }
+}
+
+// Azure RBAC: grant the calling user `Azure Kubernetes Service RBAC Cluster
+// Admin` against the new cluster (required when aadProfile.enableAzureRBAC).
+function roleAssignment(slug: String): roleassignment.RoleAssignment = new roleassignment.RoleAssignment {
+  label = "aks-rbac-admin"
+  scope = aksCluster(slug).res.id
+  principalId = knobs.principalId.value
+  // Azure Kubernetes Service RBAC Cluster Admin
+  roleDefinitionId = "/subscriptions/\(knobs.subscriptionId.value)/providers/Microsoft.Authorization/roleDefinitions/b1ff04bb-8a4e-4dc4-8eb5-8693973ce19b"
+  principalType = "User"
+}
+
+// ---------------------------------------------------------------------------
+// Public surface consumed by workload entries: resources(slug) + target(slug).
+// ---------------------------------------------------------------------------
+function resources(slug: String): Listing = new Listing {
+  azureTarget(slug)
+  resourceGroup(slug)
+  virtualNetwork(slug)
+  aksSubnet(slug)
+  aksCluster(slug)
+  roleAssignment(slug)
+}
+
+function target(slug: String): formae.Target = new formae.Target {
+  label = "k8s-target-azure-\(slug)"
+  config = new k8s.Config {
+    kubernetesVersion = "1.34"
+    auth = new k8s.AKSAuth {
+      endpoint = aksCluster(slug).res.fqdn
+      certificateAuthority = aksCluster(slug).res.certificateAuthority
+      resourceGroup = resourceGroup(slug).res.name
+      clusterName = aksCluster(slug).res.name
+    }
+  }
+}
