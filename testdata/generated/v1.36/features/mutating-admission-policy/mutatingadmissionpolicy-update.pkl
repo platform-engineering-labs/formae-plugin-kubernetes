@@ -1,0 +1,57 @@
+/*
+ * Conformance Update: change the mutation's label value and add a
+ * matchCondition. Confirms spec.mutations and spec.matchConditions are
+ * mutable on a MutatingAdmissionPolicy.
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.36/admissionregistration/MutatingAdmissionPolicy.pkl" as map
+import "@k8s/v1.36/k8s.pkl" as k8s
+import "../../shared/config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new map.MutatingAdmissionPolicy {
+    label = "test-map"
+    metadata = new k8s.ObjectMeta {
+      name = "test-map-\(v.testRunID)"
+    }
+    spec = new map.MutatingAdmissionPolicySpec {
+      failurePolicy = "Ignore"
+      reinvocationPolicy = "Never"
+      matchConstraints = new map.MatchResources {
+        resourceRules = new Listing {
+          new map.NamedRuleWithOperations {
+            operations = new Listing { "CREATE" }
+            apiGroups = new Listing { "" }
+            apiVersions = new Listing { "v1" }
+            resources = new Listing { "pods" }
+            scope = "*"
+          }
+        }
+      }
+      matchConditions = new Listing {
+        new k8s.MatchCondition {
+          name = "exclude-kube-system"
+          expression = "request.namespace != 'kube-system'"
+        }
+      }
+      variables = new Listing {
+        new map.Variable {
+          name = "wantLabel"
+          expression = "'formae-managed-v2'"
+        }
+      }
+      mutations = new Listing {
+        new map.Mutation {
+          patchType = "ApplyConfiguration"
+          applyConfiguration = new map.ApplyConfiguration {
+            expression = "Object{ metadata: Object.metadata{ labels: {'formae.io/policy': variables.wantLabel} } }"
+          }
+        }
+      }
+    }
+  }
+}

@@ -12,7 +12,7 @@ with strongly-typed Pkl schemas pinned to your cluster's exact K8s minor
 
 ## Supported Resources
 
-This plugin supports **35 Kubernetes resource types** across 13 API groups:
+This plugin supports **36 Kubernetes resource types** across 13 API groups:
 
 | API Group | Resources | Examples |
 |-----------|-----------|----------|
@@ -22,13 +22,17 @@ This plugin supports **35 Kubernetes resource types** across 13 API groups:
 | Networking | 3 | Ingress, IngressClass, NetworkPolicy |
 | RBAC | 4 | ClusterRole, ClusterRoleBinding, Role, RoleBinding |
 | Storage | 2 | StorageClass, CSIDriver |
-| Admission Registration | 2 | MutatingWebhookConfiguration, ValidatingWebhookConfiguration |
+| Admission Registration | 3 | MutatingWebhookConfiguration, ValidatingWebhookConfiguration, MutatingAdmissionPolicy |
 | Autoscaling | 1 | HorizontalPodAutoscaler |
 | Policy | 1 | PodDisruptionBudget |
 | Scheduling | 1 | PriorityClass |
 | Coordination | 1 | Lease |
 | Flow Control | 2 | FlowSchema, PriorityLevelConfiguration |
 | Node | 1 | RuntimeClass |
+
+`MutatingAdmissionPolicy` reached GA in K8s 1.36 (KEP-3962) and is only
+present in the `v1.36+` schema trees; it cannot be referenced when
+`kubernetesVersion` is set to an earlier minor.
 
 See [`schema/pkl/`](schema/pkl/) for the complete list of supported resource
 types.
