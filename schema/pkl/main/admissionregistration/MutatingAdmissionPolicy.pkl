@@ -111,8 +111,27 @@ open class MatchResources extends formae.SubResource {
 }
 
 /// A RuleWithOperations optionally narrowed to named resources.
+/// Fields are declared explicitly (rather than extending
+/// k8s.RuleWithOperations) so formae's resource extraction emits the
+/// inherited rule fields — a subclass only contributes its own
+/// properties to the extracted payload.
 @k8s.SubResourceHint {}
-open class NamedRuleWithOperations extends k8s.RuleWithOperations {
+open class NamedRuleWithOperations extends formae.SubResource {
+  @k8s.FieldHint {}
+  operations: Listing<String>?
+
+  @k8s.FieldHint {}
+  apiGroups: Listing<String>?
+
+  @k8s.FieldHint {}
+  apiVersions: Listing<String>?
+
+  @k8s.FieldHint { required = true }
+  resources: Listing<String>
+
+  @k8s.FieldHint {}
+  scope: String?
+
   @k8s.FieldHint {}
   resourceNames: Listing<String>?
 }
