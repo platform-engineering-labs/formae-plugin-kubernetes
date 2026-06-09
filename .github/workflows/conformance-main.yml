@@ -1,16 +1,11 @@
 name: Conformance (main)
 
-# Fires on every push to main and runs every supported K8s minor (1.35 → 1.21)
+# Fires on every push to main and runs every supported K8s minor (1.36 → 1.21)
 # in a `needs:` chain — older versions only run after the next-newer version
 # passed. Each job dispatches the matching `conformance-v1-XX.yml` via
 # workflow_dispatch and waits for it to finish; that way the per-version
 # workflow files keep producing their own runs (and their badge URLs in
 # README.md stay accurate).
-#
-# K8s 1.36 is supported by the Pkl schema but not yet by this CI chain:
-# `kindest/node:v1.36.x` is not published as of kind v0.31.0. Add a
-# `v1_36` job here (and `conformance-v1-36.yml`) once kind ships an
-# image for the 1.36 series.
 #
 # This pattern replaces the previous `workflow_run`-chained approach. GitHub
 # silently caps chained `workflow_run` events past ~4 hops, which left
@@ -27,7 +22,17 @@ permissions:
   contents: read
 
 jobs:
+  v1_36:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/dispatch-conformance
+        with:
+          workflow: conformance-v1-36.yml
+          github-token: ${{ github.token }}
+
   v1_35:
+    needs: [v1_36]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -1,24 +1,21 @@
 name: Conformance (PR)
 
 # PR feedback runs the conformance suite against the most recently
-# supported K8s minor that has a kind image (currently v1.35). The
-# full per-minor chain (1.35 → 1.21) runs on `main` via the
+# supported K8s minor that has a kind image (currently v1.36). The
+# full per-minor chain (1.36 → 1.21) runs on `main` via the
 # conformance-v1-XX.yml workflows triggered by workflow_run after each
 # merge — older versions only run once newer ones have stayed green on
 # main, so PR latency stays low without sacrificing coverage of the
 # support window.
-#
-# K8s 1.36 is supported by the Pkl schema but not yet runnable here
-# until kind publishes a `kindest/node:v1.36.x` image.
 
 on:
   pull_request:
     branches: [main]
 
 jobs:
-  v1_35:
+  v1_36:
     uses: ./.github/workflows/conformance-version.yml
     with:
-      k8s_version: "1.35"
-      kind_version: "v0.31.0"
-      kind_image: "kindest/node:v1.35.1@sha256:b08d1f9b5244fb2aae7bea9861c1d372a9535f259efed62a9e92e6b5ab500529"
+      k8s_version: "1.36"
+      kind_version: "v0.32.0"
+      kind_image: "kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"

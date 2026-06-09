@@ -1,0 +1,2 @@
+minK8sVersion = "1.36"
+description = "MutatingAdmissionPolicy (KEP-3962). GA in 1.36. CEL-based in-tree mutations, the successor to mutating admission webhooks. Standalone policy object (no binding) exercising CRUD of matchConstraints, variables, and an ApplyConfiguration mutation."

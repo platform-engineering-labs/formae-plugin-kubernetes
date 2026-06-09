@@ -1,0 +1,54 @@
+/*
+ * Conformance Test: MutatingAdmissionPolicy (KEP-3962, GA 1.36).
+ *
+ * A standalone policy (no binding, so it never actually mutates traffic)
+ * that would add a label to Pods on CREATE via a CEL ApplyConfiguration
+ * mutation. failurePolicy=Ignore keeps it inert. Exercises CRUD of
+ * matchConstraints, a named variable, and the mutations list.
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/admissionregistration/MutatingAdmissionPolicy.pkl" as map
+import "@k8s/k8s.pkl" as k8s
+import "../../shared/config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new map.MutatingAdmissionPolicy {
+    label = "test-map"
+    metadata = new k8s.ObjectMeta {
+      name = "test-map-\(v.testRunID)"
+    }
+    spec = new map.MutatingAdmissionPolicySpec {
+      failurePolicy = "Ignore"
+      reinvocationPolicy = "Never"
+      matchConstraints = new map.MatchResources {
+        resourceRules = new Listing {
+          new map.NamedRuleWithOperations {
+            operations = new Listing { "CREATE" }
+            apiGroups = new Listing { "" }
+            apiVersions = new Listing { "v1" }
+            resources = new Listing { "pods" }
+            scope = "*"
+          }
+        }
+      }
+      variables = new Listing {
+        new map.Variable {
+          name = "wantLabel"
+          expression = "'formae-managed'"
+        }
+      }
+      mutations = new Listing {
+        new map.Mutation {
+          patchType = "ApplyConfiguration"
+          applyConfiguration = new map.ApplyConfiguration {
+            expression = "Object{ metadata: Object.metadata{ labels: {'formae.io/policy': variables.wantLabel} } }"
+          }
+        }
+      }
+    }
+  }
+}

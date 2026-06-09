@@ -138,7 +138,7 @@ jobs:
         uses: helm/kind-action@v1
         with:
           cluster_name: formae-test
-          node_image: "kindest/node:v1.35.1@sha256:b08d1f9b5244fb2aae7bea9861c1d372a9535f259efed62a9e92e6b5ab500529"
+          node_image: "kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
 
       - name: Download formae binary
         uses: actions/download-artifact@v8
@@ -227,7 +227,7 @@ jobs:
         uses: helm/kind-action@v1
         with:
           cluster_name: formae-test
-          node_image: "kindest/node:v1.35.1@sha256:b08d1f9b5244fb2aae7bea9861c1d372a9535f259efed62a9e92e6b5ab500529"
+          node_image: "kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
 
       - name: Download formae binary
         uses: actions/download-artifact@v8
