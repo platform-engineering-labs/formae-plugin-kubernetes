@@ -10,7 +10,7 @@
 // Layout:
 //
 //	testdata/main/
-//	  PklProject                # imports schema/pkl/main as @k8s
+//	  PklProject                # imports schema/pkl-main as @k8s
 //	  shared/                   # version-agnostic fixtures (copied as-is)
 //	  features/                 # gated fixtures with meta.pkl declaring minK8sVersion
 //	    <feature>/
@@ -18,7 +18,7 @@
 //	      <fixture>.pkl
 //	testdata/generated/
 //	  v<X.Y>/
-//	    PklProject              # imports schema/pkl/generated/v<X.Y> as @k8s
+//	    PklProject              # imports schema/pkl/v<X.Y> as @k8s
 //	    shared/                 # full copy
 //	    features/               # only feature dirs whose meta is compatible
 //	      <feature>/
@@ -47,15 +47,15 @@ import (
 // in the generated copy they resolve from `testdata/generated/v<X.Y>/`,
 // which is one directory deeper, so each `../` becomes one more `../`.
 //
-// Schema dependency points at the unified `schema/pkl/generated/`
+// Schema dependency points at the unified `schema/pkl/`
 // PklProject — a single @k8s package containing every version subtree.
 // Fixture imports inside this tree are rewritten separately to address
 // the matching `v<X.Y>/` subtree (see rewriteFixtureSchemaImports).
 var pklProjectRewrites = func(_ string) []struct{ Old, New string } {
 	return []struct{ Old, New string }{
 		{
-			Old: `import("../../schema/pkl/main/PklProject")`,
-			New: `import("../../../schema/pkl/generated/PklProject")`,
+			Old: `import("../../schema/pkl-main/PklProject")`,
+			New: `import("../../../schema/pkl/PklProject")`,
 		},
 		{
 			Old: `import("../../examples/formations/PklProject")`,
@@ -331,7 +331,7 @@ func processTarget(masterDir, outDir, target string) error {
 
 	// 2b. Drop fixtures whose schema imports don't exist on this target —
 	// e.g. flowcontrol/v1 was added in K8s 1.29, so flowschema.pkl can't
-	// evaluate against schema/pkl/generated/v1.25 which omits FlowSchema.
+	// evaluate against schema/pkl/v1.25 which omits FlowSchema.
 	// `pkl eval` on each fixture is the most robust skip signal: if the
 	// fixture imports a missing module, eval fails and the fixture is
 	// removed from the per-version tree. No per-fixture metadata needed.

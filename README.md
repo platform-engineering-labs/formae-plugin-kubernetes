@@ -106,7 +106,7 @@ auth = new k8s.KubeconfigAuth {
 **Managed clusters** (`EKSAuth`, `GKEAuth`, `AKSAuth`, `OVHAuth`, `OCIAuth`) —
 each takes the cluster endpoint, CA, and provider-specific identifiers, with
 auth tokens minted from your existing cloud session. See
-[`schema/pkl/main/k8s.pkl`](schema/pkl/main/k8s.pkl) for the field shapes.
+[`schema/pkl-main/target.pkl`](schema/pkl-main/target.pkl) for the field shapes.
 
 **In-cluster** (when formae itself runs as a Pod):
 
@@ -120,12 +120,12 @@ The Pod's ServiceAccount token at
 ## Helm charts
 
 The K8s package ships Helm-chart wrappers under
-[`schema/pkl/generated/helm/`](schema/pkl/generated/helm/) that render Helm
+[`schema/pkl/helm/`](schema/pkl/helm/) that render Helm
 charts at Pkl-eval time and map the output to typed K8s resources. Import via
 `@k8s/helm/v<X.Y>/HelmChart.pkl`; the wrapper version must match the
 `kubernetesVersion` on the Target. Requires `pkl-reader-helm` on `PATH`.
 
-See [`schema/pkl/generated/helm/README.md`](schema/pkl/generated/helm/README.md)
+See [`schema/helm/README.md`](schema/helm/README.md)
 for the wrapper layout and codegen details.
 
 ## Examples

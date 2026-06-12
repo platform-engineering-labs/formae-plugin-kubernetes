@@ -53,7 +53,7 @@ is git-ignored and must be regenerated on a fresh clone (and any time a
 import chain must be resolved individually.
 
 ```bash
-# Generate the versioned K8s schemas under schema/pkl/generated (one-time).
+# Generate the versioned K8s schemas under schema/pkl (one-time).
 make install
 
 # Resolve shared modules once — all workload entries consume these.

@@ -3,12 +3,13 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
 // Command gen-versioned-helm produces per-K8s-version copies of the
-// helm wrappers under helm/v<X.Y>/. Source of truth is helm/shared/;
-// this tool's only job is to rewrite imports and drop mappers that
-// reference K8s resource modules absent in a given minor.
+// helm wrappers under schema/pkl/helm/v<X.Y>/. Source of truth is
+// schema/helm/shared/; this tool's only job is to rewrite
+// imports and drop mappers that reference K8s resource modules absent
+// in a given minor.
 //
-// The helm wrappers live inside the K8s plugin's Pkl schema package
-// (schema/pkl/generated/), so `@k8s` self-references aren't allowed —
+// The generated helm wrappers live inside the K8s plugin's Pkl schema
+// package (schema/pkl/), so `@k8s` self-references aren't allowed —
 // imports are rewritten to relative paths instead. From a generated
 // helm file at helm/v<X.Y>/<file>.pkl, the K8s schema sits two levels
 // up. Mapper files at helm/v<X.Y>/mappers/<file>.pkl sit three.
@@ -43,11 +44,11 @@ import (
 	"strings"
 )
 
-const (
-	// sharedDir is the hand-edited source of truth. The codegen reads it
-	// and emits per-K8s-version copies under v<X.Y>/.
-	sharedDir = "shared"
-)
+// sharedDir is the absolute path to the hand-edited source of truth
+// (schema/helm/shared/). The codegen reads it and emits
+// per-K8s-version copies under the generated tree's helm/v<X.Y>/. Set
+// once by chdirToHelmOutputRoot.
+var sharedDir string
 
 // k8sImportRE matches `@k8s/<group>/<Kind>.pkl` references that need
 // the version segment injected.
@@ -61,8 +62,8 @@ func main() {
 	log.SetFlags(0)
 	log.SetPrefix("gen-versioned-helm: ")
 
-	if err := chdirToHelmRoot(); err != nil {
-		log.Fatalf("locate helm root: %v", err)
+	if err := chdirToHelmOutputRoot(); err != nil {
+		log.Fatalf("locate helm output root: %v", err)
 	}
 
 	k8sRoot, err := filepath.Abs("..")
@@ -81,8 +82,8 @@ func main() {
 	log.Printf("targets: %s", strings.Join(versions, " "))
 
 	// Drop any prior v*/ trees so a removed K8s minor (or rerun against
-	// an updated k8s package) leaves no orphan output. Other top-level
-	// dirs (shared/, tools/, .git/, etc.) are untouched.
+	// an updated k8s package) leaves no orphan output. The authoring
+	// sources (schema/helm/) are untouched.
 	if existing, err := os.ReadDir("."); err == nil {
 		for _, e := range existing {
 			if e.IsDir() && strings.HasPrefix(e.Name(), "v") {
@@ -99,23 +100,32 @@ func main() {
 	log.Printf("done")
 }
 
-// chdirToHelmRoot walks up from CWD until it finds a `shared/`
-// directory with a sibling `../PklProject` (the K8s schema project) —
-// that pair identifies the helm subdir.
-func chdirToHelmRoot() error {
+// chdirToHelmOutputRoot walks up from CWD until it finds the repo root —
+// identified by the helm authoring sources (schema/helm/shared/)
+// next to the generated schema package (schema/pkl/PklProject) — then
+// chdirs into the generated tree's helm/ dir, where the per-version
+// v<X.Y>/ output trees are emitted. Also resolves sharedDir.
+func chdirToHelmOutputRoot() error {
 	dir, err := os.Getwd()
 	if err != nil {
 		return err
 	}
 	for {
-		_, errShared := os.Stat(filepath.Join(dir, sharedDir))
-		_, errParentPkl := os.Stat(filepath.Join(dir, "..", "PklProject"))
-		if errShared == nil && errParentPkl == nil {
-			return os.Chdir(dir)
+		shared := filepath.Join(dir, "schema", "helm", "shared")
+		genProject := filepath.Join(dir, "schema", "pkl", "PklProject")
+		_, errShared := os.Stat(shared)
+		_, errGenPkl := os.Stat(genProject)
+		if errShared == nil && errGenPkl == nil {
+			sharedDir = shared
+			outRoot := filepath.Join(dir, "schema", "pkl", "helm")
+			if err := os.MkdirAll(outRoot, 0o755); err != nil {
+				return err
+			}
+			return os.Chdir(outRoot)
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return fmt.Errorf("no shared/ + ../PklProject pair found above %s", dir)
+			return fmt.Errorf("no schema/helm/shared + schema/pkl/PklProject pair found above %s", dir)
 		}
 		dir = parent
 	}
@@ -170,7 +180,7 @@ func generateVersion(ver, k8sRoot string) error {
 		body := string(raw)
 
 		// Depth determines how many `../` are needed to climb out of
-		// helm/v<X.Y>/<...>/ back to schema/pkl/generated/. Each
+		// helm/v<X.Y>/<...>/ back to schema/pkl/. Each
 		// path component beyond the v<X.Y>/ dir adds one `..`.
 		// `HelmChart.pkl` (at v<X.Y>/) → 2 (helm + v<X.Y>).
 		// `mappers/foo.pkl` (at v<X.Y>/mappers/) → 3.
