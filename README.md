@@ -125,7 +125,7 @@ charts at Pkl-eval time and map the output to typed K8s resources. Import via
 `@k8s/helm/v<X.Y>/HelmChart.pkl`; the wrapper version must match the
 `kubernetesVersion` on the Target. Requires `pkl-reader-helm` on `PATH`.
 
-See [`schema/helm/README.md`](schema/helm/README.md)
+See [`schema/pkl-helm/README.md`](schema/pkl-helm/README.md)
 for the wrapper layout and codegen details.
 
 ## Examples

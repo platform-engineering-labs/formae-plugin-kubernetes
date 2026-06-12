@@ -4,7 +4,7 @@
 
 // Command gen-versioned-helm produces per-K8s-version copies of the
 // helm wrappers under schema/pkl/helm/v<X.Y>/. Source of truth is
-// schema/helm/shared/; this tool's only job is to rewrite
+// schema/pkl-helm/shared/; this tool's only job is to rewrite
 // imports and drop mappers that reference K8s resource modules absent
 // in a given minor.
 //
@@ -45,7 +45,7 @@ import (
 )
 
 // sharedDir is the absolute path to the hand-edited source of truth
-// (schema/helm/shared/). The codegen reads it and emits
+// (schema/pkl-helm/shared/). The codegen reads it and emits
 // per-K8s-version copies under the generated tree's helm/v<X.Y>/. Set
 // once by chdirToHelmOutputRoot.
 var sharedDir string
@@ -83,7 +83,7 @@ func main() {
 
 	// Drop any prior v*/ trees so a removed K8s minor (or rerun against
 	// an updated k8s package) leaves no orphan output. The authoring
-	// sources (schema/helm/) are untouched.
+	// sources (schema/pkl-helm/) are untouched.
 	if existing, err := os.ReadDir("."); err == nil {
 		for _, e := range existing {
 			if e.IsDir() && strings.HasPrefix(e.Name(), "v") {
@@ -101,7 +101,7 @@ func main() {
 }
 
 // chdirToHelmOutputRoot walks up from CWD until it finds the repo root —
-// identified by the helm authoring sources (schema/helm/shared/)
+// identified by the helm authoring sources (schema/pkl-helm/shared/)
 // next to the generated schema package (schema/pkl/PklProject) — then
 // chdirs into the generated tree's helm/ dir, where the per-version
 // v<X.Y>/ output trees are emitted. Also resolves sharedDir.
@@ -111,7 +111,7 @@ func chdirToHelmOutputRoot() error {
 		return err
 	}
 	for {
-		shared := filepath.Join(dir, "schema", "helm", "shared")
+		shared := filepath.Join(dir, "schema", "pkl-helm", "shared")
 		genProject := filepath.Join(dir, "schema", "pkl", "PklProject")
 		_, errShared := os.Stat(shared)
 		_, errGenPkl := os.Stat(genProject)
@@ -125,7 +125,7 @@ func chdirToHelmOutputRoot() error {
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return fmt.Errorf("no schema/helm/shared + schema/pkl/PklProject pair found above %s", dir)
+			return fmt.Errorf("no schema/pkl-helm/shared + schema/pkl/PklProject pair found above %s", dir)
 		}
 		dir = parent
 	}

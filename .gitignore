@@ -45,4 +45,4 @@ conformance.log
 # parity via `make verify-helm-schemas`.
 
 # Stray codegen binaries.
-schema/helm/tools/gen-versioned-helm/gen-versioned-helm
+schema/pkl-helm/tools/gen-versioned-helm/gen-versioned-helm
