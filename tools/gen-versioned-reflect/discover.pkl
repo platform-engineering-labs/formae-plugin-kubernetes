@@ -2,7 +2,7 @@
 // using pkl:reflect + import*. Emits one JSON document covering all files.
 //
 // Invoke from the project root:
-//   pkl eval --project-dir schema/pkl/main \
+//   pkl eval --project-dir schema/pkl-main \
 //            tools/gen-versioned-reflect/discover.pkl
 //
 // Output:
@@ -22,14 +22,14 @@
 // `className` = "" for module-scoped (top-level) properties.
 
 import "pkl:reflect"
-import "../../schema/pkl/main/shared.pkl" as k8sBase
+import "../../schema/pkl-main/shared.pkl" as k8sBase
 
 // Glob ALL .pkl files relative to this discover.pkl. Pkl resolves
 // import* paths relative to the file containing the directive.
 // Two patterns: top-level (e.g. k8s.pkl) + nested (group/Resource.pkl).
 // Combined via fold since Mapping doesn't support `+`.
-local topLevel = import*("../../schema/pkl/main/*.pkl")
-local nested = import*("../../schema/pkl/main/**/*.pkl")
+local topLevel = import*("../../schema/pkl-main/*.pkl")
+local nested = import*("../../schema/pkl-main/**/*.pkl")
 local allModules =
   nested.fold(topLevel.toMap(), (acc, key, value) -> acc.put(key, value))
 

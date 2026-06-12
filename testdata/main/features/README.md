@@ -26,7 +26,7 @@ only when the target K8s minor satisfies the meta.
 | `webhook-match-conditions` | `ValidatingWebhookConfiguration.webhooks.matchConditions` | 1.30 | [3716](https://kep.k8s.io/3716) |
 
 `minK8sVersion` is the first K8s minor where the field is **GA** (or default-on
-Beta when no GA exists yet). Field is annotated in `schema/pkl/main/` with the
+Beta when no GA exists yet). Field is annotated in `schema/pkl-main/` with the
 alpha-introduction value (per apple/pkl-k8s convention) so it surfaces in the
 schema starting alpha; conformance is gated to GA so the KinD cluster doesn't
 need an alpha/beta feature gate enabled.

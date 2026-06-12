@@ -1,0 +1,21 @@
+amends "pkl:Project"
+
+package {
+  name = "k8s"
+  baseUri = "package://hub.platform.engineering/plugins/k8s/schema/pkl/\(name)/\(name)"
+  version = "0.1.0"
+  packageZipUrl = "https://hub.platform.engineering/plugins/k8s/schema/pkl/\(name)/\(name)@\(version).zip"
+}
+
+dependencies {
+  ["formae"] {
+    uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.86.0"
+  }
+  // The helm wrappers under schema/pkl/helm/ ship inside
+  // this package and import `@helm/helm.pkl` from pkl-readers/helm.
+  // Pin must match the binary version bundled with formae so the wire
+  // protocol agrees.
+  ["helm"] {
+    uri = "package://pkg.pkl-lang.org/pkl-readers/helm@0.1.2"
+  }
+}
