@@ -11,7 +11,7 @@ summary = "Kubernetes resource plugin"
 description = "Kubernetes resource plugin for Formae"
 category = "containers"
 license = "FSL-1.1-ALv2"
-minFormaeVersion = "0.86.0"
+minFormaeVersion = "0.86.1"
 
 output {
   renderer = new JsonRenderer {}
