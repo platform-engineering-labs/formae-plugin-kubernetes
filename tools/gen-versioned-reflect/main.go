@@ -523,16 +523,21 @@ func bytesEqual(a, b []byte) bool {
 // packaging, so the published Pkl package version always matches the
 // plugin version (`k8s@<plugin-version>`), mirroring the other plugins'
 // `version = read("VERSION")` convention. VERSION is gitignored, so the
-// read is optional with a `0.0.0` fallback — `pkl project resolve` on a
-// fresh checkout (e.g. CI cache prewarm) must not fail.
+// read is optional with a fallback — `pkl project resolve` on a fresh
+// checkout (e.g. CI cache prewarm, conformance jobs) must not fail.
 //
-// The version must also differ from the master's literal (`0.1.0`) so
-// that consumers importing both projects (e.g. the testdata generator's
-// PklProject which lives next to master in the repo) don't deduplicate
-// on the URI and accidentally resolve to the master tree. Both the
-// fallback and any real plugin version satisfy that. Both projects keep
-// `name = "k8s"`, so the `@k8s` alias downstream is unchanged.
-const generatedVersionExpr = `version = read?("VERSION")?.text?.trim() ?? "0.0.0"`
+// The fallback MUST rank above the master's literal (`0.1.0`): Pkl
+// dedupes same-URI dependencies within a major by picking the highest
+// version, and consumers that transitively see both projects (e.g.
+// testdata/generated/v<X.Y> imports schema/pkl directly and
+// schema/pkl-main via examples/formations) must resolve `@k8s` to the
+// generated tree — only it has the v<X.Y>/ subtrees. A `0.0.0` fallback
+// loses that race and silently rebinds `@k8s` to the master tree
+// ("Cannot find module ...#/v1.36/..." in conformance). `0.999.0` stays
+// in major 0 (same dedupe bucket) but outranks the master and every
+// real plugin version. Both projects keep `name = "k8s"`, so the
+// `@k8s` alias downstream is unchanged.
+const generatedVersionExpr = `version = read?("VERSION")?.text?.trim() ?? "0.999.0"`
 
 // writeRootFiles copies the master's PklProject and the shared
 // <namespace>.pkl into the unified tree root. Called once before the

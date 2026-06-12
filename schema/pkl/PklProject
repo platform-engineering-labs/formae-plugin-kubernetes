@@ -3,7 +3,7 @@ amends "pkl:Project"
 package {
   name = "k8s"
   baseUri = "package://hub.platform.engineering/plugins/k8s/schema/pkl/\(name)/\(name)"
-  version = read?("VERSION")?.text?.trim() ?? "0.0.0"
+  version = read?("VERSION")?.text?.trim() ?? "0.999.0"
   packageZipUrl = "https://hub.platform.engineering/plugins/k8s/schema/pkl/\(name)/\(name)@\(version).zip"
 }
 
