@@ -9,7 +9,7 @@ package {
 
 dependencies {
   ["formae"] {
-    uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.86.1"
+    uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.86.0"
   }
   // The helm wrappers under schema/pkl/helm/ ship inside
   // this package and import `@helm/helm.pkl` from pkl-readers/helm.
