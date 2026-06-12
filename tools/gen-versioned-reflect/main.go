@@ -517,18 +517,28 @@ func bytesEqual(a, b []byte) bool {
 	return true
 }
 
+// generatedVersionExpr is stamped over the master's literal `version`
+// in the generated tree's PklProject. The publish pipeline (and `make
+// build`) writes the plugin version into schema/pkl/VERSION before
+// packaging, so the published Pkl package version always matches the
+// plugin version (`k8s@<plugin-version>`), mirroring the other plugins'
+// `version = read("VERSION")` convention. VERSION is gitignored, so the
+// read is optional with a `0.0.0` fallback — `pkl project resolve` on a
+// fresh checkout (e.g. CI cache prewarm) must not fail.
+//
+// The version must also differ from the master's literal (`0.1.0`) so
+// that consumers importing both projects (e.g. the testdata generator's
+// PklProject which lives next to master in the repo) don't deduplicate
+// on the URI and accidentally resolve to the master tree. Both the
+// fallback and any real plugin version satisfy that. Both projects keep
+// `name = "k8s"`, so the `@k8s` alias downstream is unchanged.
+const generatedVersionExpr = `version = read?("VERSION")?.text?.trim() ?? "0.0.0"`
+
 // writeRootFiles copies the master's PklProject and the shared
 // <namespace>.pkl into the unified tree root. Called once before the
 // per-target loop. PklProject.deps.json is intentionally not copied —
 // `pkl project resolve` regenerates it from the (unchanged) PklProject.
-//
-// The package version in the generated tree is bumped (default `0.1.1`
-// vs master's `0.1.0`) so that consumers importing both projects (e.g.
-// the testdata generator's PklProject which lives next to master in the
-// repo) don't deduplicate on the URI and accidentally resolve to the
-// master tree. Both projects keep `name = "k8s"`, so the `@k8s` alias
-// downstream is unchanged.
-func writeRootFiles(in, out, generatedVersion string) error {
+func writeRootFiles(in, out string) error {
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return err
 	}
@@ -537,7 +547,7 @@ func writeRootFiles(in, out, generatedVersion string) error {
 	if err != nil {
 		return fmt.Errorf("read master PklProject: %w", err)
 	}
-	body := pklProjectVersionRE.ReplaceAllString(string(data), `version = "`+generatedVersion+`"`)
+	body := pklProjectVersionRE.ReplaceAllString(string(data), generatedVersionExpr)
 	if err := os.WriteFile(filepath.Join(out, "PklProject"), []byte(body), 0o644); err != nil {
 		return fmt.Errorf("write PklProject: %w", err)
 	}
@@ -575,20 +585,17 @@ func (s *stringSliceFlag) Set(v string) error { *s = append(*s, v); return nil }
 
 func main() {
 	var (
-		targets         stringSliceFlag
-		in              string
-		outDir          string
-		discPkl         string
-		projDir         string
-		generatedVersion string
+		targets stringSliceFlag
+		in      string
+		outDir  string
+		discPkl string
+		projDir string
 	)
 	flag.Var(&targets, "target", "Target K8s minor version (repeatable, e.g. -target=1.32 -target=1.33)")
 	flag.StringVar(&in, "in", defaultProjectDir, "Input directory (master schema)")
 	flag.StringVar(&outDir, "out-dir", "schema/pkl", "Output parent directory; per-target dirs named v<minor>/")
 	flag.StringVar(&discPkl, "discover", defaultDiscoverScript, "Path to discover.pkl")
 	flag.StringVar(&projDir, "project-dir", defaultProjectDir, "PKL --project-dir for discover invocation")
-	flag.StringVar(&generatedVersion, "generated-pkl-package-version", "0.1.1",
-		"Package version stamped on the generated tree's PklProject. Must differ from the master's version so Pkl's resolver doesn't dedupe the two URIs.")
 	flag.Parse()
 
 	if len(targets) == 0 {
@@ -628,7 +635,7 @@ func main() {
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		log.Fatalf("create %s: %v", outDir, err)
 	}
-	if err := writeRootFiles(in, outDir, generatedVersion); err != nil {
+	if err := writeRootFiles(in, outDir); err != nil {
 		log.Fatalf("root files: %v", err)
 	}
 	for _, target := range targets {
