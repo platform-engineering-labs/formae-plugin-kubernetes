@@ -225,6 +225,9 @@ clean-environment:
 conformance-test: install setup-credentials
 	@echo "Pre-test cleanup..."
 	@./scripts/ci/clean-environment.sh || true
+	@echo "Bootstrapping test CRDs (prerequisite for custom-resource fixtures)..."
+	@kubectl apply -f scripts/ci/conformance-crds.yaml >/dev/null 2>&1 || true
+	@kubectl wait --for=condition=Established crd/widgets.example.com --timeout=30s >/dev/null 2>&1 || true
 	@echo ""
 	@$(MAKE) conformance-test-crud-run conformance-test-discovery-run VERSION=$(VERSION) TEST=$(TEST) PARALLEL=$(PARALLEL) TIMEOUT=$(TIMEOUT); \
 	TEST_EXIT=$$?; \

@@ -1,0 +1,31 @@
+/*
+ * Conformance Test: Custom Resource instance (Widget) via K8S::Custom::Resource.
+ *
+ * The widgets.example.com CRD is bootstrapped as a prerequisite by the
+ * conformance harness (operators install their CRDs the same way). This fixture
+ * exercises the catch-all provisioner's CRUD lifecycle + discovery on a custom
+ * resource through formae core.
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.34/custom/CustomResource.pkl" as cr
+import "@k8s/v1.34/k8s.pkl" as k8s
+import "../../shared/config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new cr.CustomResource {
+    label = "test-widget"
+    apiVersion = "example.com/v1"
+    kind = "Widget"
+    metadata = new k8s.ObjectMeta {
+      name = "widget-\(v.testRunID)"
+      namespace = "default"
+    }
+    spec = new Dynamic {
+      size = 7
+    }
+  }
+}
