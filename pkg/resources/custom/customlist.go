@@ -7,73 +7,106 @@ package custom
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/prov"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// List enumerates custom-resource instances for the opt-in allowlisted API
-// groups (Config.CustomResourceGroups). With an empty allowlist it returns
-// nothing, so custom-resource discovery is off by default and a fresh cluster
-// does not flood inventory with operator-internal CRs.
+// discovery modes for custom resources (Config.CustomResourceDiscovery).
+const (
+	discoveryNone   = "none"
+	discoveryGroups = "groups"
+	discoveryAll    = "all"
+)
+
+// discoveryMode resolves the effective discovery mode, defaulting to "none" and
+// treating a bare (legacy) allowlist as "groups" for backward compatibility.
+func (c *CustomResource) discoveryMode() string {
+	if c.Config == nil {
+		return discoveryNone
+	}
+	switch c.Config.CustomResourceDiscovery {
+	case discoveryAll, discoveryGroups, discoveryNone:
+		return c.Config.CustomResourceDiscovery
+	case "":
+		if len(c.Config.CustomResourceGroups) > 0 {
+			return discoveryGroups
+		}
+		return discoveryNone
+	default:
+		return discoveryNone
+	}
+}
+
+// List enumerates custom-resource instances per the configured discovery mode.
+// Candidate kinds are sourced from the installed CustomResourceDefinitions
+// (apiextensions.k8s.io) — never from built-in API groups — so the catch-all
+// never double-discovers kinds that have their own typed provisioners.
+//
+//   none   — return nothing (default; no inventory flooding).
+//   groups — only CRDs whose spec.group is in Config.CustomResourceGroups.
+//   all    — every installed CRD.
 func (c *CustomResource) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	if c.Config == nil || len(c.Config.CustomResourceGroups) == 0 {
+	mode := c.discoveryMode()
+	if mode == discoveryNone {
 		return &resource.ListResult{}, nil
 	}
+
 	allowed := make(map[string]bool, len(c.Config.CustomResourceGroups))
 	for _, g := range c.Config.CustomResourceGroups {
 		allowed[g] = true
 	}
 
-	disc := c.Client.Discovery()
-	_, apiResourceLists, err := disc.ServerGroupsAndResources()
+	crds, err := c.Client.Dynamic.Resource(crdGVR).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		// Partial discovery errors are common (aggregated/stale APIs); proceed
-		// with whatever resolved rather than failing the whole discovery pass.
-		if apiResourceLists == nil {
-			return nil, fmt.Errorf("discover server resources: %w", err)
-		}
+		return nil, fmt.Errorf("list CustomResourceDefinitions: %w", err)
 	}
 
 	var nativeIDs []string
-	for _, rl := range apiResourceLists {
-		gv, err := schema.ParseGroupVersion(rl.GroupVersion)
-		if err != nil || !allowed[gv.Group] {
+	for i := range crds.Items {
+		group, plural, versions := crdServedGVR(&crds.Items[i])
+		if group == "" || plural == "" || len(versions) == 0 {
 			continue
 		}
-		for _, r := range rl.APIResources {
-			if !canList(r) {
-				continue
-			}
-			gvr := gv.WithResource(r.Name)
-			page, err := c.Client.Dynamic.Resource(gvr).Namespace(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
-			if err != nil {
-				continue // listing one kind failing must not abort the rest
-			}
-			for i := range page.Items {
-				item := &page.Items[i]
-				nativeIDs = append(nativeIDs, prov.CustomResourceID(
-					item.GetAPIVersion(), item.GetKind(), item.GetNamespace(), item.GetName(),
-				))
-			}
+		if mode == discoveryGroups && !allowed[group] {
+			continue
+		}
+		// One served version is enough to enumerate instances (all versions back
+		// the same objects); use the first served version.
+		gvr := schema.GroupVersionResource{Group: group, Version: versions[0], Resource: plural}
+		page, err := c.Client.Dynamic.Resource(gvr).Namespace(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			continue // a single kind failing to list must not abort the whole pass
+		}
+		for j := range page.Items {
+			item := &page.Items[j]
+			nativeIDs = append(nativeIDs, prov.CustomResourceID(
+				item.GetAPIVersion(), item.GetKind(), item.GetNamespace(), item.GetName(),
+			))
 		}
 	}
 	return &resource.ListResult{NativeIDs: nativeIDs}, nil
 }
 
-// canList reports whether an APIResource is a primary, listable kind (not a
-// subresource like "certificates/status") and supports the list verb.
-func canList(r metav1.APIResource) bool {
-	if r.Name == "" || strings.Contains(r.Name, "/") {
-		return false
-	}
-	for _, v := range r.Verbs {
-		if v == "list" {
-			return true
+// crdServedGVR extracts the group, plural resource name, and served version
+// names from a CustomResourceDefinition object.
+func crdServedGVR(crd *unstructured.Unstructured) (group, plural string, servedVersions []string) {
+	group, _, _ = unstructured.NestedString(crd.Object, "spec", "group")
+	plural, _, _ = unstructured.NestedString(crd.Object, "spec", "names", "plural")
+	versions, _, _ := unstructured.NestedSlice(crd.Object, "spec", "versions")
+	for _, v := range versions {
+		vm, ok := v.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if served, _ := vm["served"].(bool); served {
+			if name, _ := vm["name"].(string); name != "" {
+				servedVersions = append(servedVersions, name)
+			}
 		}
 	}
-	return false
+	return group, plural, servedVersions
 }

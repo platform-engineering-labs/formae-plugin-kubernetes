@@ -51,11 +51,20 @@ open class Config {
   @formae.ConfigFieldHint { createOnly = false }
   hidden kubernetesVersion: KubernetesMinorVersion
 
-  /// Opt-in allowlist of API groups whose custom resources are discovered.
-  /// Empty (default) disables custom-resource discovery. Does not affect
-  /// CRUD of explicitly-declared K8S::Custom::Resource objects.
+  /// API-group allowlist used when customResourceDiscovery is "groups".
   @formae.ConfigFieldHint { createOnly = false }
   hidden customResourceGroups: Listing<String> = new {}
+
+  /// How custom resources (CRD instances) participate in discovery:
+  ///   "none"   — no custom-resource discovery.
+  ///   "groups" — discover only CRs whose group is in customResourceGroups.
+  ///   "all"    — discover instances of every installed CRD.
+  /// Defaults to "groups" when customResourceGroups is set, else "none", so
+  /// setting an allowlist is enough; set "all" explicitly to discover every CRD.
+  /// Does not affect CRUD of explicitly-declared K8S::Custom::Resource objects.
+  @formae.ConfigFieldHint { createOnly = false }
+  hidden customResourceDiscovery: "none"|"groups"|"all" =
+    if (customResourceGroups.isEmpty) "none" else "groups"
 
   fixed Type: String = type
   fixed Auth: Auth = auth
@@ -65,6 +74,7 @@ open class Config {
   /// from `kubernetesVersion` so users never type the `v` prefix.
   fixed ApiVersion: String = "v\(kubernetesVersion)"
 
+  fixed CustomResourceDiscovery: String = customResourceDiscovery
   fixed CustomResourceGroups: Listing<String> = customResourceGroups
 }
 
