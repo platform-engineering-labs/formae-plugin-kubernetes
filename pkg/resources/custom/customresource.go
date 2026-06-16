@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/prov"
@@ -49,9 +50,21 @@ type CustomResource struct {
 
 var _ prov.Provisioner = &CustomResource{}
 
+// crdEstablishTimeout bounds how long a Create/Update waits for a custom
+// resource's kind to become resolvable. When a forma declares a CRD and an
+// instance of it together, formae may apply them concurrently; the instance's
+// kind is not servable until the apiserver establishes the freshly-created
+// CRD. We retry GVR resolution (each attempt resets the RESTMapper) so the
+// instance Create converges once the CRD is established, instead of failing
+// the whole apply on a transient "no REST mapping" miss.
+const (
+	crdEstablishTimeout = 30 * time.Second
+	crdEstablishBackoff = 500 * time.Millisecond
+)
+
 // parseManifest normalizes incoming property JSON, strips formae-only keys,
 // and returns the unstructured object plus its resolved GVR and scope.
-func (c *CustomResource) parseManifest(raw []byte) (*unstructured.Unstructured, schema.GroupVersionResource, bool, error) {
+func (c *CustomResource) parseManifest(ctx context.Context, raw []byte) (*unstructured.Unstructured, schema.GroupVersionResource, bool, error) {
 	normalized, err := prov.NormalizeMetadata(raw)
 	if err != nil {
 		return nil, schema.GroupVersionResource{}, false, err
@@ -69,11 +82,32 @@ func (c *CustomResource) parseManifest(raw []byte) (*unstructured.Unstructured, 
 	if apiVersion == "" || kind == "" {
 		return nil, schema.GroupVersionResource{}, false, fmt.Errorf("custom manifest missing apiVersion or kind")
 	}
-	gvr, namespaced, err := c.Client.ResolveMapping(apiVersion, kind)
+	gvr, namespaced, err := c.resolveMappingWithRetry(ctx, apiVersion, kind)
 	if err != nil {
 		return nil, schema.GroupVersionResource{}, false, err
 	}
 	return obj, gvr, namespaced, nil
+}
+
+// resolveMappingWithRetry resolves apiVersion+kind to a GVR, retrying on miss
+// for up to crdEstablishTimeout to absorb the delay between a CRD being created
+// and its kind becoming servable. Each attempt resets the RESTMapper.
+func (c *CustomResource) resolveMappingWithRetry(ctx context.Context, apiVersion, kind string) (schema.GroupVersionResource, bool, error) {
+	deadline := time.Now().Add(crdEstablishTimeout)
+	for {
+		gvr, namespaced, err := c.Client.ResolveMapping(apiVersion, kind)
+		if err == nil {
+			return gvr, namespaced, nil
+		}
+		if time.Now().After(deadline) {
+			return schema.GroupVersionResource{}, false, err
+		}
+		select {
+		case <-ctx.Done():
+			return schema.GroupVersionResource{}, false, ctx.Err()
+		case <-time.After(crdEstablishBackoff):
+		}
+	}
 }
 
 // resourceFor returns the dynamic client handle scoped correctly: namespaced
@@ -86,7 +120,7 @@ func (c *CustomResource) resourceFor(gvr schema.GroupVersionResource, namespaced
 }
 
 func (c *CustomResource) apply(ctx context.Context, raw []byte, op resource.Operation) (*resource.ProgressResult, error) {
-	obj, gvr, namespaced, err := c.parseManifest(raw)
+	obj, gvr, namespaced, err := c.parseManifest(ctx, raw)
 	if err != nil {
 		return nil, err
 	}
