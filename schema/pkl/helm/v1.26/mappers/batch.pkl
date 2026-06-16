@@ -43,9 +43,6 @@ function mapJobSpec(src: Any, ownerName: String): k8s.JobSpec =
     when (src.completionMode != null) {
       completionMode = src.completionMode
     }
-    when (src.restartPolicy != null) {
-      restartPolicy = src.restartPolicy
-    }
   }
 
 // =============================================================================

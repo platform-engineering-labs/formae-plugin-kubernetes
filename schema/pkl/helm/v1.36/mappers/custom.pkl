@@ -1,0 +1,37 @@
+/// Fallback mapper: routes any rendered resource that has no typed mapper
+/// (CustomResourceDefinitions, and instances of custom resources) to the
+/// generic K8S::Custom::Resource catch-all. This is what lets a single
+/// HelmChart install an entire operator — typed resources for the controllers
+/// and RBAC, catch-all resources for the CRDs the chart ships.
+module custom
+
+import "../../../v1.36/k8s.pkl" as k8s
+import "../../../v1.36/custom/CustomResource.pkl" as cr
+import "common.pkl"
+
+/// Map an untyped rendered resource to K8S::Custom::Resource. Preserves
+/// apiVersion/kind/metadata and the free-form spec; `formaeId` is computed by
+/// the CustomResource class from those fields. metadata uses the base
+/// ObjectMeta (namespace optional) so both namespaced and cluster-scoped
+/// objects (e.g. CustomResourceDefinition) map cleanly.
+function mapCustom(src: Any, labelPrefix: String): cr.CustomResource =
+  new cr.CustomResource {
+    label = common.makeLabel(labelPrefix, src.kind, src.metadata.name)
+    apiVersion = src.apiVersion
+    kind = src.kind
+    metadata = new k8s.ObjectMeta {
+      name = src.metadata.name
+      when (src.metadata.namespace != null) {
+        namespace = src.metadata.namespace
+      }
+      when (src.metadata.labels != null) {
+        labels = common.mapStringMapping(src.metadata.labels)
+      }
+      when (src.metadata.annotations != null) {
+        annotations = common.filterAnnotations(src.metadata.annotations)
+      }
+    }
+    when (src.spec != null) {
+      spec = src.spec
+    }
+  }

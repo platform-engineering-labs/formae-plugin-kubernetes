@@ -58,8 +58,15 @@ resources: Listing<formae.Resource> = new Listing {
     when (dispatch.isSupported(_res.apiVersion, _res.kind)) {
       dispatch.mapResource(_res, labelPrefix, namespace)
     }
+    // Kinds without a typed mapper (CRDs the chart ships, custom-resource
+    // instances) fall back to the generic K8S::Custom::Resource catch-all, so
+    // one HelmChart installs an operator end-to-end. Set skipUnsupported = false
+    // to instead throw on any non-typed kind (strict, typed-only mode).
+    when (!dispatch.isSupported(_res.apiVersion, _res.kind) && skipUnsupported) {
+      dispatch.mapCustom(_res, labelPrefix)
+    }
     when (!dispatch.isSupported(_res.apiVersion, _res.kind) && !skipUnsupported) {
-      throw("Unsupported resource type: \(_res.apiVersion)/\(_res.kind) (\(_res.metadata.name)). Set skipUnsupported = true to skip.")
+      throw("Unsupported resource type: \(_res.apiVersion)/\(_res.kind) (\(_res.metadata.name)). Set skipUnsupported = true to map it via K8S::Custom::Resource.")
     }
   }
 }
