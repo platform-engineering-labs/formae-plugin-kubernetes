@@ -1,0 +1,54 @@
+/*
+ * Deploy the Widget CRD itself via formae — a CustomResourceDefinition is just
+ * an apiextensions.k8s.io/v1 object with no typed provisioner, so it flows
+ * through the same K8S::Custom::Resource catch-all. No kubectl required.
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.33/custom/CustomResource.pkl" as cr
+import "@k8s/v1.33/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new cr.CustomResource {
+    label = "widget-crd"
+    apiVersion = "apiextensions.k8s.io/v1"
+    kind = "CustomResourceDefinition"
+    metadata = new k8s.ObjectMeta {
+      name = "widgets.example.com"
+    }
+    spec = new Dynamic {
+      group = "example.com"
+      names = new Dynamic {
+        kind = "Widget"
+        listKind = "WidgetList"
+        plural = "widgets"
+        singular = "widget"
+      }
+      scope = "Namespaced"
+      versions = new Listing {
+        new Dynamic {
+          name = "v1"
+          served = true
+          storage = true
+          schema = new Dynamic {
+            openAPIV3Schema = new Dynamic {
+              type = "object"
+              properties = new Dynamic {
+                spec = new Dynamic {
+                  type = "object"
+                  properties = new Dynamic {
+                    size = new Dynamic { type = "integer" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

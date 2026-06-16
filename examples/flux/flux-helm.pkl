@@ -1,0 +1,60 @@
+/*
+ * Install Flux end-to-end with formae ONLY (no kubectl) via Helm.
+ *
+ * The fluxcd-community/flux2 chart ships both the controllers (typed K8s
+ * resources) and 14 CRDs. HelmChart renders it at pkl-eval time; typed kinds
+ * map to typed resources, and the CRDs fall back to K8S::Custom::Resource —
+ * so a single `formae apply` installs the whole operator.
+ *
+ * Prereqs (tooling only, no cluster mutation):
+ *   helm repo add fluxcd-community https://fluxcd-community.github.io/helm-charts
+ *   helm repo update
+ *   pkl-reader-helm on PATH
+ *
+ * Apply:
+ *   pkl project resolve examples/flux
+ *   formae apply --mode reconcile --yes --watch examples/flux/flux-helm.pkl
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.33/k8s.pkl" as k8s
+import "@k8s/v1.33/core/Namespace.pkl" as ns
+import "@k8s/helm/v1.33/HelmChart.pkl"
+
+local flux = new HelmChart {
+  chart = "fluxcd-community/flux2"
+  version = "2.18.4"
+  releaseName = "flux"
+  namespace = "flux-system"
+  values = new Dynamic {}
+}
+
+forma {
+  new formae.Stack {
+    label = "flux"
+    description = "Flux installed via Helm (controllers typed + 14 CRDs via catch-all)"
+  }
+
+  new formae.Target {
+    label = "k8s-target"
+    config = new k8s.Config {
+      kubernetesVersion = "1.33"
+      auth = new k8s.KubeconfigAuth {}
+      customResourceGroups = new {
+        "source.toolkit.fluxcd.io"
+        "kustomize.toolkit.fluxcd.io"
+        "helm.toolkit.fluxcd.io"
+        "notification.toolkit.fluxcd.io"
+      }
+    }
+  }
+
+  new ns.Namespace {
+    label = "flux-system-namespace"
+    metadata = new ns.NamespaceMetadata { name = "flux-system" }
+  }
+
+  for (resource in flux.resources) {
+    resource
+  }
+}

@@ -1,0 +1,30 @@
+/*
+ * A real Flux GitRepository custom resource, managed by formae via the generic
+ * K8S::Custom::Resource catch-all. The Flux source-controller CRDs are the
+ * prerequisite (installed like any provider's API).
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.33/custom/CustomResource.pkl" as cr
+import "@k8s/v1.33/k8s.pkl" as k8s
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new cr.CustomResource {
+    label = "podinfo-source"
+    apiVersion = "source.toolkit.fluxcd.io/v1"
+    kind = "GitRepository"
+    metadata = new k8s.ObjectMeta {
+      name = "podinfo"
+      namespace = "default"
+    }
+    spec = new Dynamic {
+      interval = "1m"
+      url = "https://github.com/stefanprodan/podinfo"
+      ref = new Dynamic { branch = "master" }
+    }
+  }
+}
