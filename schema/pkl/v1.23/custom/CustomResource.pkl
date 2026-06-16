@@ -65,8 +65,10 @@ open class CustomResource extends k8s.Resource {
 
   /// Free-form custom-resource body. CRDs define arbitrary spec shapes, so this
   /// is intentionally untyped (escape-hatch model — no per-field validation).
+  /// `Any` (not just `Dynamic`) so it accepts both hand-authored Dynamic
+  /// literals and typed objects produced by Helm chart rendering.
   @k8s.FieldHint {}
-  spec: Dynamic?
+  spec: Any?
 
   /// Composite identity, byte-identical to prov.CustomResourceID in Go:
   /// "<apiVersion>/<kind>/<namespace>/<name>". Rendered (not hidden) so it
