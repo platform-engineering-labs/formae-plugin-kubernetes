@@ -28,7 +28,7 @@ func (c *CustomResource) List(ctx context.Context, request *resource.ListRequest
 		allowed[g] = true
 	}
 
-	disc := c.Client.Clientset.Discovery()
+	disc := c.Client.Discovery()
 	_, apiResourceLists, err := disc.ServerGroupsAndResources()
 	if err != nil {
 		// Partial discovery errors are common (aggregated/stale APIs); proceed

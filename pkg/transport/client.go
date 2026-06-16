@@ -37,7 +37,7 @@ func (c *Client) ResolveMapping(apiVersion, kind string) (schema.GroupVersionRes
 	c.mapperMu.Lock()
 	if c.mapper == nil {
 		c.mapper = restmapper.NewDeferredDiscoveryRESTMapper(
-			memory.NewMemCacheClient(c.Clientset.Discovery()),
+			memory.NewMemCacheClient(c.Discovery()),
 		)
 	}
 	mapper := c.mapper
