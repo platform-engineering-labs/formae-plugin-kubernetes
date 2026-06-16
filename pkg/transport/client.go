@@ -56,6 +56,20 @@ func (c *Client) ResolveMapping(apiVersion, kind string) (schema.GroupVersionRes
 	return schema.GroupVersionResource{}, false, err
 }
 
+// ResetMapper discards the cached discovery/RESTMapper so the next
+// ResolveMapping re-fetches from the apiserver. Use after an apply fails because
+// a kind is not (yet) served — e.g. its CRD was just created or recreated — so a
+// stale "kind exists" cache entry doesn't keep resolving to a dead endpoint.
+func (c *Client) ResetMapper() {
+	c.mapperMu.Lock()
+	if r, ok := c.mapper.(meta.ResettableRESTMapper); ok {
+		r.Reset()
+	} else {
+		c.mapper = nil
+	}
+	c.mapperMu.Unlock()
+}
+
 // resolveMappingWith performs a single GVK->GVR lookup against the given mapper.
 // Split out so it can be unit-tested with a static mapper.
 func resolveMappingWith(mapper meta.RESTMapper, apiVersion, kind string) (schema.GroupVersionResource, bool, error) {
