@@ -36,6 +36,13 @@ type Config struct {
 	// pinning to a lower version for portability.
 	KubernetesVersion string `json:"KubernetesVersion,omitempty"`
 
+	// CustomResourceGroups is an opt-in allowlist of Kubernetes API groups whose
+	// custom resources participate in discovery (List for K8S::Custom::Resource).
+	// Empty (the default) means custom-resource discovery is off, so a fresh
+	// cluster does not flood inventory with operator-internal CRs. CRUD of
+	// explicitly-declared custom resources is unaffected by this field.
+	CustomResourceGroups []string `json:"CustomResourceGroups,omitempty"`
+
 	// Parsed auth config — populated by FromTargetConfig
 	authType string
 	authRaw  json.RawMessage

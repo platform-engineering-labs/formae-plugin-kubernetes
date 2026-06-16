@@ -51,6 +51,12 @@ open class Config {
   @formae.ConfigFieldHint { createOnly = false }
   hidden kubernetesVersion: KubernetesMinorVersion
 
+  /// Opt-in allowlist of API groups whose custom resources are discovered.
+  /// Empty (default) disables custom-resource discovery. Does not affect
+  /// CRUD of explicitly-declared K8S::Custom::Resource objects.
+  @formae.ConfigFieldHint { createOnly = false }
+  hidden customResourceGroups: Listing<String> = new {}
+
   fixed Type: String = type
   fixed Auth: Auth = auth
 
@@ -58,6 +64,8 @@ open class Config {
   /// target.Config JSON for `ApiVersion`; the K8s plugin derives it
   /// from `kubernetesVersion` so users never type the `v` prefix.
   fixed ApiVersion: String = "v\(kubernetesVersion)"
+
+  fixed CustomResourceGroups: Listing<String> = customResourceGroups
 }
 
 // =============================================================================
