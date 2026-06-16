@@ -1,0 +1,48 @@
+// AUTO-GENERATED — DO NOT EDIT.
+// Source: schema/pkl-main/custom/CustomResource.pkl
+// Regenerate via: make generate-versioned-schemas
+// Edits made directly to this file will be lost on the next regen.
+
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * K8S Plugin Schema - Generic catch-all custom resource (CRD instance).
+ */
+module customresource
+
+import "@formae/formae.pkl"
+import "../k8s.pkl" as k8s
+
+const type = "K8S::Custom::Resource"
+
+/// Generic escape hatch for any custom resource (CRD instance) or any K8s kind
+/// without a typed provisioner, including CustomResourceDefinition itself.
+/// Identity is the composite `formaeId` because a single catch-all type spans
+/// every kind, so `metadata.name` alone is not unique across kinds.
+///
+/// apiVersion, kind, and metadata are inherited from k8s.Resource. metadata is
+/// the base ObjectMeta (namespace optional), so this one class serves both
+/// namespaced and cluster-scoped custom resources.
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.formaeId"
+  discoverable = true
+}
+open class CustomResource extends k8s.Resource {
+  hidden parent = this
+  fixed hidden resourceType: String = module.type
+
+  /// Free-form custom-resource body. CRDs define arbitrary spec shapes, so this
+  /// is intentionally untyped (escape-hatch model — no per-field validation).
+  @k8s.FieldHint {}
+  spec: Dynamic?
+
+  /// Composite identity, byte-identical to prov.CustomResourceID in Go:
+  /// "<apiVersion>/<kind>/<namespace>/<name>". Rendered (not hidden) so it
+  /// appears in properties for the "$.formaeId" identifier JSONPath. The
+  /// provisioner strips this key before sending the object to the apiserver.
+  @k8s.FieldHint {}
+  formaeId: String = "\(apiVersion)/\(kind)/\(metadata.namespace ?? "")/\(metadata.name)"
+}
