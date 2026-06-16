@@ -17,6 +17,15 @@ import "../k8s.pkl" as k8s
 
 const type = "K8S::Custom::Resource"
 
+/// Resolvable for cross-resource references to a custom resource — e.g. to
+/// order a custom resource after the CustomResourceDefinition that defines its
+/// kind. Exposes the composite `formaeId` identity as the referenceable
+/// property.
+open class CustomResourceResolvable extends formae.Resolvable {
+  hidden type = module.type
+  hidden formaeId: CustomResourceResolvable = (this) { property = "formaeId" }
+}
+
 /// Generic escape hatch for any custom resource (CRD instance) or any K8s kind
 /// without a typed provisioner, including CustomResourceDefinition itself.
 /// Identity is the composite `formaeId` because a single catch-all type spans
@@ -33,6 +42,26 @@ const type = "K8S::Custom::Resource"
 open class CustomResource extends k8s.Resource {
   hidden parent = this
   fixed hidden resourceType: String = module.type
+
+  hidden res: CustomResourceResolvable = new {
+    label = parent.label
+    stack = parent.stack?.label
+  }
+
+  // apiVersion/kind/metadata are redeclared here (not just inherited from
+  // k8s.Resource) because formae's resourceProps reflection only emits
+  // properties declared on the resource class itself — every built-in module
+  // redeclares them with @FieldHint for the same reason. metadata uses the
+  // base ObjectMeta (namespace optional) so this one class serves both
+  // namespaced and cluster-scoped custom resources.
+  @k8s.FieldHint { required = true }
+  apiVersion: String
+
+  @k8s.FieldHint { required = true }
+  kind: String
+
+  @k8s.FieldHint { required = true }
+  metadata: k8s.ObjectMeta
 
   /// Free-form custom-resource body. CRDs define arbitrary spec shapes, so this
   /// is intentionally untyped (escape-hatch model — no per-field validation).
