@@ -1,10 +1,17 @@
 /*
- * Deploy the CRD AND an instance of it in one formae apply. The catch-all
- * provisioner retries GVR resolution (~30s) so the Widget converges once the
- * apiserver establishes the freshly-created CRD — no ordering or kubectl needed.
+ * Deploy a CRD and an instance of it in ONE formae apply — no kubectl.
+ *
+ * The CRD uses the dedicated K8S::Apiextensions::CustomResourceDefinition type;
+ * the Widget uses the generic K8S::Custom::Resource catch-all. formae applies
+ * them concurrently, but the CRD provisioner blocks until the CRD is Established
+ * and the Widget's apply retries until its kind is served, so the Widget always
+ * converges once the CRD exists — no explicit ordering needed.
+ *
+ *   formae apply --mode reconcile --yes examples/custom-resource/crd-and-widget.pkl
  */
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
+import "@k8s/v1.33/apiextensions/CustomResourceDefinition.pkl" as crd
 import "@k8s/v1.33/custom/CustomResource.pkl" as cr
 import "@k8s/v1.33/k8s.pkl" as k8s
 import "./config/vars.pkl" as v
@@ -13,10 +20,8 @@ forma {
   v.stack
   v.target
 
-  new cr.CustomResource {
+  new crd.CustomResourceDefinition {
     label = "widget-crd"
-    apiVersion = "apiextensions.k8s.io/v1"
-    kind = "CustomResourceDefinition"
     metadata = new k8s.ObjectMeta { name = "widgets.example.com" }
     spec = new Dynamic {
       group = "example.com"
@@ -44,11 +49,11 @@ forma {
   }
 
   new cr.CustomResource {
-    label = "test-widget"
+    label = "widget-sample"
     apiVersion = "example.com/v1"
     kind = "Widget"
     metadata = new k8s.ObjectMeta {
-      name = "widget-\(v.testRunID)"
+      name = "widget-sample"
       namespace = "default"
     }
     spec = new Dynamic { size = 3 }
