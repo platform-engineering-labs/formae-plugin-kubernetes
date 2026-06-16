@@ -23,6 +23,7 @@ import (
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/batch"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/coordination"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/core"
+	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/custom"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/flowcontrol"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/networking"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/node"
