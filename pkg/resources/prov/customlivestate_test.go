@@ -20,6 +20,7 @@ func TestCustomLiveState_StripsAndInjects(t *testing.T) {
 			"resourceVersion":   "123",
 			"creationTimestamp": "2026-01-01T00:00:00Z",
 			"generation":        float64(2),
+			"managedFields":     []interface{}{map[string]interface{}{"manager": "formae"}},
 		},
 		"spec":   map[string]interface{}{"secretName": "web-tls"},
 		"status": map[string]interface{}{"conditions": []interface{}{}},
@@ -36,7 +37,7 @@ func TestCustomLiveState_StripsAndInjects(t *testing.T) {
 		t.Error("status should be stripped")
 	}
 	meta := got["metadata"].(map[string]interface{})
-	for _, f := range []string{"uid", "resourceVersion", "creationTimestamp", "generation"} {
+	for _, f := range []string{"uid", "resourceVersion", "creationTimestamp", "generation", "managedFields"} {
 		if _, ok := meta[f]; ok {
 			t.Errorf("server-managed metadata field %q should be stripped", f)
 		}

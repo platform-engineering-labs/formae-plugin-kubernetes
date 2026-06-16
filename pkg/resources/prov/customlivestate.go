@@ -33,6 +33,10 @@ func CustomLiveState(obj map[string]interface{}) ([]byte, error) {
 		for _, f := range serverManagedMetaFields {
 			delete(meta, f)
 		}
+		// managedFields tracks Server-Side-Apply field ownership. The typed
+		// LiveState path drops it via apply-config Extract; the unstructured
+		// path must strip it explicitly or it surfaces as unexpected drift.
+		delete(meta, "managedFields")
 		name, _ = meta["name"].(string)
 		namespace, _ = meta["namespace"].(string)
 	}
