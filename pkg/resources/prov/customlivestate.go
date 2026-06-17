@@ -41,6 +41,8 @@ func CustomLiveState(obj map[string]interface{}) ([]byte, error) {
 		namespace, _ = meta["namespace"].(string)
 	}
 
+	stripCRDServerDefaults(obj, apiVersion, kind)
+
 	obj["formaeId"] = CustomResourceID(apiVersion, kind, namespace, name)
 
 	out, err := json.Marshal(obj)
@@ -48,4 +50,18 @@ func CustomLiveState(obj map[string]interface{}) ([]byte, error) {
 		return nil, fmt.Errorf("marshal custom live state: %w", err)
 	}
 	return out, nil
+}
+
+// stripCRDServerDefaults removes apiserver-defaulted fields from a
+// CustomResourceDefinition's spec that the user did not set and formae does not
+// manage — currently spec.conversion, which the apiserver defaults to
+// {strategy: None} when omitted. Left in place it surfaces as unexpected drift
+// (a live-only field with no desired counterpart). No-op for non-CRD objects.
+func stripCRDServerDefaults(obj map[string]interface{}, apiVersion, kind string) {
+	if kind != "CustomResourceDefinition" || apiVersion != "apiextensions.k8s.io/v1" {
+		return
+	}
+	if spec, ok := obj["spec"].(map[string]interface{}); ok {
+		delete(spec, "conversion")
+	}
 }

@@ -1,0 +1,46 @@
+/*
+ * Conformance Test: a CustomResourceDefinition as the primary resource.
+ *
+ * Unlike the custom-resource fixture (where a CRD is a dependency of a Widget),
+ * here the CRD itself is the tracked resource — exercising create/verify/update/
+ * destroy of K8S::Apiextensions::CustomResourceDefinition directly. The CRD
+ * provisioner blocks until the Established condition before reporting Success.
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/apiextensions/CustomResourceDefinition.pkl" as crd
+import "@k8s/k8s.pkl" as k8s
+import "../../shared/config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new crd.CustomResourceDefinition {
+    label = "test-gadget-crd"
+    metadata = new k8s.ObjectMeta { name = "gadgets.example.com" }
+    spec = new Dynamic {
+      group = "example.com"
+      names = new Dynamic {
+        kind = "Gadget"; listKind = "GadgetList"; plural = "gadgets"; singular = "gadget"
+      }
+      scope = "Namespaced"
+      versions = new Listing {
+        new Dynamic {
+          name = "v1"; served = true; storage = true
+          schema = new Dynamic {
+            openAPIV3Schema = new Dynamic {
+              type = "object"
+              properties = new Dynamic {
+                spec = new Dynamic {
+                  type = "object"
+                  properties = new Dynamic { size = new Dynamic { type = "integer" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

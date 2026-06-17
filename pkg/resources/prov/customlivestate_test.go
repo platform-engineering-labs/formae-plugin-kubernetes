@@ -49,3 +49,53 @@ func TestCustomLiveState_StripsAndInjects(t *testing.T) {
 		t.Error("spec must be preserved")
 	}
 }
+
+func TestCustomLiveState_StripsCRDConversionDefault(t *testing.T) {
+	obj := map[string]interface{}{
+		"apiVersion": "apiextensions.k8s.io/v1",
+		"kind":       "CustomResourceDefinition",
+		"metadata":   map[string]interface{}{"name": "widgets.example.com"},
+		"spec": map[string]interface{}{
+			"group":      "example.com",
+			"scope":      "Namespaced",
+			"conversion": map[string]interface{}{"strategy": "None"}, // apiserver default
+		},
+	}
+	out, err := CustomLiveState(obj)
+	if err != nil {
+		t.Fatalf("CustomLiveState error: %v", err)
+	}
+	var got map[string]interface{}
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	spec := got["spec"].(map[string]interface{})
+	if _, ok := spec["conversion"]; ok {
+		t.Error("spec.conversion (apiserver default) should be stripped from a CRD")
+	}
+	if spec["group"] != "example.com" {
+		t.Error("user-set spec fields must be preserved")
+	}
+}
+
+func TestCustomLiveState_KeepsConversionOnNonCRD(t *testing.T) {
+	// A custom resource that happens to have a spec.conversion field must keep it
+	// — the strip only applies to CustomResourceDefinition objects.
+	obj := map[string]interface{}{
+		"apiVersion": "example.com/v1",
+		"kind":       "Widget",
+		"metadata":   map[string]interface{}{"name": "w", "namespace": "default"},
+		"spec":       map[string]interface{}{"conversion": "user-data"},
+	}
+	out, err := CustomLiveState(obj)
+	if err != nil {
+		t.Fatalf("CustomLiveState error: %v", err)
+	}
+	var got map[string]interface{}
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got["spec"].(map[string]interface{})["conversion"] != "user-data" {
+		t.Error("non-CRD spec.conversion must be preserved")
+	}
+}
