@@ -12,7 +12,5 @@ target = new formae.Target {
     // Match your cluster's Kubernetes minor (kubectl version).
     kubernetesVersion = "1.33"
     auth = new k8s.KubeconfigAuth {}
-    // Opt in to discovery of the example.com group so the Widget is discoverable.
-    customResourceGroups = new { "example.com" }
   }
 }

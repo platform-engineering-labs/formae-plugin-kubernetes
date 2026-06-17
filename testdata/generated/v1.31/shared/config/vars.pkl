@@ -19,9 +19,5 @@ target = new formae.Target {
   config = new k8s.Config {
     kubernetesVersion = k8sMinor
     auth = new k8s.KubeconfigAuth {}
-    // Enable discovery of the example.com group so the custom-resource
-    // conformance feature (Widget) is discoverable. Harmless for other
-    // features — no example.com resources exist outside that fixture.
-    customResourceGroups = new { "example.com" }
   }
 }

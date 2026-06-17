@@ -15,51 +15,16 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// discovery modes for custom resources (Config.CustomResourceDiscovery).
-const (
-	discoveryNone   = "none"
-	discoveryGroups = "groups"
-	discoveryAll    = "all"
-)
-
-// discoveryMode resolves the effective discovery mode, defaulting to "none" and
-// treating a bare (legacy) allowlist as "groups" for backward compatibility.
-func (c *CustomResource) discoveryMode() string {
-	if c.Config == nil {
-		return discoveryNone
-	}
-	switch c.Config.CustomResourceDiscovery {
-	case discoveryAll, discoveryGroups, discoveryNone:
-		return c.Config.CustomResourceDiscovery
-	case "":
-		if len(c.Config.CustomResourceGroups) > 0 {
-			return discoveryGroups
-		}
-		return discoveryNone
-	default:
-		return discoveryNone
-	}
-}
-
-// List enumerates custom-resource instances per the configured discovery mode.
-// Candidate kinds are sourced from the installed CustomResourceDefinitions
-// (apiextensions.k8s.io) — never from built-in API groups — so the catch-all
-// never double-discovers kinds that have their own typed provisioners.
+// List enumerates custom-resource instances for discovery, the same way the
+// typed provisioners enumerate their kinds. Candidate kinds are sourced from
+// the installed CustomResourceDefinitions (apiextensions.k8s.io) — never from
+// built-in API groups — so the catch-all never double-discovers kinds that
+// already have their own typed provisioners.
 //
-//   none   — return nothing (default; no inventory flooding).
-//   groups — only CRDs whose spec.group is in Config.CustomResourceGroups.
-//   all    — every installed CRD.
+// As with the built-in types, this returns everything; operator-internal or
+// otherwise unwanted kinds are excluded via the plugin's DiscoveryFilters
+// (Plugin.DiscoveryFilters), not a bespoke per-target config.
 func (c *CustomResource) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	mode := c.discoveryMode()
-	if mode == discoveryNone {
-		return &resource.ListResult{}, nil
-	}
-
-	allowed := make(map[string]bool, len(c.Config.CustomResourceGroups))
-	for _, g := range c.Config.CustomResourceGroups {
-		allowed[g] = true
-	}
-
 	crds, err := c.Client.Dynamic.Resource(crdGVR).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("list CustomResourceDefinitions: %w", err)
@@ -69,9 +34,6 @@ func (c *CustomResource) List(ctx context.Context, request *resource.ListRequest
 	for i := range crds.Items {
 		group, plural, versions := crdServedGVR(&crds.Items[i])
 		if group == "" || plural == "" || len(versions) == 0 {
-			continue
-		}
-		if mode == discoveryGroups && !allowed[group] {
 			continue
 		}
 		// One served version is enough to enumerate instances (all versions back

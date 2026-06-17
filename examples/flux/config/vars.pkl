@@ -11,6 +11,5 @@ target = new formae.Target {
   config = new k8s.Config {
     kubernetesVersion = "1.33"
     auth = new k8s.KubeconfigAuth {}
-    customResourceGroups = new { "source.toolkit.fluxcd.io" }
   }
 }

@@ -15,8 +15,11 @@ pkl is required**.
 
 - `crd-and-widget.pkl` — deploys the `widgets.example.com` CRD **and** a `Widget`
   instance in a single `formae apply`.
-- `config/vars.pkl` — stack + target. Note `customResourceGroups = { "example.com" }`,
-  the opt-in allowlist that makes `Widget` instances discoverable.
+- `config/vars.pkl` — stack + target.
+
+Custom resources are discovered like any other resource type — `List` enumerates
+instances of every installed CRD. Unwanted kinds are excluded via the plugin's
+`DiscoveryFilters`, the same mechanism used for built-in resources.
 
 ## Identity
 

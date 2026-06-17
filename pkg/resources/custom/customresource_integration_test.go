@@ -121,10 +121,9 @@ func TestCustomResource_DeployCRDThenInstanceAndDiscover(t *testing.T) {
 	}
 	testutil.RequireReadProperties(t, readRes, "read Widget")
 
-	// 4. Discover: with example.com allowlisted, List surfaces the Widget.
-	env.Config.CustomResourceGroups = []string{"example.com"}
-	discP := env.NewProvisioner(customType) // rebuild so it sees the updated config
-	listRes, err := discP.List(ctx, &resource.ListRequest{ResourceType: customType})
+	// 4. Discover: List enumerates instances of every installed CRD; the Widget
+	// must be among them.
+	listRes, err := p.List(ctx, &resource.ListRequest{ResourceType: customType})
 	if err != nil {
 		t.Fatalf("list/discover: %v", err)
 	}

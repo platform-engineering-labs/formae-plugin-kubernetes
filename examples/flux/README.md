@@ -42,8 +42,7 @@ formae inventory resources --query "stack:flux managed:true" --max-results 100
 ## Manage Flux custom resources
 
 Once Flux is installed (CRDs present), manage its CRs through the catch-all —
-see `gitrepository.pkl` (a `GitRepository` pointing at podinfo). The target's
-`customResourceGroups` allowlist makes these discoverable.
+see `gitrepository.pkl` (a `GitRepository` pointing at podinfo).
 
 ```bash
 formae apply --mode reconcile --yes examples/flux/gitrepository.pkl

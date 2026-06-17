@@ -36,23 +36,6 @@ type Config struct {
 	// pinning to a lower version for portability.
 	KubernetesVersion string `json:"KubernetesVersion,omitempty"`
 
-	// CustomResourceDiscovery selects how custom resources (instances of CRDs)
-	// participate in discovery (List for K8S::Custom::Resource):
-	//
-	//   "none"   — no custom-resource discovery (default). A fresh cluster does
-	//              not pull operator-internal CRs into inventory.
-	//   "groups" — discover only CRs whose API group is in CustomResourceGroups.
-	//   "all"    — discover instances of every installed CRD.
-	//
-	// CRUD of explicitly-declared custom resources is unaffected by this field.
-	// For backward compatibility, an empty value with a non-empty
-	// CustomResourceGroups is treated as "groups".
-	CustomResourceDiscovery string `json:"CustomResourceDiscovery,omitempty"`
-
-	// CustomResourceGroups is the API-group allowlist consulted when
-	// CustomResourceDiscovery is "groups".
-	CustomResourceGroups []string `json:"CustomResourceGroups,omitempty"`
-
 	// Parsed auth config — populated by FromTargetConfig
 	authType string
 	authRaw  json.RawMessage

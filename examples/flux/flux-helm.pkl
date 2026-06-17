@@ -40,12 +40,6 @@ forma {
     config = new k8s.Config {
       kubernetesVersion = "1.33"
       auth = new k8s.KubeconfigAuth {}
-      customResourceGroups = new {
-        "source.toolkit.fluxcd.io"
-        "kustomize.toolkit.fluxcd.io"
-        "helm.toolkit.fluxcd.io"
-        "notification.toolkit.fluxcd.io"
-      }
     }
   }
 
