@@ -29,10 +29,14 @@ open class CustomResourceResolvable extends formae.Resolvable {
 /// apiVersion, kind, and metadata are inherited from k8s.Resource. metadata is
 /// the base ObjectMeta (namespace optional), so this one class serves both
 /// namespaced and cluster-scoped custom resources.
+/// Not discoverable: a single catch-all type spans every CRD kind, so
+/// discovery would enumerate every custom resource on the cluster (incl.
+/// operator-internal churn). Disabled until a scoped discovery design lands;
+/// CRUD of explicitly-declared custom resources is unaffected.
 @k8s.ResourceHint {
   type = module.type
   identifier = "$.formaeId"
-  discoverable = true
+  discoverable = false
 }
 open class CustomResource extends k8s.Resource {
   hidden parent = this

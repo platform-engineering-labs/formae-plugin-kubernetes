@@ -121,11 +121,12 @@ func TestCustomResource_DeployCRDThenInstanceAndDiscover(t *testing.T) {
 	}
 	testutil.RequireReadProperties(t, readRes, "read Widget")
 
-	// 4. Discover: List enumerates instances of every installed CRD; the Widget
-	// must be among them.
+	// 4. List capability: discovery is disabled at the schema level
+	// (discoverable=false), but the List implementation is retained — exercise
+	// it directly to keep it covered. The Widget must be among the enumerated CRs.
 	listRes, err := p.List(ctx, &resource.ListRequest{ResourceType: customType})
 	if err != nil {
-		t.Fatalf("list/discover: %v", err)
+		t.Fatalf("list: %v", err)
 	}
 	found := false
 	for _, id := range listRes.NativeIDs {
@@ -135,7 +136,7 @@ func TestCustomResource_DeployCRDThenInstanceAndDiscover(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("discovery did not surface Widget %q; got %v", widgetID, listRes.NativeIDs)
+		t.Fatalf("List did not surface Widget %q; got %v", widgetID, listRes.NativeIDs)
 	}
 
 	// 5. Update the Widget spec.

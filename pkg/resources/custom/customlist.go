@@ -15,15 +15,16 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// List enumerates custom-resource instances for discovery, the same way the
-// typed provisioners enumerate their kinds. Candidate kinds are sourced from
-// the installed CustomResourceDefinitions (apiextensions.k8s.io) — never from
-// built-in API groups — so the catch-all never double-discovers kinds that
-// already have their own typed provisioners.
+// List enumerates custom-resource instances by walking the installed
+// CustomResourceDefinitions (apiextensions.k8s.io) — never built-in API groups —
+// so the catch-all never double-discovers kinds that have typed provisioners.
 //
-// As with the built-in types, this returns everything; operator-internal or
-// otherwise unwanted kinds are excluded via the plugin's DiscoveryFilters
-// (Plugin.DiscoveryFilters), not a bespoke per-target config.
+// NOTE: both K8S::Custom::Resource and K8S::Apiextensions::CustomResourceDefinition
+// are currently marked discoverable=false in their pkl schemas, so formae does
+// NOT invoke this during discovery. The implementation is kept intact, ready to
+// re-enable once a scoped discovery design lands (a single catch-all type spans
+// every CRD kind, so unscoped discovery would flood inventory with
+// operator-internal resources).
 func (c *CustomResource) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
 	crds, err := c.Client.Dynamic.Resource(crdGVR).List(ctx, metav1.ListOptions{})
 	if err != nil {
