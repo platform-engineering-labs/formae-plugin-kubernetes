@@ -34,7 +34,7 @@ function mapPod(src: Any, prefix: String, namespace: String): pod.Pod =
   new pod.Pod {
     label = common.makeLabel(prefix, "pod", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)
-    spec = common.mapPodSpec(src.spec)
+    spec = common.mapPodSpec(src.spec, prefix)
   }
 
 // =============================================================================
