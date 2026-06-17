@@ -32,13 +32,13 @@ func (c *CustomResource) List(ctx context.Context, request *resource.ListRequest
 
 	var nativeIDs []string
 	for i := range crds.Items {
-		group, plural, versions := crdServedGVR(&crds.Items[i])
-		if group == "" || plural == "" || len(versions) == 0 {
+		// One served version is enough to enumerate instances (all versions back
+		// the same objects).
+		group, plural, version := crdServedGVR(&crds.Items[i])
+		if group == "" || plural == "" || version == "" {
 			continue
 		}
-		// One served version is enough to enumerate instances (all versions back
-		// the same objects); use the first served version.
-		gvr := schema.GroupVersionResource{Group: group, Version: versions[0], Resource: plural}
+		gvr := schema.GroupVersionResource{Group: group, Version: version, Resource: plural}
 		page, err := c.Client.Dynamic.Resource(gvr).Namespace(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
 		if err != nil {
 			continue // a single kind failing to list must not abort the whole pass
@@ -53,9 +53,9 @@ func (c *CustomResource) List(ctx context.Context, request *resource.ListRequest
 	return &resource.ListResult{NativeIDs: nativeIDs}, nil
 }
 
-// crdServedGVR extracts the group, plural resource name, and served version
-// names from a CustomResourceDefinition object.
-func crdServedGVR(crd *unstructured.Unstructured) (group, plural string, servedVersions []string) {
+// crdServedGVR extracts the group, plural resource name, and first served
+// version from a CustomResourceDefinition object. version is "" if none served.
+func crdServedGVR(crd *unstructured.Unstructured) (group, plural, version string) {
 	group, _, _ = unstructured.NestedString(crd.Object, "spec", "group")
 	plural, _, _ = unstructured.NestedString(crd.Object, "spec", "names", "plural")
 	versions, _, _ := unstructured.NestedSlice(crd.Object, "spec", "versions")
@@ -66,9 +66,9 @@ func crdServedGVR(crd *unstructured.Unstructured) (group, plural string, servedV
 		}
 		if served, _ := vm["served"].(bool); served {
 			if name, _ := vm["name"].(string); name != "" {
-				servedVersions = append(servedVersions, name)
+				return group, plural, name
 			}
 		}
 	}
-	return group, plural, servedVersions
+	return group, plural, ""
 }

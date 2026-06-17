@@ -117,24 +117,21 @@ func (c *CustomResource) resolveAndApply(ctx context.Context, obj *unstructured.
 	apiVersion, kind := obj.GetAPIVersion(), obj.GetKind()
 	deadline := time.Now().Add(crdEstablishTimeout)
 	for {
-		var err error
-		gvr, namespaced, resolveErr := c.Client.ResolveMapping(apiVersion, kind)
-		if resolveErr == nil {
+		gvr, namespaced, err := c.Client.ResolveMapping(apiVersion, kind)
+		if err == nil {
 			ns := obj.GetNamespace()
 			if namespaced && ns == "" {
 				ns = "default"
 				obj.SetNamespace(ns)
 			}
-			result, applyErr := c.resourceFor(gvr, namespaced, ns).Apply(ctx, obj.GetName(), obj, metav1.ApplyOptions{
+			var result *unstructured.Unstructured
+			result, err = c.resourceFor(gvr, namespaced, ns).Apply(ctx, obj.GetName(), obj, metav1.ApplyOptions{
 				FieldManager: prov.FieldManager,
 				Force:        true,
 			})
-			if applyErr == nil {
+			if err == nil {
 				return result, nil
 			}
-			err = applyErr
-		} else {
-			err = resolveErr
 		}
 		if !isEstablishRetryable(err) || time.Now().After(deadline) {
 			return nil, err
@@ -150,70 +147,23 @@ func (c *CustomResource) resolveAndApply(ctx context.Context, obj *unstructured.
 	}
 }
 
-// isEstablishRetryable reports whether an apply/resolve error is the kind that
-// clears once a CRD finishes (re)establishing.
-func isEstablishRetryable(err error) bool {
-	return meta.IsNoMatchError(err) ||
-		apierrors.IsNotFound(err) ||
-		apierrors.IsConflict(err) ||
-		apierrors.IsAlreadyExists(err) ||
-		apierrors.IsServerTimeout(err) ||
-		apierrors.IsInternalError(err) ||
-		apierrors.IsTooManyRequests(err)
-}
-
-// crdGVR is the GroupVersionResource for CustomResourceDefinition objects.
+// crdGVR is the GroupVersionResource for CustomResourceDefinition objects,
+// used by discovery (customlist.go) to enumerate installed CRDs.
 var crdGVR = schema.GroupVersionResource{
 	Group:    "apiextensions.k8s.io",
 	Version:  "v1",
 	Resource: "customresourcedefinitions",
 }
 
-// isCRD reports whether the object is a CustomResourceDefinition.
-func isCRD(obj *unstructured.Unstructured) bool {
-	gv, _ := schema.ParseGroupVersion(obj.GetAPIVersion())
-	return gv.Group == crdGVR.Group && obj.GetKind() == "CustomResourceDefinition"
-}
-
-// waitForCRDEstablished polls a CRD until its Established condition is True,
-// bounded by crdEstablishTimeout. Returns nil once established.
-func (c *CustomResource) waitForCRDEstablished(ctx context.Context, name string) error {
-	deadline := time.Now().Add(crdEstablishTimeout)
-	for {
-		crd, err := c.Client.Dynamic.Resource(crdGVR).Get(ctx, name, metav1.GetOptions{})
-		if err == nil && crdEstablished(crd) {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			if err != nil {
-				return fmt.Errorf("waiting for CRD %s to be established: %w", name, err)
-			}
-			return fmt.Errorf("CRD %s not established within %s", name, crdEstablishTimeout)
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(crdEstablishBackoff):
-		}
-	}
-}
-
-// crdEstablished reports whether a CRD's status carries Established=True.
-func crdEstablished(crd *unstructured.Unstructured) bool {
-	conditions, found, err := unstructured.NestedSlice(crd.Object, "status", "conditions")
-	if err != nil || !found {
-		return false
-	}
-	for _, c := range conditions {
-		cond, ok := c.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if cond["type"] == "Established" && cond["status"] == "True" {
-			return true
-		}
-	}
-	return false
+// isEstablishRetryable reports whether an apply/resolve error is the kind that
+// clears once a CRD finishes (re)establishing.
+func isEstablishRetryable(err error) bool {
+	return meta.IsNoMatchError(err) ||
+		apierrors.IsNotFound(err) ||
+		apierrors.IsConflict(err) ||
+		apierrors.IsServerTimeout(err) ||
+		apierrors.IsInternalError(err) ||
+		apierrors.IsTooManyRequests(err)
 }
 
 func (c *CustomResource) apply(ctx context.Context, raw []byte, op resource.Operation) (*resource.ProgressResult, error) {
@@ -224,15 +174,6 @@ func (c *CustomResource) apply(ctx context.Context, raw []byte, op resource.Oper
 	result, err := c.resolveAndApply(ctx, obj)
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply %s/%s: %w", obj.GetAPIVersion(), obj.GetKind(), err)
-	}
-	// A CRD is only usable once the apiserver has Established it (served its
-	// endpoint). Block here so this Create reports Success only when the kind is
-	// servable — any custom resource whose retry is waiting on this CRD then
-	// converges as soon as we return.
-	if isCRD(obj) {
-		if err := c.waitForCRDEstablished(ctx, obj.GetName()); err != nil {
-			return nil, err
-		}
 	}
 	properties, err := prov.CustomLiveState(result.Object)
 	if err != nil {
