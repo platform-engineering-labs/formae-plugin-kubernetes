@@ -1,0 +1,2 @@
+minK8sVersion = "1.21"
+description = "CustomResourceDefinition managed as a primary resource via K8S::Apiextensions::CustomResourceDefinition. Exercises CRD create/verify/update/destroy directly (CRDs are not discoverable, so the discovery suite skips this fixture)."

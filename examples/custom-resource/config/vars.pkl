@@ -1,0 +1,16 @@
+import "@formae/formae.pkl"
+import "@k8s/v1.33/k8s.pkl" as k8s
+
+stack = new formae.Stack {
+  label = "custom-resource-demo"
+  description = "CRD + custom resource managed by formae via K8S::Custom::Resource"
+}
+
+target = new formae.Target {
+  label = "k8s-target"
+  config = new k8s.Config {
+    // Match your cluster's Kubernetes minor (kubectl version).
+    kubernetesVersion = "1.33"
+    auth = new k8s.KubeconfigAuth {}
+  }
+}

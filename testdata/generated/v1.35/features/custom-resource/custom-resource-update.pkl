@@ -1,0 +1,61 @@
+/*
+ * Conformance Test: a CRD and an instance of it, in ONE formae apply — no
+ * kubectl. The CRD uses the distinct K8S::Apiextensions::CustomResourceDefinition
+ * type; the Widget uses the K8S::Custom::Resource catch-all (different types, so
+ * they don't collide on the harness's per-target-type inventory count).
+ *
+ * The Widget `dependsOn` the CRD, so formae creates the CRD first (and destroys
+ * it last); the CRD provisioner waits for the Established condition before
+ * reporting Success, so the Widget never races the CRD's establishment.
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.35/apiextensions/CustomResourceDefinition.pkl" as crd
+import "@k8s/v1.35/custom/CustomResource.pkl" as cr
+import "@k8s/v1.35/k8s.pkl" as k8s
+import "../../shared/config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local widgetCrd = new crd.CustomResourceDefinition {
+    label = "test-widget-crd"
+    metadata = new k8s.ObjectMeta { name = "widgets.example.com" }
+    spec = new Dynamic {
+      group = "example.com"
+      names = new Dynamic {
+        kind = "Widget"; listKind = "WidgetList"; plural = "widgets"; singular = "widget"
+      }
+      scope = "Namespaced"
+      versions = new Listing {
+        new Dynamic {
+          name = "v1"; served = true; storage = true
+          schema = new Dynamic {
+            openAPIV3Schema = new Dynamic {
+              type = "object"
+              properties = new Dynamic {
+                spec = new Dynamic {
+                  type = "object"
+                  properties = new Dynamic { size = new Dynamic { type = "integer" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  widgetCrd
+
+  // Target (listed last → harness picks it): a Widget instance. The CRD
+  // provisioner waits for Established before reporting Success, and the Widget's
+  // create resolves its kind with a bounded retry, so no establishment race.
+  new cr.CustomResource {
+    label = "test-widget"
+    apiVersion = "example.com/v1"
+    kind = "Widget"
+    metadata = new k8s.ObjectMeta { name = "widget-\(v.testRunID)"; namespace = "default" }
+    spec = new Dynamic { size = 7 }
+  }
+}

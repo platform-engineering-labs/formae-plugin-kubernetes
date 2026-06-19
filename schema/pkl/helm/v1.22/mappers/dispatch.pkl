@@ -17,6 +17,14 @@ import "policy.pkl"
 import "rbac.pkl"
 import "scheduling.pkl"
 import "storage.pkl"
+import "custom.pkl"
+
+/// Map a resource that isSupported() doesn't recognise (CRDs, custom-resource
+/// instances) to the generic K8S::Custom::Resource catch-all. Lets one
+/// HelmChart install an operator end-to-end: typed resources for controllers,
+/// catch-all for the CRDs the chart ships.
+function mapCustom(src: Any, labelPrefix: String): formae.Resource =
+  custom.mapCustom(src, labelPrefix)
 
 /// Check whether a K8S resource with the given apiVersion/kind is supported.
 function isSupported(apiVersion: String, kind: String): Boolean =

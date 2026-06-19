@@ -1,0 +1,16 @@
+amends "pkl:Project"
+
+dependencies {
+  ["formae"] {
+    uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.86.1"
+  }
+  ["k8s"] = import("../../schema/pkl/PklProject")
+}
+
+evaluatorSettings {
+  externalResourceReaders {
+    ["reader+helm"] {
+      executable = "pkl-reader-helm"
+    }
+  }
+}

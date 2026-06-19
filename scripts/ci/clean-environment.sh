@@ -20,6 +20,10 @@ TEST_PREFIX="${TEST_PREFIX:-formae-test-}"
 
 echo "clean-environment.sh: Cleaning K8S namespaces with prefix '${TEST_PREFIX}'"
 
+# Remove the bootstrapped test CRD (and any leftover Widget instances). Runs
+# regardless of namespace state; deleting the CRD cascades to its instances.
+kubectl delete crd widgets.example.com --ignore-not-found --wait=false 2>/dev/null || true
+
 # Get namespaces matching the prefix
 NAMESPACES=$(kubectl get namespaces -o jsonpath="{.items[*].metadata.name}" 2>/dev/null | tr ' ' '\n' | grep "^${TEST_PREFIX}" || true)
 

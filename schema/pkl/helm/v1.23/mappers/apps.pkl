@@ -17,16 +17,16 @@ function mapDeployment(src: Any, prefix: String, namespace: String): dep.Deploym
   new dep.Deployment {
     label = common.makeLabel(prefix, "deployment", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)
-    spec = mapDeploymentSpec(src.spec, src.metadata.name)
+    spec = mapDeploymentSpec(src.spec, src.metadata.name, prefix)
   }
 
-function mapDeploymentSpec(src: Any, ownerName: String): dep.DeploymentSpec =
+function mapDeploymentSpec(src: Any, ownerName: String, prefix: String): dep.DeploymentSpec =
   new dep.DeploymentSpec {
     when (src.replicas != null) {
       replicas = src.replicas
     }
     selector = common.mapLabelSelector(src.selector)
-    template = common.mapPodTemplateSpec(src.template, ownerName)
+    template = common.mapPodTemplateSpec(src.template, ownerName, prefix)
     when (src.minReadySeconds != null) {
       minReadySeconds = src.minReadySeconds
     }
@@ -77,7 +77,7 @@ function mapReplicaSet(src: Any, prefix: String, namespace: String): rs.ReplicaS
         minReadySeconds = src.spec.minReadySeconds
       }
       selector = common.mapLabelSelector(src.spec.selector)
-      template = common.mapPodTemplateSpec(src.spec.template, src.metadata.name)
+      template = common.mapPodTemplateSpec(src.spec.template, src.metadata.name, prefix)
     }
   }
 
@@ -89,16 +89,16 @@ function mapStatefulSet(src: Any, prefix: String, namespace: String): sts.Statef
   new sts.StatefulSet {
     label = common.makeLabel(prefix, "statefulset", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)
-    spec = mapStatefulSetSpec(src.spec, src.metadata.name)
+    spec = mapStatefulSetSpec(src.spec, src.metadata.name, prefix)
   }
 
-function mapStatefulSetSpec(src: Any, ownerName: String): sts.StatefulSetSpec =
+function mapStatefulSetSpec(src: Any, ownerName: String, prefix: String): sts.StatefulSetSpec =
   new sts.StatefulSetSpec {
     when (src.replicas != null) {
       replicas = src.replicas
     }
     selector = common.mapLabelSelector(src.selector)
-    template = common.mapPodTemplateSpec(src.template, ownerName)
+    template = common.mapPodTemplateSpec(src.template, ownerName, prefix)
     serviceName = src.serviceName
     when (src.volumeClaimTemplates != null) {
       volumeClaimTemplates = new Listing {
@@ -171,13 +171,13 @@ function mapDaemonSet(src: Any, prefix: String, namespace: String): ds.DaemonSet
   new ds.DaemonSet {
     label = common.makeLabel(prefix, "daemonset", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)
-    spec = mapDaemonSetSpec(src.spec, src.metadata.name)
+    spec = mapDaemonSetSpec(src.spec, src.metadata.name, prefix)
   }
 
-function mapDaemonSetSpec(src: Any, ownerName: String): ds.DaemonSetSpec =
+function mapDaemonSetSpec(src: Any, ownerName: String, prefix: String): ds.DaemonSetSpec =
   new ds.DaemonSetSpec {
     selector = common.mapLabelSelector(src.selector)
-    template = common.mapPodTemplateSpec(src.template, ownerName)
+    template = common.mapPodTemplateSpec(src.template, ownerName, prefix)
     when (src.minReadySeconds != null) {
       minReadySeconds = src.minReadySeconds
     }

@@ -1,0 +1,2 @@
+minK8sVersion = "1.21"
+description = "Custom resource (CRD instance) managed via the generic K8S::Custom::Resource catch-all. Requires the widgets.example.com CRD (bootstrapped by the conformance harness)."

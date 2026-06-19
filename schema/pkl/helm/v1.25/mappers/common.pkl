@@ -5,6 +5,7 @@
 /// Runtime errors from field access are clear and actionable.
 module common
 
+import "@formae/formae.pkl"
 import "../../../v1.25/k8s.pkl" as k8s
 import "../../../v1.25/core/Namespace.pkl" as ns
 
@@ -125,8 +126,9 @@ function mapLabelSelectorRequirement(src: Any): k8s.LabelSelectorRequirement =
 // Pod-related mappers
 // =============================================================================
 
-/// Map a pkl-k8s PodSpec to k8s PodSpec.
-function mapPodSpec(src: Any): k8s.PodSpec =
+/// Map a pkl-k8s PodSpec to k8s PodSpec. `prefix` is the chart's label prefix,
+/// used to wire serviceAccountName to its ServiceAccount resource.
+function mapPodSpec(src: Any, prefix: String): k8s.PodSpec =
   new k8s.PodSpec {
     containers = new Listing {
       for (_c in src.containers) {
@@ -140,8 +142,23 @@ function mapPodSpec(src: Any): k8s.PodSpec =
       nodeSelector = mapStringMapping(src.nodeSelector)
     }
     when (src.serviceAccountName != null) {
-      serviceAccountName = src.serviceAccountName
+      serviceAccountName = saRef(src.serviceAccountName, prefix)
     }
+  }
+
+/// Wire a workload's serviceAccountName to its ServiceAccount resource so
+/// formae creates the SA first (and resolves the name). serviceAccountName is
+/// resolvable-typed, so this round-trips to the SA name with no drift.
+///
+/// Charts that name their own SA define it in the same render, so the resolvable
+/// resolves cleanly. The built-in "default" SA is never chart-defined — leave it
+/// a plain string to avoid a dangling reference.
+function saRef(name: String, prefix: String): String|formae.Resolvable =
+  if (name == "default") name
+  else new formae.Resolvable {
+    type = "K8S::Core::ServiceAccount"
+    label = makeLabel(prefix, "serviceaccount", name)
+    property = "metadata.name"
   }
 
 /// Map a pkl-k8s Container to k8s Container.
@@ -226,12 +243,12 @@ function mapResourceRequirements(src: Any): k8s.ResourceRequirements =
 /// invent a name. Labels + annotations from the source are dropped
 /// here; if a chart sets them on the template, the owning workload
 /// surfaces them via its own selector.
-function mapPodTemplateSpec(src: Any, ownerName: String): k8s.PodTemplateSpec =
+function mapPodTemplateSpec(src: Any, ownerName: String, prefix: String): k8s.PodTemplateSpec =
   new k8s.PodTemplateSpec {
     when (src.metadata != null && (src.metadata.labels != null || src.metadata.annotations != null)) {
       metadata = mapPodTemplateMetadata(src.metadata, ownerName)
     }
-    spec = mapPodSpec(src.spec)
+    spec = mapPodSpec(src.spec, prefix)
   }
 
 /// Map PodTemplate metadata (labels + annotations only).

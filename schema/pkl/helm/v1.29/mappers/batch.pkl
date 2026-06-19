@@ -12,16 +12,17 @@ import "common.pkl"
 // Job
 // =============================================================================
 
+// NOTE: mapJobSpec/mapCronJobSpec take prefix to wire pod serviceAccountName.
 function mapJob(src: Any, prefix: String, namespace: String): job.Job =
   new job.Job {
     label = common.makeLabel(prefix, "job", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)
-    spec = mapJobSpec(src.spec, src.metadata.name)
+    spec = mapJobSpec(src.spec, src.metadata.name, prefix)
   }
 
-function mapJobSpec(src: Any, ownerName: String): k8s.JobSpec =
+function mapJobSpec(src: Any, ownerName: String, prefix: String): k8s.JobSpec =
   new k8s.JobSpec {
-    template = common.mapPodTemplateSpec(src.template, ownerName)
+    template = common.mapPodTemplateSpec(src.template, ownerName, prefix)
     when (src.completions != null) {
       completions = src.completions
     }
@@ -43,9 +44,6 @@ function mapJobSpec(src: Any, ownerName: String): k8s.JobSpec =
     when (src.completionMode != null) {
       completionMode = src.completionMode
     }
-    when (src.restartPolicy != null) {
-      restartPolicy = src.restartPolicy
-    }
   }
 
 // =============================================================================
@@ -56,10 +54,10 @@ function mapCronJob(src: Any, prefix: String, namespace: String): cj.CronJob =
   new cj.CronJob {
     label = common.makeLabel(prefix, "cronjob", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)
-    spec = mapCronJobSpec(src.spec, src.metadata.name)
+    spec = mapCronJobSpec(src.spec, src.metadata.name, prefix)
   }
 
-function mapCronJobSpec(src: Any, ownerName: String): cj.CronJobSpec =
+function mapCronJobSpec(src: Any, ownerName: String, prefix: String): cj.CronJobSpec =
   new cj.CronJobSpec {
     schedule = src.schedule
     when (src.timeZone != null) {
@@ -76,7 +74,7 @@ function mapCronJobSpec(src: Any, ownerName: String): cj.CronJobSpec =
           }
         }
       }
-      spec = mapJobSpec(src.jobTemplate.spec, ownerName)
+      spec = mapJobSpec(src.jobTemplate.spec, ownerName, prefix)
     }
     when (src.concurrencyPolicy != null) {
       concurrencyPolicy = src.concurrencyPolicy

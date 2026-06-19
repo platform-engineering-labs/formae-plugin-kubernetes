@@ -1,0 +1,65 @@
+// AUTO-GENERATED — DO NOT EDIT.
+// Source: schema/pkl-main/apiextensions/CustomResourceDefinition.pkl
+// Regenerate via: make generate-versioned-schemas
+// Edits made directly to this file will be lost on the next regen.
+
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * K8S Plugin Schema - CustomResourceDefinition (apiextensions.k8s.io/v1).
+ */
+module customresourcedefinition
+
+import "@formae/formae.pkl"
+import "../k8s.pkl" as k8s
+
+const type = "K8S::Apiextensions::CustomResourceDefinition"
+
+/// Resolvable for ordering: reference a CRD from a custom resource so the CRD is
+/// created (and established) before its instances in the same forma.
+open class CustomResourceDefinitionResolvable extends formae.Resolvable {
+  hidden type = module.type
+  hidden formaeId: CustomResourceDefinitionResolvable = (this) { property = "formaeId" }
+}
+
+/// A CustomResourceDefinition, managed via the same generic dynamic provisioner
+/// as K8S::Custom::Resource (a CRD is an apiextensions.k8s.io/v1 object with no
+/// typed provisioner). Distinct type so a CRD and an instance of the kind it
+/// defines can live in one forma without colliding on the catch-all type.
+///
+/// Not discoverable: CRDs are cluster infrastructure; enumerating every CRD on a
+/// cluster as managed would flood inventory.
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.formaeId"
+  discoverable = false
+}
+open class CustomResourceDefinition extends k8s.Resource {
+  hidden parent = this
+  fixed hidden resourceType: String = module.type
+
+  hidden res: CustomResourceDefinitionResolvable = new {
+    label = parent.label
+    stack = parent.stack?.label
+  }
+
+  @k8s.FieldHint { required = true }
+  apiVersion: String = "apiextensions.k8s.io/v1"
+
+  @k8s.FieldHint { required = true }
+  kind: String = "CustomResourceDefinition"
+
+  @k8s.FieldHint { required = true }
+  metadata: k8s.ObjectMeta
+
+  /// Free-form CRD spec (group, names, scope, versions, schema). Untyped `Any`
+  /// so it accepts hand-authored Dynamic literals and typed Helm output alike.
+  @k8s.FieldHint {}
+  spec: Any?
+
+  /// Composite identity, byte-identical to prov.CustomResourceID in Go.
+  @k8s.FieldHint {}
+  formaeId: String = "\(apiVersion)/\(kind)/\(metadata.namespace ?? "")/\(metadata.name)"
+}
