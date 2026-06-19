@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/k8sversion"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/prov"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/registry"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/transport"
@@ -531,30 +532,47 @@ func (p *Plugin) LabelConfig() model.LabelConfig {
 // config.CacheKey(), which composes auth type, endpoint, and cluster
 // identity into a stable string, so two targets pointing at different
 // clusters never alias on the same client.
-func (p *Plugin) getProvisioner(ctx context.Context, resourceType string, targetConfig []byte) (prov.Provisioner, error) {
+func (p *Plugin) getProvisioner(ctx context.Context, resourceType string, targetConfig []byte) (prov.Provisioner, *transport.Client, error) {
 	if !registry.HasProvisioner(resourceType) {
-		return nil, fmt.Errorf("unsupported resource type: %s", resourceType)
+		return nil, nil, fmt.Errorf("unsupported resource type: %s", resourceType)
 	}
 
 	cfg, err := config.FromTargetConfig(targetConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract config: %w", err)
+		return nil, nil, fmt.Errorf("failed to extract config: %w", err)
 	}
 
 	client, err := transport.CachedNewClient(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create K8S client: %w", err)
+		return nil, nil, fmt.Errorf("failed to create K8S client: %w", err)
 	}
 
 	factory, _ := registry.GetFactory(resourceType)
-	return factory(client, cfg), nil
+	return factory(client, cfg), client, nil
+}
+
+// typeUnsupported reports whether resourceType is unavailable on the target
+// cluster's K8s version, with a human-readable reason. It is fail-safe: if the
+// version cannot be resolved (cluster unreachable, no override), it reports the
+// type as supported so the operation proceeds and surfaces the real error,
+// rather than blocking on a transient discovery failure.
+func typeUnsupported(ctx context.Context, resourceType string, client *transport.Client) (bool, string) {
+	version, err := client.ResolveVersion(ctx)
+	if err != nil {
+		return false, ""
+	}
+	ok, reason := k8sversion.TypeSupported(resourceType, version)
+	return !ok, reason
 }
 
 // Create provisions a new K8S resource.
 func (p *Plugin) Create(ctx context.Context, req *resource.CreateRequest) (*resource.CreateResult, error) {
-	provisioner, err := p.getProvisioner(ctx, req.ResourceType, req.TargetConfig)
+	provisioner, client, err := p.getProvisioner(ctx, req.ResourceType, req.TargetConfig)
 	if err != nil {
 		return nil, err
+	}
+	if bad, reason := typeUnsupported(ctx, req.ResourceType, client); bad {
+		return nil, fmt.Errorf("%s is not supported on the target: %s", req.ResourceType, reason)
 	}
 	return provisioner.Create(ctx, req)
 }
@@ -567,45 +585,71 @@ func (p *Plugin) Create(ctx context.Context, req *resource.CreateRequest) (*reso
 // namespace, label vs nativeID) and floods the output. Leave logging to
 // the supervisor.
 func (p *Plugin) Read(ctx context.Context, req *resource.ReadRequest) (*resource.ReadResult, error) {
-	provisioner, err := p.getProvisioner(ctx, req.ResourceType, req.TargetConfig)
+	provisioner, client, err := p.getProvisioner(ctx, req.ResourceType, req.TargetConfig)
 	if err != nil {
 		return nil, err
+	}
+	if bad, _ := typeUnsupported(ctx, req.ResourceType, client); bad {
+		// No instance of an unsupported type can exist — report NotFound so
+		// formae drops it from state.
+		return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: resource.OperationErrorCodeNotFound}, nil
 	}
 	return provisioner.Read(ctx, req)
 }
 
 // Update modifies an existing K8S resource using server-side apply.
 func (p *Plugin) Update(ctx context.Context, req *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	provisioner, err := p.getProvisioner(ctx, req.ResourceType, req.TargetConfig)
+	provisioner, client, err := p.getProvisioner(ctx, req.ResourceType, req.TargetConfig)
 	if err != nil {
 		return nil, err
+	}
+	if bad, reason := typeUnsupported(ctx, req.ResourceType, client); bad {
+		return nil, fmt.Errorf("%s is not supported on the target: %s", req.ResourceType, reason)
 	}
 	return provisioner.Update(ctx, req)
 }
 
 // Delete removes a K8S resource.
 func (p *Plugin) Delete(ctx context.Context, req *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	provisioner, err := p.getProvisioner(ctx, req.ResourceType, req.TargetConfig)
+	provisioner, client, err := p.getProvisioner(ctx, req.ResourceType, req.TargetConfig)
 	if err != nil {
 		return nil, err
+	}
+	if bad, _ := typeUnsupported(ctx, req.ResourceType, client); bad {
+		// Nothing of an unsupported type can exist on the target — treat as a
+		// successful no-op delete.
+		return &resource.DeleteResult{ProgressResult: &resource.ProgressResult{
+			Operation: resource.OperationDelete, OperationStatus: resource.OperationStatusSuccess,
+		}}, nil
 	}
 	return provisioner.Delete(ctx, req)
 }
 
 // Status checks the progress of an async operation.
 func (p *Plugin) Status(ctx context.Context, req *resource.StatusRequest) (*resource.StatusResult, error) {
-	provisioner, err := p.getProvisioner(ctx, req.ResourceType, req.TargetConfig)
+	provisioner, client, err := p.getProvisioner(ctx, req.ResourceType, req.TargetConfig)
 	if err != nil {
 		return nil, err
+	}
+	if bad, _ := typeUnsupported(ctx, req.ResourceType, client); bad {
+		return &resource.StatusResult{ProgressResult: &resource.ProgressResult{
+			Operation: resource.OperationCheckStatus, OperationStatus: resource.OperationStatusFailure, ErrorCode: resource.OperationErrorCodeNotFound,
+		}}, nil
 	}
 	return provisioner.Status(ctx, req)
 }
 
 // List returns all resource identifiers of a given type for discovery.
 func (p *Plugin) List(ctx context.Context, req *resource.ListRequest) (*resource.ListResult, error) {
-	provisioner, err := p.getProvisioner(ctx, req.ResourceType, req.TargetConfig)
+	provisioner, client, err := p.getProvisioner(ctx, req.ResourceType, req.TargetConfig)
 	if err != nil {
 		return nil, err
+	}
+	if bad, _ := typeUnsupported(ctx, req.ResourceType, client); bad {
+		// Type isn't served on the target's K8s version — nothing to discover.
+		// Return empty rather than letting the apiserver 404 surface as a
+		// discovery error on every pass.
+		return &resource.ListResult{}, nil
 	}
 	return provisioner.List(ctx, req)
 }
