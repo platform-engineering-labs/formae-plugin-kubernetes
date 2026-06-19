@@ -98,6 +98,66 @@ var registry = map[gateKey]Gate{
 	},
 }
 
+// typeRegistry maps a resource type to its type-level @K8sVersion gate — the
+// module-scoped annotation on the resource's PKL schema (introducedIn /
+// removedIn for the whole kind, not a single field).
+//
+// IMPORTANT: like `registry` above, this is a hand-maintained mirror of the
+// PKL schema. Every entry MUST match a module-level `@K8sVersion` annotation
+// in schema/pkl-main/<group>/<Resource>.pkl; update this map in the same
+// commit that adds or changes one.
+var typeRegistry = map[string]Gate{
+	"K8S::Admissionregistration::MutatingAdmissionPolicy": {
+		IntroducedIn: "1.36",
+		Reference:    "https://kep.k8s.io/3962",
+	},
+	"K8S::Flowcontrol::FlowSchema": {
+		IntroducedIn: "1.29",
+		Reference:    "https://kubernetes.io/blog/2024/04/30/kubernetes-1-30-release-note-flow-control-graduations/",
+	},
+	"K8S::Flowcontrol::PriorityLevelConfiguration": {
+		IntroducedIn: "1.29",
+		Reference:    "https://kubernetes.io/blog/2024/04/30/kubernetes-1-30-release-note-flow-control-graduations/",
+	},
+	"K8S::Autoscaling::HorizontalPodAutoscaler": {
+		IntroducedIn: "1.23",
+		Reference:    "https://github.com/kubernetes/enhancements/issues/117",
+	},
+}
+
+// LookupType returns the type-level Gate for a resource type, or
+// (Gate{}, false) if the type is not version-gated.
+func LookupType(resourceType string) (Gate, bool) {
+	g, ok := typeRegistry[resourceType]
+	return g, ok
+}
+
+// TypeSupported reports whether a resource type is available on a cluster
+// running clusterVersion. Ungated types are always supported. When a gate
+// applies and the cluster version is out of range, it returns false plus a
+// human-readable reason for use in mutating-operation errors.
+//
+// clusterVersion must be normalized via config.NormalizeK8sVersion.
+func TypeSupported(resourceType, clusterVersion string) (bool, string) {
+	gate, ok := LookupType(resourceType)
+	if !ok {
+		return true, ""
+	}
+	ref := ""
+	if gate.Reference != "" {
+		ref = " (see " + gate.Reference + ")"
+	}
+	if gate.IntroducedIn != "" && config.CompareK8sVersions(clusterVersion, gate.IntroducedIn) < 0 {
+		return false, fmt.Sprintf("%s requires Kubernetes %s, target reports %s%s",
+			resourceType, gate.IntroducedIn, clusterVersion, ref)
+	}
+	if gate.RemovedIn != "" && config.CompareK8sVersions(clusterVersion, gate.RemovedIn) >= 0 {
+		return false, fmt.Sprintf("%s was removed in Kubernetes %s, target reports %s%s",
+			resourceType, gate.RemovedIn, clusterVersion, ref)
+	}
+	return true, ""
+}
+
 // PathsForResource returns every gated field path registered for a resource
 // type. Used by the generic preflight walker so individual provisioners do
 // not need to enumerate gated fields by hand.
