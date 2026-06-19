@@ -116,7 +116,7 @@ open class ServiceSpec extends formae.SubResource {
   loadBalancerIP: k8s.IPAddress?
 
   @k8s.FieldHint {}
-  externalName: String?
+  externalName: (String|formae.Resolvable)?
 
   @k8s.FieldHint {}
   loadBalancerSourceRanges: Listing<k8s.CIDR>?
