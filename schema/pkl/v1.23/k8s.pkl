@@ -368,7 +368,7 @@ open class EnvVar extends formae.SubResource {
   name: String
 
   @FieldHint {}
-  value: String?
+  value: (String|formae.Resolvable)?
 
   @FieldHint {}
   valueFrom: EnvVarSource?
@@ -701,7 +701,7 @@ open class Container extends formae.SubResource {
   volumeDevices: Listing<VolumeDevice>?
 
   @FieldHint {}
-  image: String?
+  image: (String|formae.Resolvable)?
 
   @FieldHint { hasProviderDefault = true }
   imagePullPolicy: String?
@@ -1535,7 +1535,7 @@ open class EphemeralContainer extends formae.SubResource {
   name: String
 
   @FieldHint {}
-  image: String?
+  image: (String|formae.Resolvable)?
 
   @FieldHint {}
   command: Listing<String>?

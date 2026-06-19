@@ -133,7 +133,7 @@ open class HTTPIngressPath extends formae.SubResource {
 @k8s.SubResourceHint {}
 open class IngressTLS extends formae.SubResource {
   @k8s.FieldHint {}
-  secretName: String?
+  secretName: (String|formae.Resolvable)?
 
   @k8s.FieldHint {}
   hosts: Listing<String>?
