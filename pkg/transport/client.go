@@ -5,6 +5,7 @@
 package transport
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -26,6 +27,28 @@ type Client struct {
 
 	mapperMu sync.Mutex
 	mapper   meta.RESTMapper
+
+	versionMu  sync.Mutex
+	version    string
+	versionErr error
+	versionSet bool
+}
+
+// ResolveVersion returns the target cluster's normalized MAJOR.MINOR K8s
+// version, resolved once and cached. Resolution follows
+// config.ResolveK8sVersion (target-config override → FORMAE_K8S_VERSION env →
+// live Discovery().ServerVersion()). The result — value or error — is memoized,
+// so repeated calls across a target's operations cost at most one ServerVersion
+// round-trip.
+func (c *Client) ResolveVersion(ctx context.Context) (string, error) {
+	c.versionMu.Lock()
+	defer c.versionMu.Unlock()
+	if c.versionSet {
+		return c.version, c.versionErr
+	}
+	c.version, c.versionErr = config.ResolveK8sVersion(ctx, c.Config, c.Discovery())
+	c.versionSet = true
+	return c.version, c.versionErr
 }
 
 // ResolveMapping maps an apiVersion+kind to its GVR and namespaced scope using
