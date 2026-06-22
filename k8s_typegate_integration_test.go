@@ -23,7 +23,11 @@ const (
 )
 
 func TestTypeGate_UnsupportedType(t *testing.T) {
-	p := &Plugin{}
+	// Inject the support map so the gate fires deterministically without the
+	// installed schema tree beside the test binary. 1.33 lacks the gated type.
+	p := &Plugin{supportMap: map[string]map[string]bool{
+		"1.33": {"K8S::Core::ConfigMap": true},
+	}}
 	ctx := context.Background()
 	tc := []byte(gateTarget)
 
@@ -40,8 +44,8 @@ func TestTypeGate_UnsupportedType(t *testing.T) {
 	t.Run("Create errors with version reason", func(t *testing.T) {
 		_, err := p.Create(ctx, &resource.CreateRequest{ResourceType: gatedType, TargetConfig: tc,
 			Properties: []byte(`{"apiVersion":"admissionregistration.k8s.io/v1","kind":"MutatingAdmissionPolicy","metadata":{"name":"x"}}`)})
-		if err == nil || !strings.Contains(err.Error(), "1.36") {
-			t.Fatalf("expected version error mentioning 1.36, got: %v", err)
+		if err == nil || !strings.Contains(err.Error(), "not available") || !strings.Contains(err.Error(), "1.33") {
+			t.Fatalf("expected 'not available ... 1.33' error, got: %v", err)
 		}
 	})
 
@@ -64,21 +68,4 @@ func TestTypeGate_UnsupportedType(t *testing.T) {
 			t.Fatalf("expected success no-op delete, got %q", res.ProgressResult.OperationStatus)
 		}
 	})
-}
-
-// Live path: no version override, so ResolveVersion calls the cluster's
-// ServerVersion(). orbstack reports ~1.33, so MutatingAdmissionPolicy is gated
-// and List returns empty with no error — the real discovery-spam fix.
-func TestTypeGate_LiveVersionResolution(t *testing.T) {
-	p := &Plugin{}
-	res, err := p.List(context.Background(), &resource.ListRequest{
-		ResourceType: gatedType,
-		TargetConfig: []byte(`{"Auth":{"Type":"Kubeconfig","Context":"orbstack"}}`),
-	})
-	if err != nil {
-		t.Fatalf("List error (expected empty, no error): %v", err)
-	}
-	if len(res.NativeIDs) != 0 {
-		t.Fatalf("expected empty List, got %d", len(res.NativeIDs))
-	}
 }

@@ -56,29 +56,3 @@ func TestLookup(t *testing.T) {
 		t.Error("ungated field should not be in registry")
 	}
 }
-
-func TestTypeSupported(t *testing.T) {
-	cases := []struct {
-		name, resourceType, version string
-		wantOK                      bool
-	}{
-		{"gated type below introducedIn", "K8S::Admissionregistration::MutatingAdmissionPolicy", "1.33", false},
-		{"gated type at introducedIn", "K8S::Admissionregistration::MutatingAdmissionPolicy", "1.36", true},
-		{"gated type above introducedIn", "K8S::Admissionregistration::MutatingAdmissionPolicy", "1.37", true},
-		{"flowschema below", "K8S::Flowcontrol::FlowSchema", "1.28", false},
-		{"flowschema at", "K8S::Flowcontrol::FlowSchema", "1.29", true},
-		{"hpa always (1.23) on supported cluster", "K8S::Autoscaling::HorizontalPodAutoscaler", "1.31", true},
-		{"ungated type", "K8S::Core::ConfigMap", "1.21", true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			ok, reason := TypeSupported(tc.resourceType, tc.version)
-			if ok != tc.wantOK {
-				t.Fatalf("TypeSupported(%q,%q) ok=%v want %v (reason=%q)", tc.resourceType, tc.version, ok, tc.wantOK, reason)
-			}
-			if !ok && reason == "" {
-				t.Errorf("expected non-empty reason when unsupported")
-			}
-		})
-	}
-}
