@@ -7,9 +7,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
-	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/k8sversion"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/prov"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/registry"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/transport"
@@ -37,7 +37,33 @@ import (
 // Plugin implements the Formae ResourcePlugin interface for Kubernetes.
 // The SDK automatically provides identity methods (Name, Version, Namespace)
 // by reading formae-plugin.pkl at startup.
-type Plugin struct{}
+type Plugin struct {
+	// supportMap is minor-version -> set of resource types present in that
+	// version's on-disk schema subtree. Built once, lazily, from the installed
+	// schema/pkl/ tree (see supportedTypes).
+	supportOnce sync.Once
+	supportMap  map[string]map[string]bool
+	supportErr  error
+}
+
+// supportedTypes lazily builds (once) the per-version supported-type map from
+// the installed schema tree beside the plugin binary. A pre-populated
+// supportMap (set by tests) is kept as-is, so the disk read is the production
+// path only — no env override needed.
+func (p *Plugin) supportedTypes() (map[string]map[string]bool, error) {
+	p.supportOnce.Do(func() {
+		if p.supportMap != nil {
+			return
+		}
+		dir, err := pluginSchemaDir()
+		if err != nil {
+			p.supportErr = err
+			return
+		}
+		p.supportMap, p.supportErr = buildSupportMap(dir)
+	})
+	return p.supportMap, p.supportErr
+}
 
 // Compile-time check: Plugin must satisfy ResourcePlugin interface.
 var _ plugin.ResourcePlugin = &Plugin{}
@@ -556,13 +582,32 @@ func (p *Plugin) getProvisioner(ctx context.Context, resourceType string, target
 // version cannot be resolved (cluster unreachable, no override), it reports the
 // type as supported so the operation proceeds and surfaces the real error,
 // rather than blocking on a transient discovery failure.
-func typeUnsupported(ctx context.Context, resourceType string, client *transport.Client) (bool, string) {
+func (p *Plugin) typeUnsupported(ctx context.Context, resourceType string, client *transport.Client) (bool, string) {
 	version, err := client.ResolveVersion(ctx)
 	if err != nil {
+		return false, "" // version unresolvable — proceed, surface the real error
+	}
+	return p.typeUnsupportedAt(version, resourceType)
+}
+
+// typeUnsupportedAt is the pure gate: it reports whether resourceType is absent
+// from the target K8s version's on-disk schema subtree. Fail-safe — if the
+// schema dir can't be read, or no subtree is shipped for this version, it does
+// not gate (returns false). Split from typeUnsupported so the logic is testable
+// without a cluster by injecting supportMap.
+func (p *Plugin) typeUnsupportedAt(version, resourceType string) (bool, string) {
+	supportMap, err := p.supportedTypes()
+	if err != nil || supportMap == nil {
+		return false, "" // schema dir not locatable — fail safe, don't gate
+	}
+	types, ok := supportMap[version]
+	if !ok {
+		return false, "" // no schema subtree shipped for this version — don't gate
+	}
+	if types[resourceType] {
 		return false, ""
 	}
-	ok, reason := k8sversion.TypeSupported(resourceType, version)
-	return !ok, reason
+	return true, fmt.Sprintf("%s is not available in the target's Kubernetes version (%s)", resourceType, version)
 }
 
 // Create provisions a new K8S resource.
@@ -571,7 +616,7 @@ func (p *Plugin) Create(ctx context.Context, req *resource.CreateRequest) (*reso
 	if err != nil {
 		return nil, err
 	}
-	if bad, reason := typeUnsupported(ctx, req.ResourceType, client); bad {
+	if bad, reason := p.typeUnsupported(ctx, req.ResourceType, client); bad {
 		return nil, fmt.Errorf("%s is not supported on the target: %s", req.ResourceType, reason)
 	}
 	return provisioner.Create(ctx, req)
@@ -589,7 +634,7 @@ func (p *Plugin) Read(ctx context.Context, req *resource.ReadRequest) (*resource
 	if err != nil {
 		return nil, err
 	}
-	if bad, _ := typeUnsupported(ctx, req.ResourceType, client); bad {
+	if bad, _ := p.typeUnsupported(ctx, req.ResourceType, client); bad {
 		// No instance of an unsupported type can exist — report NotFound so
 		// formae drops it from state.
 		return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: resource.OperationErrorCodeNotFound}, nil
@@ -603,7 +648,7 @@ func (p *Plugin) Update(ctx context.Context, req *resource.UpdateRequest) (*reso
 	if err != nil {
 		return nil, err
 	}
-	if bad, reason := typeUnsupported(ctx, req.ResourceType, client); bad {
+	if bad, reason := p.typeUnsupported(ctx, req.ResourceType, client); bad {
 		return nil, fmt.Errorf("%s is not supported on the target: %s", req.ResourceType, reason)
 	}
 	return provisioner.Update(ctx, req)
@@ -615,7 +660,7 @@ func (p *Plugin) Delete(ctx context.Context, req *resource.DeleteRequest) (*reso
 	if err != nil {
 		return nil, err
 	}
-	if bad, _ := typeUnsupported(ctx, req.ResourceType, client); bad {
+	if bad, _ := p.typeUnsupported(ctx, req.ResourceType, client); bad {
 		// Nothing of an unsupported type can exist on the target — treat as a
 		// successful no-op delete.
 		return &resource.DeleteResult{ProgressResult: &resource.ProgressResult{
@@ -631,7 +676,7 @@ func (p *Plugin) Status(ctx context.Context, req *resource.StatusRequest) (*reso
 	if err != nil {
 		return nil, err
 	}
-	if bad, _ := typeUnsupported(ctx, req.ResourceType, client); bad {
+	if bad, _ := p.typeUnsupported(ctx, req.ResourceType, client); bad {
 		return &resource.StatusResult{ProgressResult: &resource.ProgressResult{
 			Operation: resource.OperationCheckStatus, OperationStatus: resource.OperationStatusFailure, ErrorCode: resource.OperationErrorCodeNotFound,
 		}}, nil
@@ -645,7 +690,7 @@ func (p *Plugin) List(ctx context.Context, req *resource.ListRequest) (*resource
 	if err != nil {
 		return nil, err
 	}
-	if bad, _ := typeUnsupported(ctx, req.ResourceType, client); bad {
+	if bad, _ := p.typeUnsupported(ctx, req.ResourceType, client); bad {
 		// Type isn't served on the target's K8s version — nothing to discover.
 		// Return empty rather than letting the apiserver 404 surface as a
 		// discovery error on every pass.
