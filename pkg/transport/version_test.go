@@ -53,3 +53,32 @@ func TestResolveVersion_DoesNotCacheError(t *testing.T) {
 		t.Fatal("expected retry to error again, not a cached success")
 	}
 }
+
+// Reproduces the incident: a transient resolve failure followed by a successful
+// retry. The old code cached the first error and never recovered (gating stayed
+// disabled until restart); the fix must return the version once it can resolve.
+func TestResolveVersion_RecoversAfterTransientError(t *testing.T) {
+	t.Setenv(config.EnvK8sVersion, "") // start with no override
+	cs, err := kubernetes.NewForConfig(&rest.Config{Host: "http://127.0.0.1:1"})
+	if err != nil {
+		t.Fatalf("build clientset: %v", err)
+	}
+	c := &Client{Clientset: cs, Config: &config.Config{}}
+
+	// First call fails (dead endpoint, no override) — the transient blip.
+	if _, err := c.ResolveVersion(context.Background()); err == nil {
+		t.Fatal("expected first resolve to fail")
+	}
+
+	// Cluster/override now available — simulate recovery via the env override
+	// (ResolveK8sVersion consults it before any live call).
+	t.Setenv(config.EnvK8sVersion, "1.33")
+
+	v, err := c.ResolveVersion(context.Background())
+	if err != nil || v != "1.33" {
+		t.Fatalf("after recovery ResolveVersion = (%q, %v), want (1.33, nil)", v, err)
+	}
+	if !c.versionSet {
+		t.Fatal("successful resolve should now be cached")
+	}
+}
