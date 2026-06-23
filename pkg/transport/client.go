@@ -30,25 +30,32 @@ type Client struct {
 
 	versionMu  sync.Mutex
 	version    string
-	versionErr error
 	versionSet bool
 }
 
 // ResolveVersion returns the target cluster's normalized MAJOR.MINOR K8s
-// version, resolved once and cached. Resolution follows
-// config.ResolveK8sVersion (target-config override → FORMAE_K8S_VERSION env →
-// live Discovery().ServerVersion()). The result — value or error — is memoized,
-// so repeated calls across a target's operations cost at most one ServerVersion
-// round-trip.
+// version, resolved once and cached. Resolution follows config.ResolveK8sVersion
+// (target-config override → FORMAE_K8S_VERSION env → live
+// Discovery().ServerVersion()).
+//
+// Only a successful result is cached. A failure (e.g. a transient TLS/handshake
+// timeout to the apiserver) is returned but NOT memoized, so the next operation
+// retries. Caching an error here would be sticky for the life of the
+// process-cached Client and would silently disable version gating until the
+// agent restarts.
 func (c *Client) ResolveVersion(ctx context.Context) (string, error) {
 	c.versionMu.Lock()
 	defer c.versionMu.Unlock()
 	if c.versionSet {
-		return c.version, c.versionErr
+		return c.version, nil
 	}
-	c.version, c.versionErr = config.ResolveK8sVersion(ctx, c.Config, c.Discovery())
+	v, err := config.ResolveK8sVersion(ctx, c.Config, c.Discovery())
+	if err != nil {
+		return "", err
+	}
+	c.version = v
 	c.versionSet = true
-	return c.version, c.versionErr
+	return v, nil
 }
 
 // ResolveMapping maps an apiVersion+kind to its GVR and namespaced scope using
