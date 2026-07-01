@@ -1,0 +1,112 @@
+/*
+ * LOCAL, runnable variant of forma.pkl -- applies + runs on a vanilla
+ * single-node cluster (orbstack / kind / k3s), no cloud, no add-ons.
+ *
+ * It swaps the two prereqs the illustrative example needs but a local
+ * cluster lacks:
+ *   S3 bucket + Mountpoint CSI  ->  the cluster's built-in `local-path`
+ *                                   StorageClass (dynamic PV provisioning)
+ *   gVisor RuntimeClass         ->  a managed RuntimeClass object that is
+ *                                   created but NOT attached to the Pod
+ *                                   (see the note on runtimeClassName below)
+ *
+ * Same shape as forma.pkl (RuntimeClass + storage + Pod that writes a file),
+ * just with the cloud pieces replaced so it actually schedules locally.
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@k8s/k8s-subresources.pkl" as k8s
+import "@k8s/node/RuntimeClass.pkl" as rc
+import "@k8s/core/PersistentVolumeClaim.pkl" as pvc
+import "@k8s/core/Pod.pkl" as pod
+
+forma {
+  new formae.Stack {
+    label = "s3-csi-gvisor-demo-local"
+    description = "Local-runnable variant: local-path storage + managed RuntimeClass"
+  }
+
+  new formae.Target {
+    label = "k8s-target"
+    config = new k8s.Config {
+      kubernetesVersion = "1.33"
+      auth = new k8s.KubeconfigAuth {}
+    }
+  }
+
+  // RuntimeClass as a managed resource. The API object creates fine on any
+  // cluster. NOTE: to actually SCHEDULE Pods under it, the node's container
+  // runtime must register this handler (gVisor "runsc", "crun", ...). A vanilla
+  // orbstack/kind node only ships the default runtime, so the Pod below does
+  // NOT set runtimeClassName -- otherwise it fails with
+  //   FailedCreatePodSandBox: RuntimeHandler "runc" not supported
+  // Install a runtime + uncomment runtimeClassName to wire it up for real.
+  new rc.RuntimeClass {
+    label = "demo-runtime"
+    metadata = new k8s.ObjectMeta {
+      name = "demo-runtime"
+    }
+    handler = "runc"
+  }
+
+  // PVC backed by the cluster's default dynamic provisioner (local-path on
+  // orbstack/k3s/kind). Local stand-in for the S3-backed static PV.
+  local claim = new pvc.PersistentVolumeClaim {
+    label = "demo-pvc"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "demo-pvc"
+      namespace = "default"
+    }
+    spec = new pvc.PersistentVolumeClaimSpec {
+      accessModes = new Listing {
+        "ReadWriteOnce"
+      }
+      storageClassName = "local-path"
+      resources = new k8s.ResourceRequirements {
+        requests = new Mapping {
+          ["storage"] = 100.mib
+        }
+      }
+    }
+  }
+  claim
+
+  // Pod mounts the claim and writes a file -- proves the storage path end to end.
+  new pod.Pod {
+    label = "demo-writer"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "demo-writer"
+      namespace = "default"
+    }
+    spec = new k8s.PodSpec {
+      restartPolicy = "Never"
+      // runtimeClassName = "demo-runtime"  // enable once a handler is installed on the node
+      volumes = new Listing {
+        new k8s.Volume {
+          name = "data"
+          persistentVolumeClaim = new k8s.PersistentVolumeClaimVolumeSource {
+            claimName = claim.res.name
+          }
+        }
+      }
+      containers = new Listing {
+        new k8s.Container {
+          name = "writer"
+          image = "busybox:1.36"
+          command = new Listing {
+            "sh"
+            "-c"
+            "echo \"hello from formae at $(date)\" > /data/demo.txt && cat /data/demo.txt && sleep 3600"
+          }
+          volumeMounts = new Listing {
+            new k8s.VolumeMount {
+              name = "data"
+              mountPath = "/data"
+            }
+          }
+        }
+      }
+    }
+  }
+}
