@@ -10,7 +10,7 @@ require (
 	github.com/oracle/oci-go-sdk/v65 v65.112.0
 	github.com/ovh/go-ovh v1.9.0
 	github.com/platform-engineering-labs/formae/pkg/model v0.1.25-0.20260521141341-01d4a480396b
-	github.com/platform-engineering-labs/formae/pkg/plugin v0.2.3-0.20260521141341-01d4a480396b
+	github.com/platform-engineering-labs/formae/pkg/plugin v0.4.0
 	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.2.5-0.20260521141341-01d4a480396b
 	github.com/stretchr/testify v1.11.1
 	github.com/tidwall/gjson v1.18.0
