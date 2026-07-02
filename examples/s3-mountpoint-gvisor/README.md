@@ -90,7 +90,13 @@ To run the gVisor half locally too, use minikube with the gVisor addon
 
 ## PKL package deps
 
-`PklProject` here wires the imports: `@formae` (published package), `@k8s`
-(local `../../schema/pkl-main`), and `@aws` (local
-`../../../formae-plugin-aws/schema/pkl`). Run `pkl project resolve` if the AWS
-plugin path differs. `forma.local.pkl` is K8s-only and needs no AWS dep.
+`PklProject` wires all imports to **published packages** on
+`hub.platform.engineering` — no local checkout of the plugin repos needed:
+
+- `@formae` → `formae@0.86.1`
+- `@k8s` → `k8s@0.1.6` (versioned schema; imports use `@k8s/v1.34/...`)
+- `@aws` → `aws@0.1.7`
+
+Run `pkl project resolve` to fetch them, then `pkl eval forma.pkl`. To target a
+different K8s minor, bump both the `@k8s/v1.XX/...` import paths and the
+target's `kubernetesVersion`. `forma.local.pkl` is K8s-only and needs no AWS dep.
