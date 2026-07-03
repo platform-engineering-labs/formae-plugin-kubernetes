@@ -1,0 +1,51 @@
+amends "@formae/forma.pkl"
+
+import "@formae/formae.pkl"
+import "./workload.pkl" as workload
+
+description {
+  text = """
+    Storage workload on EKS: S3 bucket via Mountpoint CSI + gVisor sandbox.
+
+      formae apply --mode reconcile examples/s3-mountpoint-gvisor/eks.pkl
+
+    The full cloud chain: an S3 bucket (AWS plugin) exposed to the Pod through
+    the Mountpoint for Amazon S3 CSI driver (static PV), with the Pod running
+    sandboxed under gVisor.
+
+    Prerequisites on the cluster:
+      - AWS plugin + credentials for the region
+      - Mountpoint S3 CSI driver installed, with pod/node IAM (IRSA) for the
+        bucket: https://github.com/awslabs/mountpoint-s3-csi-driver
+      - gVisor available on a node (EKS does not ship it by default)
+    If the CSI add-on already registers the CSIDriver object, delete the
+    csidriver block in workload.pkl so formae does not fight it for ownership.
+
+    Verify:
+      kubectl exec app -- cat /data/demo.txt
+      aws s3 ls s3://formae-example-s3-gvisor-demo/
+
+    Teardown:
+      formae destroy --yes examples/s3-mountpoint-gvisor/eks.pkl
+    """
+  confirm = true
+}
+
+local cfg = new workload.Config {
+  k8sVersion = "1.34"
+  storageBackend = "s3"
+  runtimeHandler = "runsc"
+  runtimeNodeSelector = new { ["sandbox.gke.io/runtime"] = "gvisor" }
+  awsRegion = "us-east-1"
+}
+
+local stack: formae.Stack = new {
+  label = "storage-runtime-eks"
+  description = "Storage workload on EKS: S3 + Mountpoint CSI + gVisor."
+}
+
+forma {
+  stack
+  ...workload.targets(cfg)
+  ...workload.resources(cfg)
+}
