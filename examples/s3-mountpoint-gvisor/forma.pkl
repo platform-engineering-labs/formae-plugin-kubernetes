@@ -1,27 +1,26 @@
 /*
- * Illustrative example: an S3 bucket mounted into a gVisor-sandboxed Pod.
+ * S3 / CSI / RuntimeClass example -- parameterized by platform profile.
  *
- * Chain:
- *   AWS::S3::Bucket                    the storage backend (AWS plugin)
- *     -> K8S::Storage::CSIDriver       Mountpoint for Amazon S3 (s3.csi.aws.com)
- *     -> K8S::Core::PersistentVolume   static PV whose csi source points at the bucket
- *     -> K8S::Core::PersistentVolumeClaim
- *   K8S::Node::RuntimeClass            gVisor sandbox (handler=runsc)
- *     -> K8S::Core::Pod                runs sandboxed AND mounts the S3-backed PVC
+ * One forma, many clusters. Pick a profile with the PROFILE env var
+ * (see platform.pkl); defaults to "orbstack" for a local run.
  *
- * NOTE: this is a teaching artifact, not a conformance test. It spans two
- * providers and assumes the Mountpoint S3 CSI driver + gVisor are installed
- * on the cluster (see README.md). Mountpoint S3 supports STATIC provisioning
- * only -- there is deliberately no StorageClass / dynamic PVC here.
+ *   PROFILE=orbstack        formae apply --mode reconcile forma.pkl   # local, runs
+ *   PROFILE=minikube-gvisor formae apply --mode reconcile forma.pkl   # local gVisor
+ *   PROFILE=eks-s3-gvisor   formae apply --mode reconcile forma.pkl   # S3 + gVisor
+ *
+ * The profile decides two axes:
+ *   storage  -> "dynamic" PVC (StorageClass) or "s3" bucket+CSI+static PV
+ *   runtime  -> default runtime, or a sandbox RuntimeClass (e.g. gVisor runsc)
+ * The Pod always mounts the storage at /data and writes a file to prove it works.
  */
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
 
-// AWS plugin
+// AWS plugin (only exercised by the "s3" storage backend).
 import "@aws/aws.pkl"
 import "@aws/s3/bucket.pkl"
 
-// K8s plugin
+// K8s plugin (published, versioned schema).
 import "@k8s/v1.34/k8s.pkl" as k8s
 import "@k8s/v1.34/storage/CSIDriver.pkl" as csidriver
 import "@k8s/v1.34/core/PersistentVolume.pkl" as pv
@@ -29,138 +28,122 @@ import "@k8s/v1.34/core/PersistentVolumeClaim.pkl" as pvc
 import "@k8s/v1.34/node/RuntimeClass.pkl" as rc
 import "@k8s/v1.34/core/Pod.pkl" as pod
 
-// The bucket name is shared: the AWS bucket creates it, the K8s PV mounts it.
+import "./platform.pkl"
+
+// --- pick the profile ---------------------------------------------------
+local p = platform.select(read?("env:PROFILE") ?? "orbstack")
+
+local useS3 = p.storageBackend == "s3"
+local sandboxed = p.runtimeHandler != null
+
+// Stable resource names (referenced across resources).
 local demoBucketName = "formae-example-s3-gvisor-demo"
-local awsRegion = "us-east-1"
+local pvName = "app-pv"
+local pvcName = "app-pvc"
+local rcName = "app-sandbox"
 
 forma {
   new formae.Stack {
-    label = "s3-csi-gvisor-demo"
-    description = "S3 bucket mounted via Mountpoint CSI into a gVisor-sandboxed Pod"
+    label = "s3-csi-runtime-demo"
+    description = "Storage + runtime example, profile=\(read?("env:PROFILE") ?? "orbstack")"
   }
 
-  // --- Targets: one per provider ---
-  new formae.Target {
-    label = "aws-target"
-    config = new aws.Config {
-      region = awsRegion
-    }
-  }
-
+  // K8s target always; AWS target only for the S3 backend.
   new formae.Target {
     label = "k8s-target"
     config = new k8s.Config {
-      kubernetesVersion = "1.34"
+      kubernetesVersion = p.k8sVersion
       auth = new k8s.KubeconfigAuth {}
     }
   }
-
-  // 1) S3 bucket (AWS plugin) -- the actual data lives here.
-  new bucket.Bucket {
-    label = "demo-bucket"
-    bucketName = demoBucketName
-  }
-
-  // 2) CSIDriver registration for Mountpoint for Amazon S3.
-  //    In a real cluster this object is normally installed by the
-  //    aws-mountpoint-s3-csi-driver Helm chart / EKS add-on. It is declared
-  //    here only to show the resource type -- delete it if the add-on owns it.
-  new csidriver.CSIDriver {
-    label = "s3-csi-driver"
-    metadata = new k8s.ObjectMeta {
-      name = "s3.csi.aws.com"
-    }
-    spec = new csidriver.CSIDriverSpec {
-      attachRequired = false
-      podInfoOnMount = false
+  when (useS3) {
+    new formae.Target {
+      label = "aws-target"
+      config = new aws.Config { region = p.awsRegion }
     }
   }
 
-  // 3) Static PersistentVolume whose CSI source points at the bucket.
-  //    PV.spec is a free-form Mapping (matches the K8s core/v1 PV spec).
-  local s3pv = new pv.PersistentVolume {
-    label = "s3-pv"
-    metadata = new k8s.ObjectMeta {
-      name = "s3-pv"
+  // --- storage: S3 backend (bucket + CSIDriver + static PV) --------------
+  when (useS3) {
+    new bucket.Bucket {
+      label = "demo-bucket"
+      bucketName = demoBucketName
     }
-    spec = new Mapping {
-      // Capacity is required by the API but ignored for S3 -- pick anything.
-      ["capacity"] = new Mapping {
-        ["storage"] = "1200Gi"
+    // Normally installed by the aws-mountpoint-s3-csi-driver add-on; shown
+    // here for completeness. Delete if the add-on already owns it.
+    new csidriver.CSIDriver {
+      label = "s3-csi-driver"
+      metadata = new k8s.ObjectMeta { name = "s3.csi.aws.com" }
+      spec = new csidriver.CSIDriverSpec {
+        attachRequired = false
+        podInfoOnMount = false
       }
-      ["accessModes"] = new Listing {
-        "ReadWriteMany"
-      }
-      ["mountOptions"] = new Listing {
-        "allow-delete"
-        "region \(awsRegion)"
-      }
-      ["csi"] = new Mapping {
-        ["driver"] = "s3.csi.aws.com"
-        ["volumeHandle"] = "s3-csi-demo-volume" // must be unique across the cluster
-        ["volumeAttributes"] = new Mapping {
-          ["bucketName"] = demoBucketName
+    }
+    new pv.PersistentVolume {
+      label = "app-pv"
+      metadata = new k8s.ObjectMeta { name = pvName }
+      spec = new Mapping {
+        ["capacity"] = new Mapping { ["storage"] = "1200Gi" } // ignored by S3
+        ["accessModes"] = new Listing { "ReadWriteMany" }
+        ["mountOptions"] = new Listing { "allow-delete"; "region \(p.awsRegion)" }
+        ["csi"] = new Mapping {
+          ["driver"] = "s3.csi.aws.com"
+          ["volumeHandle"] = "s3-csi-demo-volume"
+          ["volumeAttributes"] = new Mapping { ["bucketName"] = demoBucketName }
         }
       }
     }
   }
-  s3pv
 
-  // 4) PVC binding the static PV. storageClassName="" turns OFF dynamic
-  //    provisioning; volumeName pins it to the PV above (referential link).
+  // --- the PVC: pins the static S3 PV, or requests a dynamic volume ------
   new pvc.PersistentVolumeClaim {
-    label = "s3-pvc"
+    label = "app-pvc"
     metadata = new k8s.NamespacedObjectMeta {
-      name = "s3-pvc"
+      name = pvcName
       namespace = "default"
     }
     spec = new pvc.PersistentVolumeClaimSpec {
-      accessModes = new Listing {
-        "ReadWriteMany"
-      }
-      storageClassName = ""
-      volumeName = s3pv.res.name
+      accessModes = new Listing { if (useS3) "ReadWriteMany" else "ReadWriteOnce" }
+      // S3: bind the static PV, no dynamic provisioning. Dynamic: use the SC.
+      storageClassName = if (useS3) "" else p.storageClass
+      volumeName = if (useS3) pvName else null
       resources = new k8s.ResourceRequirements {
         requests = new Mapping {
-          ["storage"] = 1200.gib // must be <= PV capacity; also ignored by S3
+          ["storage"] = if (useS3) 1200.gib else 100.mib
         }
       }
     }
   }
 
-  // 5) RuntimeClass: gVisor. handler=runsc selects the sandboxed runtime, and
-  //    scheduling.nodeSelector forces these Pods onto gVisor-capable nodes.
-  new rc.RuntimeClass {
-    label = "gvisor"
-    metadata = new k8s.ObjectMeta {
-      name = "gvisor"
-    }
-    handler = "runsc"
-    scheduling = new rc.Scheduling {
-      nodeSelector = new Mapping {
-        // GKE Sandbox label; use your node pool's label for self-managed gVisor.
-        ["sandbox.gke.io/runtime"] = "gvisor"
-      }
+  // --- runtime: a sandbox RuntimeClass, only when the profile asks -------
+  when (sandboxed) {
+    new rc.RuntimeClass {
+      label = "app-sandbox"
+      metadata = new k8s.ObjectMeta { name = rcName }
+      handler = p.runtimeHandler!!
+      scheduling =
+        if (p.runtimeNodeSelector != null)
+          new rc.Scheduling { nodeSelector = p.runtimeNodeSelector }
+        else null
     }
   }
 
-  // 6) The Pod that ties it together: runs sandboxed (runtimeClassName=gvisor)
-  //    AND mounts the S3-backed PVC. "Does something" = writes a timestamped
-  //    file into the bucket, reads it back, then idles so you can exec in.
+  // --- the workload: mounts the storage, writes a file ------------------
   new pod.Pod {
-    label = "s3-writer"
+    label = "app"
     metadata = new k8s.NamespacedObjectMeta {
-      name = "s3-writer"
+      name = "app"
       namespace = "default"
     }
     spec = new k8s.PodSpec {
-      runtimeClassName = "gvisor"
       restartPolicy = "Never"
+      runtimeClassName = if (sandboxed) rcName else null
+      nodeSelector = p.runtimeNodeSelector
       volumes = new Listing {
         new k8s.Volume {
-          name = "s3"
+          name = "data"
           persistentVolumeClaim = new k8s.PersistentVolumeClaimVolumeSource {
-            claimName = "s3-pvc"
+            claimName = pvcName
           }
         }
       }
@@ -171,13 +154,10 @@ forma {
           command = new Listing {
             "sh"
             "-c"
-            "echo \"hello from gVisor at $(date)\" > /data/demo.txt && cat /data/demo.txt && sleep 3600"
+            "echo \"hello from formae at $(date)\" > /data/demo.txt && cat /data/demo.txt && sleep 3600"
           }
           volumeMounts = new Listing {
-            new k8s.VolumeMount {
-              name = "s3"
-              mountPath = "/data"
-            }
+            new k8s.VolumeMount { name = "data"; mountPath = "/data" }
           }
         }
       }

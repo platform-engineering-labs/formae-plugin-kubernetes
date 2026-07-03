@@ -1,92 +1,96 @@
-# Example: S3 bucket → Mountpoint CSI → gVisor-sandboxed Pod
+# Example: storage + sandboxed runtime, one forma per cluster
 
-Illustrative, cross-plugin forma. Shows how an **AWS S3 bucket**, the
-**Mountpoint for Amazon S3 CSI driver**, and a **gVisor RuntimeClass** compose
-so a workload gets S3-backed storage while running in a sandbox.
-
-> Teaching artifact, not a conformance test. It spans two providers (AWS + K8s)
-> and depends on cluster add-ons that must already be installed. Read it, adapt
-> the names/region/node labels, then apply.
-
-## The wiring
-
-```
-AWS::S3::Bucket  (demo-bucket)                         data backend
-        │  bucketName
-        ▼
-K8S::Storage::CSIDriver  (s3.csi.aws.com)              driver registration*
-K8S::Core::PersistentVolume  (s3-pv, csi → bucket)     STATIC volume
-        │  volumeName
-        ▼
-K8S::Core::PersistentVolumeClaim  (s3-pvc)             claim
-        │  claimName
-        ▼
-K8S::Core::Pod  (s3-writer)  ── runtimeClassName ──►  K8S::Node::RuntimeClass (gvisor, runsc)
-   mounts s3-pvc at /data, writes demo.txt into the bucket
-```
-
-`*` The `CSIDriver` object is normally installed by the
-`aws-mountpoint-s3-csi-driver` Helm chart / EKS add-on. It is included in the
-forma only to show the resource type — **delete that block** if the add-on
-already owns it (formae would otherwise fight the add-on for ownership).
-
-## Two things that trip people up
-
-- **Mountpoint S3 is static-only.** There is no StorageClass and no dynamic
-  provisioning. You create a `PersistentVolume` with a `csi:` source pointing at
-  the bucket, and a PVC with `storageClassName = ""` that pins it via
-  `volumeName`. Capacity numbers are required by the API but ignored by S3.
-- **RuntimeClass and storage are orthogonal.** The RuntimeClass only sets the
-  Pod's runtime (`handler = "runsc"` → gVisor) and pins scheduling to
-  gVisor-capable nodes. It does not touch the volume. They meet only inside the
-  Pod spec.
-
-## Prerequisites (for a real apply)
-
-1. **AWS plugin** installed (`AWS::S3::Bucket`) and AWS creds for the target region.
-2. **Mountpoint S3 CSI driver** on the cluster, with pod/node IAM (IRSA or node
-   role) allowing `s3:*` on the bucket. See
-   <https://github.com/awslabs/mountpoint-s3-csi-driver>.
-3. **gVisor** on at least one node pool, labelled to match the RuntimeClass
-   `scheduling.nodeSelector` (the example uses the GKE Sandbox label
-   `sandbox.gke.io/runtime=gvisor`; change it for self-managed gVisor).
-4. A `default` namespace (or edit the `namespace` fields).
-
-## Apply
+A single, cross-plugin forma that gives a Pod some storage and (optionally) runs
+it under a sandbox runtime like **gVisor**. It adapts to the cluster you point
+it at via a **platform profile** — no editing the forma, just an env var.
 
 ```bash
-cd examples/s3-mountpoint-gvisor
-formae apply --mode reconcile --simulate forma.pkl   # preview, no changes
-formae apply --mode reconcile forma.pkl              # execute
+PROFILE=orbstack        formae apply --mode reconcile forma.pkl   # local, runs as-is
+PROFILE=minikube-gvisor formae apply --mode reconcile forma.pkl   # local gVisor
+PROFILE=gke-sandbox     formae apply --mode reconcile forma.pkl   # GKE Sandbox
+PROFILE=eks-s3-gvisor   formae apply --mode reconcile forma.pkl   # S3 + gVisor
 ```
 
-Then verify the sandbox wrote through to S3:
+`PROFILE` defaults to `orbstack`. Profiles live in [`platform.pkl`](./platform.pkl).
+
+## What a profile controls
+
+Two orthogonal axes — pick per cluster:
+
+| Axis | Options | Set by |
+|------|---------|--------|
+| **Storage** | `dynamic` (PVC against a StorageClass) · `s3` (S3 bucket + Mountpoint CSI + static PV) | `storageBackend`, `storageClass` |
+| **Runtime** | default runtime · a sandbox RuntimeClass (e.g. gVisor `runsc`) | `runtimeHandler`, `runtimeNodeSelector` |
+
+The forma builds only the resources the profile needs (`when (...)` blocks):
+
+| Profile | Resources emitted |
+|---------|-------------------|
+| `orbstack` | PVC (local-path) + Pod |
+| `minikube-gvisor` | PVC (standard) + RuntimeClass(runsc) + Pod |
+| `gke-sandbox` | PVC (standard-rwo) + RuntimeClass(runsc, nodeSelector) + Pod |
+| `eks-s3-gvisor` | S3 Bucket + CSIDriver + static PV + PVC + RuntimeClass(runsc) + Pod |
+
+The Pod always mounts the storage at `/data` and writes `demo.txt` to prove it.
+
+## The gVisor bit
+
+gVisor = the `runsc` OCI runtime. A `RuntimeClass` only *references* a handler
+the node's containerd already registers — it does **not** install gVisor. So the
+sandbox profiles need `runsc` present on a node:
+
+- **Local:** [minikube](https://minikube.sigs.k8s.io) with the gVisor addon —
+  the only turnkey local option (kind/orbstack ship no `runsc`):
+  ```bash
+  minikube start --container-runtime=containerd
+  minikube addons enable gvisor        # installs the runsc handler on the node
+  PROFILE=minikube-gvisor formae apply --mode reconcile forma.pkl
+  kubectl exec app -- cat /data/demo.txt
+  ```
+  (Check the addon supports your k8s version; it has lagged newer releases.)
+- **Cloud:** GKE Sandbox (`gke-sandbox` profile) or a node pool with gVisor
+  installed yourself. There is **no** `kindest/node` image that bundles gVisor.
+
+If a profile sets a handler the node doesn't have, the Pod stays
+`ContainerCreating` with `FailedCreatePodSandBox: RuntimeHandler "runsc" not
+supported`. That's the cluster missing gVisor, not the forma.
+
+## The S3 bit (`eks-s3-gvisor`)
+
+Mountpoint for Amazon S3 is **static-only** — no StorageClass, no dynamic
+provisioning. The profile emits a `PersistentVolume` with a `csi:` source
+pointing at the bucket, and a PVC with `storageClassName = ""` that pins it via
+`volumeName`. Capacity numbers are required by the API but ignored by S3.
+
+Needs, on the cluster: the AWS plugin + creds, the
+[Mountpoint S3 CSI driver](https://github.com/awslabs/mountpoint-s3-csi-driver)
+with pod/node IAM for the bucket, and gVisor on a node. The `CSIDriver` object
+is normally owned by the driver's add-on — **delete that block** in the forma if
+so, or formae will fight the add-on for ownership.
+
+Verify the write reached S3:
 
 ```bash
-kubectl logs s3-writer            # -> "hello from gVisor at <date>"
+kubectl exec app -- cat /data/demo.txt
 aws s3 ls s3://formae-example-s3-gvisor-demo/   # -> demo.txt
 ```
 
-## Run it locally (no cloud)
+## Add your own cluster
 
-`forma.local.pkl` is a runnable variant for a vanilla single-node cluster
-(orbstack / kind / k3s). It swaps the two prereqs a local cluster lacks:
+Append a profile to `platform.pkl`:
 
-- S3 + Mountpoint CSI → the cluster's built-in `local-path` StorageClass
-- gVisor RuntimeClass → a managed RuntimeClass object that is created but not
-  attached to the Pod (a stock node has no `runsc`/`crun`/`runc` handler, so
-  `runtimeClassName` is left commented — see the note in the file)
-
-```bash
-cd examples/s3-mountpoint-gvisor
-formae apply --mode reconcile forma.local.pkl
-kubectl exec demo-writer -- cat /data/demo.txt   # -> "hello from formae at <date>"
-formae destroy forma.local.pkl                   # clean up
+```pkl
+["my-cluster"] = new {
+  k8sVersion = "1.34"
+  storageBackend = "dynamic"
+  storageClass = "my-sc"
+  runtimeHandler = "runsc"                                  // or null
+  runtimeNodeSelector = new { ["my/label"] = "sandbox" }    // or omit
+}
 ```
 
-To run the gVisor half locally too, use minikube with the gVisor addon
-(`minikube addons enable gvisor`), then set `handler = "runsc"` and uncomment
-`runtimeClassName` in `forma.local.pkl`.
+Then `PROFILE=my-cluster formae apply --mode reconcile forma.pkl`. An unknown
+`PROFILE` fails fast with the list of valid names.
 
 ## PKL package deps
 
@@ -97,6 +101,7 @@ To run the gVisor half locally too, use minikube with the gVisor addon
 - `@k8s` → `k8s@0.1.6` (versioned schema; imports use `@k8s/v1.34/...`)
 - `@aws` → `aws@0.1.7`
 
-Run `pkl project resolve` to fetch them, then `pkl eval forma.pkl`. To target a
-different K8s minor, bump both the `@k8s/v1.XX/...` import paths and the
-target's `kubernetesVersion`. `forma.local.pkl` is K8s-only and needs no AWS dep.
+Run `pkl project resolve` to fetch them, then `PROFILE=<name> pkl eval forma.pkl`.
+Schema imports are pinned to `v1.34`; a profile's `k8sVersion` only sets the
+target's `kubernetesVersion`. To change the schema minor, bump the
+`@k8s/v1.XX/...` import paths.
