@@ -261,8 +261,7 @@ open class Grafana {
           matchLabels = _self._selectorLabels
         }
         template = new k8s.PodTemplateSpec {
-          metadata = new k8s.ObjectMeta {
-            name = _self.name
+          metadata = new k8s.PodTemplateMetadata {
             labels = _self._appLabels
           }
           spec = new k8s.PodSpec {

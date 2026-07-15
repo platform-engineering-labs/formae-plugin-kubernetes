@@ -37,7 +37,7 @@ function minioStatefulSet(
       replicas = 1
       selector = new k8s.LabelSelector { matchLabels = minioLabels }
       template = new k8s.PodTemplateSpec {
-        metadata = new k8s.ObjectMeta { name = appName; labels = minioLabels }
+
         spec = new k8s.PodSpec {
           containers = new Listing {
             new k8s.Container {

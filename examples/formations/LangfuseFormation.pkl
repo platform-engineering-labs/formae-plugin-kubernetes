@@ -509,8 +509,7 @@ open class Langfuse {
           type = "RollingUpdate"
         }
         template = new k8s.PodTemplateSpec {
-          metadata = new k8s.ObjectMeta {
-            name = _self.name + "-web"
+          metadata = new k8s.PodTemplateMetadata {
             labels = _self._webLabels
           }
           spec = new k8s.PodSpec {
@@ -558,8 +557,7 @@ open class Langfuse {
           type = "RollingUpdate"
         }
         template = new k8s.PodTemplateSpec {
-          metadata = new k8s.ObjectMeta {
-            name = _self.name + "-worker"
+          metadata = new k8s.PodTemplateMetadata {
             labels = _self._workerLabels
           }
           spec = new k8s.PodSpec {

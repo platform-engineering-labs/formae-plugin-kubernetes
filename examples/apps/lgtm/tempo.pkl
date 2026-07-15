@@ -137,8 +137,7 @@ function tierDeployment(
         matchLabels = (commonLabels) { ["app.kubernetes.io/component"] = role }
       }
       template = new k8s.PodTemplateSpec {
-        metadata = new k8s.ObjectMeta {
-          name = "\(appName)-\(role)"
+        metadata = new k8s.PodTemplateMetadata {
           labels = (commonLabels) { ["app.kubernetes.io/component"] = role }
         }
         spec = new k8s.PodSpec {

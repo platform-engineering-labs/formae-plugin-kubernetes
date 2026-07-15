@@ -188,8 +188,7 @@ function frontendDeployment(k8sTarget: formae.Target, appNs: ns.Namespace): dep.
         matchLabels = frontendLabels
       }
       template = new k8s.PodTemplateSpec {
-        metadata = new k8s.ObjectMeta {
-          name = appName
+        metadata = new k8s.PodTemplateMetadata {
           labels = frontendLabels
         }
         spec = new k8s.PodSpec {
@@ -267,8 +266,7 @@ function backendDeployment(k8sTarget: formae.Target, appNs: ns.Namespace): dep.D
         matchLabels = backendLabels
       }
       template = new k8s.PodTemplateSpec {
-        metadata = new k8s.ObjectMeta {
-          name = appName
+        metadata = new k8s.PodTemplateMetadata {
           labels = backendLabels
         }
         spec = new k8s.PodSpec {
