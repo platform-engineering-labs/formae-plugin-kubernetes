@@ -62,8 +62,7 @@ forma {
         }
       }
       template = new k8s.PodTemplateSpec {
-        metadata = new k8s.ObjectMeta {
-          name = "test-sts-\(v.testRunID)"
+        metadata = new k8s.PodTemplateMetadata {
           labels = new Mapping {
             ["app"] = "test-sts"
           }

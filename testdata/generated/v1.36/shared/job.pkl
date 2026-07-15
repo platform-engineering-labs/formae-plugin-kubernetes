@@ -37,8 +37,7 @@ forma {
     spec = new k8s.JobSpec {
       backoffLimit = 3
       template = new k8s.PodTemplateSpec {
-        metadata = new k8s.ObjectMeta {
-          name = "test-job-\(v.testRunID)"
+        metadata = new k8s.PodTemplateMetadata {
           labels = new Mapping {
             ["app"] = "test-job"
           }

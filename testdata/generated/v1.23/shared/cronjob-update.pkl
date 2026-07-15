@@ -38,14 +38,10 @@ forma {
       successfulJobsHistoryLimit = 1
       failedJobsHistoryLimit = 1
       jobTemplate = new cj.JobTemplateSpec {
-        metadata = new k8s.ObjectMeta {
-          name = "test-cj-\(v.testRunID)"
-        }
         spec = new k8s.JobSpec {
           backoffLimit = 1
           template = new k8s.PodTemplateSpec {
-            metadata = new k8s.ObjectMeta {
-              name = "test-cj-\(v.testRunID)"
+            metadata = new k8s.PodTemplateMetadata {
               labels = new Mapping {
                 ["app"] = "test-cj"
               }
