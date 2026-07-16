@@ -38,14 +38,8 @@ forma {
       schedule = "0 9 * * *"
       timeZone = "Europe/Berlin"
       jobTemplate = new cj.JobTemplateSpec {
-        metadata = new k8s.ObjectMeta {
-          name = "test-cronjob-tz-\(v.testRunID)"
-        }
         spec = new k8s.JobSpec {
           template = new k8s.PodTemplateSpec {
-            metadata = new k8s.ObjectMeta {
-              name = "test-cronjob-tz-pod-\(v.testRunID)"
-            }
             spec = new k8s.PodSpec {
               containers = new Listing {
                 new k8s.Container {

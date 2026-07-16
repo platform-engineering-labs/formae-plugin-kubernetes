@@ -35,8 +35,7 @@ function generator(
         matchLabels = (commonLabels) { ["signal"] = signal }
       }
       template = new k8s.PodTemplateSpec {
-        metadata = new k8s.ObjectMeta {
-          name = "telemetrygen-\(signal)"
+        metadata = new k8s.PodTemplateMetadata {
           labels = (commonLabels) { ["signal"] = signal }
         }
         spec = new k8s.PodSpec {

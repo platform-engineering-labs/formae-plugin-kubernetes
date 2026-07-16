@@ -237,8 +237,7 @@ function crossplaneDeployment(k8sTarget: formae.Target, cpNs: ns.Namespace): dep
         }
       }
       template = new k8s.PodTemplateSpec {
-        metadata = new k8s.ObjectMeta {
-          name = appName
+        metadata = new k8s.PodTemplateMetadata {
           labels = commonLabels
         }
         spec = new k8s.PodSpec {

@@ -224,8 +224,12 @@ open class PodSpec extends formae.SubResource {
 
 @SubResourceHint {}
 open class PodTemplateSpec extends formae.SubResource {
+  // PodTemplateMetadata, not ObjectMeta: K8s ignores name/namespace on pod
+  // templates and no real-world manifest sets them, but ObjectMeta marks
+  // name required — which made discovery reject every Helm-authored
+  // Deployment/StatefulSet ("missing required fields: spec.template.metadata.name").
   @FieldHint {}
-  metadata: ObjectMeta?
+  metadata: PodTemplateMetadata?
 
   @FieldHint {}
   spec: PodSpec?

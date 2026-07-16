@@ -84,8 +84,11 @@ open class CronJobSpec extends formae.SubResource {
 
 @k8s.SubResourceHint {}
 open class JobTemplateSpec extends formae.SubResource {
+  // PodTemplateMetadata, not ObjectMeta: K8s ignores name/namespace on job
+  // templates; ObjectMeta's required name would reject discovered CronJobs
+  // (same failure mode as PodTemplateSpec).
   @k8s.FieldHint {}
-  metadata: k8s.ObjectMeta?
+  metadata: k8s.PodTemplateMetadata?
 
   @k8s.FieldHint {}
   spec: k8s.JobSpec?

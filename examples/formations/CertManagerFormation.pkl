@@ -326,8 +326,7 @@ open class CertManager {
           matchLabels = _self._controllerSelectorLabels
         }
         template = new k8s.PodTemplateSpec {
-          metadata = new k8s.ObjectMeta {
-            name = _self.name + "-controller"
+          metadata = new k8s.PodTemplateMetadata {
             labels = _self._controllerLabels
           }
           spec = new k8s.PodSpec {
@@ -378,8 +377,7 @@ open class CertManager {
           matchLabels = _self._webhookSelectorLabels
         }
         template = new k8s.PodTemplateSpec {
-          metadata = new k8s.ObjectMeta {
-            name = _self.name + "-webhook"
+          metadata = new k8s.PodTemplateMetadata {
             labels = _self._webhookLabels
           }
           spec = new k8s.PodSpec {
@@ -427,8 +425,7 @@ open class CertManager {
           matchLabels = _self._cainjectorSelectorLabels
         }
         template = new k8s.PodTemplateSpec {
-          metadata = new k8s.ObjectMeta {
-            name = _self.name + "-cainjector"
+          metadata = new k8s.PodTemplateMetadata {
             labels = _self._cainjectorLabels
           }
           spec = new k8s.PodSpec {

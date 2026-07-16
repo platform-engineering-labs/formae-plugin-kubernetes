@@ -41,9 +41,6 @@ forma {
       backoffLimitPerIndex = 1
       maxFailedIndexes = 2
       template = new k8s.PodTemplateSpec {
-        metadata = new k8s.ObjectMeta {
-          name = "test-job-mfi-\(v.testRunID)"
-        }
         spec = new k8s.PodSpec {
           containers = new Listing {
             new k8s.Container {
