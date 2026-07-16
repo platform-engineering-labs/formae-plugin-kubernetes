@@ -35,6 +35,12 @@ examples/
 │   ├── gcp.pkl
 │   ├── oci.pkl
 │   └── local.pkl
+├── storage-runtime/            # Workload: storage + sandboxed runtime (gVisor)
+│   ├── workload.pkl            # Reusable module (Config + targets/resources)
+│   ├── local.pkl              # local-path PVC, default runtime
+│   ├── minikube.pkl           # gVisor via minikube addon
+│   ├── gke.pkl                # GKE Sandbox
+│   └── eks.pkl                # S3 (Mountpoint CSI) + gVisor
 ├── formations/                 # Native Pkl charts (no Helm)
 └── helm/                       # Helm bridge examples
 ```
@@ -64,6 +70,7 @@ pkl project resolve examples/clusters/
 pkl project resolve examples/bookstore/
 pkl project resolve examples/crossplane/
 pkl project resolve examples/lgtm-observability/
+pkl project resolve examples/storage-runtime/
 
 # Helm bridge examples need their own resolve (also pulls in ../../helm).
 pkl project resolve examples/helm/

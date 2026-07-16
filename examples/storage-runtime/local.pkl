@@ -1,0 +1,41 @@
+amends "@formae/forma.pkl"
+
+import "@formae/formae.pkl"
+import "./workload.pkl" as workload
+
+description {
+  text = """
+    Storage workload on a local/kubeconfig Kubernetes cluster.
+
+      formae apply --mode reconcile examples/s3-mountpoint-gvisor/local.pkl
+
+    Deploys to whatever your current kubeconfig context points at (OrbStack,
+    kind, k3s, ...): a PVC on the cluster's default dynamic StorageClass and a
+    Pod that mounts it and writes /data/demo.txt. No cloud, no sandbox runtime.
+
+    Verify:
+      kubectl exec app -- cat /data/demo.txt
+
+    Teardown:
+      formae destroy --yes examples/s3-mountpoint-gvisor/local.pkl
+    """
+  confirm = true
+}
+
+local cfg = new workload.Config {
+  k8sVersion = "1.33"
+  storageBackend = "dynamic"
+  storageClass = "local-path" // OrbStack / k3s default; use "standard" on kind
+  runtimeHandler = null
+}
+
+local stack: formae.Stack = new {
+  label = "storage-runtime-local"
+  description = "Storage workload on a local Kubernetes cluster."
+}
+
+forma {
+  stack
+  ...workload.targets(cfg)
+  ...workload.resources(cfg)
+}
