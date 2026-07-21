@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v5
         with:
@@ -113,7 +113,7 @@ jobs:
       resource-tests: ${{ steps.discover.outputs.resource-tests }}
       feature-tests: ${{ steps.discover.outputs.feature-tests }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: discover
         run: |
           # Shared resource fixtures (testdata/generated/v*/shared) run in
@@ -154,7 +154,7 @@ jobs:
       max-parallel: 10
       fail-fast: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v5
         with:
@@ -211,7 +211,7 @@ jobs:
       max-parallel: 10
       fail-fast: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v5
         with:
