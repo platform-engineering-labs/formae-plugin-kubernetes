@@ -16,8 +16,8 @@ require (
 	github.com/tidwall/gjson v1.19.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.20.0
-	k8s.io/api v0.36.0
-	k8s.io/apimachinery v0.36.1
+	k8s.io/api v0.36.2
+	k8s.io/apimachinery v0.36.2
 	k8s.io/client-go v0.36.0
 )
 
