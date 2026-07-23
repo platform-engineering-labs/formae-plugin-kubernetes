@@ -31,7 +31,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.26"
           cache: false  # we manage the cache manually to align keys
 
       - uses: ./.github/actions/setup-pkl-cached
