@@ -114,6 +114,20 @@ func (l *LifecycleAware) Read(ctx context.Context, req *resource.ReadRequest) (r
 
 	result, err = l.Inner.Read(ctx, req)
 	if err != nil {
+		// A client-side transport failure (apiserver unreachable: connection
+		// refused, DNS failure, dial/read timeout) is the signal the formae
+		// target reaper needs — surface it as a NetworkFailure/ServiceTimeout
+		// ReadResult rather than an opaque raw error. Auth/credential failures
+		// and application errors are deliberately NOT classified (see
+		// ClassifyReadError) and keep propagating raw, so a healthy cluster is
+		// never reaped over a bad credential.
+		if code, ok := ClassifyReadError(err); ok {
+			rt := ""
+			if req != nil {
+				rt = req.ResourceType
+			}
+			return &resource.ReadResult{ResourceType: rt, ErrorCode: code}, nil
+		}
 		return nil, err
 	}
 	if result == nil {

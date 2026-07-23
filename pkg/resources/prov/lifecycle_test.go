@@ -10,7 +10,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net"
+	"net/url"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
@@ -148,6 +152,66 @@ func TestRead_StripsDeletionTimestampFromLiveObject(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, result.ErrorCode)
 	assert.NotEmpty(t, result.Properties)
+}
+
+func TestRead_TransportFailureBecomesNetworkFailure(t *testing.T) {
+	// A connection-refused apiserver (the reaper's unreachable signal) reaches
+	// the funnel as a *url.Error wrapping a concrete net.OpError.
+	inner := &mockProvisioner{
+		readErr: &url.Error{Op: "Get", URL: "https://10.0.0.1:443/api", Err: &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}},
+	}
+	la := Wrap(inner)
+	result, err := la.Read(context.Background(), &resource.ReadRequest{
+		ResourceType: "K8S::Core::ConfigMap",
+		NativeID:     "default/test",
+	})
+	require.NoError(t, err, "a classified transport failure is reported via ErrorCode, not a raw error")
+	require.NotNil(t, result)
+	assert.Equal(t, resource.OperationErrorCodeNetworkFailure, result.ErrorCode)
+	assert.Equal(t, "K8S::Core::ConfigMap", result.ResourceType, "the request's resource type must be carried on the synthesized result")
+}
+
+func TestRead_ApiserverTimeoutBecomesServiceTimeout(t *testing.T) {
+	inner := &mockProvisioner{
+		readErr: &url.Error{Op: "Get", URL: "https://10.0.0.1:443/api", Err: context.DeadlineExceeded},
+	}
+	la := Wrap(inner)
+	result, err := la.Read(context.Background(), &resource.ReadRequest{
+		ResourceType: "K8S::Core::ConfigMap",
+		NativeID:     "default/test",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, resource.OperationErrorCodeServiceTimeout, result.ErrorCode)
+}
+
+func TestRead_AuthFailurePropagatesRawNotUnreachable(t *testing.T) {
+	// A credential/token failure must NOT be turned into an unreachable signal:
+	// the funnel leaves it as a raw error (host renders UnforeseenError), so a
+	// healthy cluster with a bad credential is never reaped.
+	authErr := &url.Error{Op: "Get", URL: "https://10.0.0.1:443/api", Err: fmt.Errorf("auth: failed to obtain token: %w", errors.New("NoCredentialProviders"))}
+	inner := &mockProvisioner{readErr: authErr}
+	la := Wrap(inner)
+	result, err := la.Read(context.Background(), &resource.ReadRequest{
+		ResourceType: "K8S::Core::ConfigMap",
+		NativeID:     "default/test",
+	})
+	require.Error(t, err, "an auth failure must stay a raw error, not a NetworkFailure ReadResult")
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, authErr)
+}
+
+func TestRead_NonTransportErrorPropagatesRaw(t *testing.T) {
+	sentinel := errors.New("the server rejected our request for an unknown reason")
+	inner := &mockProvisioner{readErr: sentinel}
+	la := Wrap(inner)
+	result, err := la.Read(context.Background(), &resource.ReadRequest{
+		ResourceType: "K8S::Core::ConfigMap",
+		NativeID:     "default/test",
+	})
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, sentinel)
 }
 
 // --- LifecycleAware.Delete tests ---
