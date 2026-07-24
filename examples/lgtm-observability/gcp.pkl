@@ -1,4 +1,4 @@
-amends "@formae/forma.pkl"
+extends "@formae/forma.pkl"
 
 import "@formae/formae.pkl"
 import "@apps/lgtm/lgtm.pkl" as lgtmApp
@@ -38,11 +38,11 @@ description {
   confirm = true
 }
 
-properties {
-  enableDemoTraffic = new formae.Prop {
-    flag = "enable-demo-traffic"
-    default = false
-  }
+properties: Props
+
+class Props {
+  /// Run synthetic telemetry through telemetrygen (--enable-demo-traffic)
+  `enable-demo-traffic`: Boolean = false
 }
 
 // Provider = this file's path. `clusterName` makes the cluster + target labels
@@ -60,7 +60,7 @@ local stack: formae.Stack = new {
 // managed Secret. The grafana plugin authenticates via GRAFANA_AUTH at agent start.
 local lgtm = lgtmApp.allResources(
   k8sTarget,
-  properties.enableDemoTraffic.value as Boolean,
+  properties.`enable-demo-traffic`,
   true
 )
 
