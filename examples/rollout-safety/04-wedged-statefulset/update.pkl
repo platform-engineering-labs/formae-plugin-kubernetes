@@ -1,0 +1,46 @@
+/// Case 04 — wedged StatefulSet. UPDATE: bump to a non-existent image tag.
+///
+///   formae apply examples/rollout-safety/04-wedged-statefulset/update.pkl
+///
+/// Pods stick in ImagePullBackOff; readyReplicas stays 0. StatefulSet has no
+/// native progressDeadlineSeconds, so nothing flips it to failed on its own.
+/// OLD plugin: InProgress forever, no diagnostic.
+/// NEW plugin: Failure with reason "pod wedged-demo-0 container c: ErrImagePull (...)".
+amends "@formae/forma.pkl"
+
+import "@formae/formae.pkl"
+import "@clusters/local.pkl" as cluster
+import "@k8s/v1.34/apps/StatefulSet.pkl" as sts
+import "@k8s/v1.34/k8s.pkl" as k8s
+
+local k8sTarget = cluster.target("rollout-wedged")
+
+forma {
+  new formae.Stack { label = "rollout-wedged"; description = "Rollout-safety case 04: wedged StatefulSet" }
+  k8sTarget
+  new sts.StatefulSet {
+    target = k8sTarget.res
+    label = "wedged-demo"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "wedged-demo"
+      namespace = "default"
+    }
+    spec = new sts.StatefulSetSpec {
+      serviceName = "wedged-demo"
+      replicas = 1
+      selector = new k8s.LabelSelector {
+        matchLabels = new Mapping { ["app"] = "wedged-demo" }
+      }
+      template = new k8s.PodTemplateSpec {
+        metadata = new k8s.PodTemplateMetadata {
+          labels = new Mapping { ["app"] = "wedged-demo" }
+        }
+        spec = new k8s.PodSpec {
+          containers {
+            new k8s.Container { name = "c"; image = "nginx:this-tag-does-not-exist-zzz" }
+          }
+        }
+      }
+    }
+  }
+}
