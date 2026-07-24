@@ -46,7 +46,7 @@ open class PriorityClass extends k8s.Resource {
   metadata: k8s.ObjectMeta
 
   /// `globalDefault` is immutable on PriorityClass.
-  @k8s.FieldHint { createOnly = true }
+  @k8s.FieldHint {}
   globalDefault: Boolean?
 
   @k8s.FieldHint {}

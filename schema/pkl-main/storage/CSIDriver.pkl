@@ -57,13 +57,13 @@ open class CSIDriverSpec extends formae.SubResource {
   @k8s.FieldHint { createOnly = true }
   attachRequired: Boolean?
 
-  @k8s.FieldHint { hasProviderDefault = true; createOnly = true }
+  @k8s.FieldHint { hasProviderDefault = true }
   requiresRepublish: Boolean?
 
   @k8s.FieldHint { hasProviderDefault = true; createOnly = true }
   storageCapacity: Boolean?
 
-  @k8s.FieldHint { createOnly = true }
+  @k8s.FieldHint {}
   tokenRequests: Listing<TokenRequest>?
 
   @k8s.FieldHint { hasProviderDefault = true; createOnly = true }
