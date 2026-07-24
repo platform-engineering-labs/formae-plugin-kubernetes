@@ -8,6 +8,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Install with `sudo formae plugin install k8s` on the host that runs the
 formae agent.
 
+## [0.1.7]
+
+Requires formae >= 0.86.0.
+
+### Changed
+
+- **Breaking: pod and job template metadata no longer carries `name`/`namespace`.**
+  The metadata of pod and job templates (`spec.template.metadata` on `Deployment`,
+  `StatefulSet`, `DaemonSet`, `ReplicaSet` and `Job`, and `spec.jobTemplate.metadata`
+  on `CronJob`) changes type from `ObjectMeta` to `PodTemplateMetadata`, which holds
+  only `labels` and `annotations`. Kubernetes accepts `name`/`namespace` on templates
+  but never uses them (pods get generated names), so the schema previously forced you
+  to invent a value with no effect. Formas that construct the metadata class explicitly
+  inside a template need a one-line migration: swap
+  `new k8s.ObjectMeta { name = "..."; labels { ... } }` for
+  `new k8s.PodTemplateMetadata { labels { ... } }` and drop the `name`. Because the
+  cluster stored the template name, the first apply after upgrading that includes the
+  pod template removes that stored field, changing the template hash and performing one
+  rolling update of the workload, so plan for it as you would any rolling restart.
+  Unaffected: the amend style (`metadata { labels { ... } }`), top-level resource
+  `metadata` (its `name` is still required), and StatefulSet `volumeClaimTemplates` metadata.
+
+### Fixed
+
+- **Discovery no longer skips workloads created outside formae.** Discovery validated
+  foreign manifests against the authoring schema, which required
+  `spec.template.metadata.name`, a field Kubernetes ignores and virtually no Helm chart
+  or kubectl-applied manifest sets. As a result most Deployments, StatefulSets and
+  CronJobs created outside formae were silently missing from discovery: no error surfaced,
+  the resources simply never appeared in the inventory. With the template-metadata change
+  above, these workloads are discovered and can be brought under management.
+
 ## [0.1.6]
 
 Requires formae >= 0.86.0.
