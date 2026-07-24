@@ -70,6 +70,7 @@ func (ss *StatefulSet) Create(ctx context.Context, request *resource.CreateReque
 	if err != nil {
 		return nil, fmt.Errorf("failed to get statefulset live state: %w", err)
 	}
+	properties = prov.StripUnownedReplicas(properties, result.ManagedFields)
 
 	return &resource.CreateResult{
 		ProgressResult: &resource.ProgressResult{
@@ -103,6 +104,7 @@ func (ss *StatefulSet) Read(ctx context.Context, request *resource.ReadRequest) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get statefulset live state: %w", err)
 	}
+	properties = prov.StripUnownedReplicas(properties, result.ManagedFields)
 
 	return &resource.ReadResult{
 		ResourceType: request.ResourceType,
@@ -141,6 +143,7 @@ func (ss *StatefulSet) Update(ctx context.Context, request *resource.UpdateReque
 	if err != nil {
 		return nil, fmt.Errorf("failed to get statefulset live state: %w", err)
 	}
+	properties = prov.StripUnownedReplicas(properties, result.ManagedFields)
 
 	return &resource.UpdateResult{
 		ProgressResult: &resource.ProgressResult{
@@ -210,6 +213,7 @@ func (ss *StatefulSet) Status(ctx context.Context, request *resource.StatusReque
 	if err != nil {
 		return nil, fmt.Errorf("failed to get statefulset live state: %w", err)
 	}
+	properties = prov.StripUnownedReplicas(properties, result.ManagedFields)
 
 	return &resource.StatusResult{
 		ProgressResult: &resource.ProgressResult{
