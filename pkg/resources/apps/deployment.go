@@ -271,6 +271,12 @@ func (d *Deployment) operationStatus(deploy *appsv1.Deployment) resource.Operati
 	if !prov.ObservedGenerationReady(&deploy.ObjectMeta, deploy.Status.ObservedGeneration) {
 		return resource.OperationStatusInProgress
 	}
+	// A paused Deployment is the user's declared desired state: the controller
+	// will not converge replicas while paused, so once it has observed the
+	// paused spec, treat it as Success rather than polling forever.
+	if deploy.Spec.Paused {
+		return resource.OperationStatusSuccess
+	}
 	var desired int32 = 1
 	if deploy.Spec.Replicas != nil {
 		desired = *deploy.Spec.Replicas
