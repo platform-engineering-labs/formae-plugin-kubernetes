@@ -10,34 +10,79 @@ enables formae to manage Kubernetes resources via
 with strongly-typed Pkl schemas pinned to your cluster's exact K8s minor
 (v1.21 → v1.36, 16 minors).
 
+## Supported Kubernetes versions
+
+Two version ranges are in play, and they are not the same:
+
+| Range | Minors | What it covers |
+|-------|--------|----------------|
+| **Schema trees** | `1.21` → `1.36` (16 minors) | Typed Pkl authoring and `pkl eval`-time field validation. Select a minor with `kubernetesVersion` on the Target; omitted ⇒ most recent supported minor (`1.36`). |
+| **Runtime support window** | `1.31` → `1.36` | Minors the plugin will drive against a live cluster (`MinSupportedK8sVersion` / `MaxSupportedK8sVersion` in `pkg/config/version.go`). Applying against a cluster outside this window returns a clear preflight error. |
+
+So schema trees exist for `1.21` → `1.30`, but those minors are below the
+runtime floor: you can author and `pkl eval` against them, yet the plugin
+refuses to drive a live cluster older than `1.31`. `client-go` is pinned in
+lockstep with the highest supported minor.
+
 ## Supported Resources
 
-This plugin supports **36 Kubernetes resource types** across 13 API groups:
+This plugin supports **38 Kubernetes resource types** across 15 API groups,
+plus a generic catch-all for arbitrary custom resources.
 
-| API Group | Resources | Examples |
-|-----------|-----------|----------|
-| Core | 11 | Namespace, Pod, Service, ConfigMap, Secret, PersistentVolume |
-| Apps | 4 | Deployment, StatefulSet, DaemonSet, ReplicaSet |
-| Batch | 2 | Job, CronJob |
-| Networking | 3 | Ingress, IngressClass, NetworkPolicy |
-| RBAC | 4 | ClusterRole, ClusterRoleBinding, Role, RoleBinding |
-| Storage | 2 | StorageClass, CSIDriver |
-| Admission Registration | 3 | MutatingWebhookConfiguration, ValidatingWebhookConfiguration, MutatingAdmissionPolicy |
-| Autoscaling | 1 | HorizontalPodAutoscaler |
-| Policy | 1 | PodDisruptionBudget |
-| Scheduling | 1 | PriorityClass |
-| Coordination | 1 | Lease |
-| Flow Control | 2 | FlowSchema, PriorityLevelConfiguration |
-| Node | 1 | RuntimeClass |
+| API Group | Resource Type | Description |
+|-----------|---------------|-------------|
+| Core | `K8S::Core::Namespace` | Virtual cluster partition that scopes names and resources. |
+| Core | `K8S::Core::Pod` | Smallest deployable unit — one or more co-located containers. |
+| Core | `K8S::Core::Service` | Stable network endpoint and load balancing for a set of pods. |
+| Core | `K8S::Core::ConfigMap` | Non-confidential key/value configuration data. |
+| Core | `K8S::Core::Secret` | Sensitive key/value data (credentials, tokens, TLS keys). |
+| Core | `K8S::Core::ServiceAccount` | Identity for processes running in pods. |
+| Core | `K8S::Core::PersistentVolume` | Cluster-level piece of provisioned storage. |
+| Core | `K8S::Core::PersistentVolumeClaim` | A workload's request to bind a PersistentVolume. |
+| Core | `K8S::Core::Endpoints` | Network addresses backing a Service. |
+| Core | `K8S::Core::LimitRange` | Default/min/max resource constraints within a namespace. |
+| Core | `K8S::Core::ResourceQuota` | Aggregate resource-usage limits per namespace. |
+| Apps | `K8S::Apps::Deployment` | Declarative rollout and scaling of stateless pods. |
+| Apps | `K8S::Apps::StatefulSet` | Ordered, stable-identity pods for stateful workloads. |
+| Apps | `K8S::Apps::DaemonSet` | Runs one pod per (matching) node. |
+| Apps | `K8S::Apps::ReplicaSet` | Maintains a stable set of replica pods. |
+| Batch | `K8S::Batch::Job` | Run-to-completion workload. |
+| Batch | `K8S::Batch::CronJob` | Schedule-driven Jobs. |
+| Networking | `K8S::Networking::Ingress` | HTTP/HTTPS routing rules to Services. |
+| Networking | `K8S::Networking::IngressClass` | Selects the ingress controller for an Ingress. |
+| Networking | `K8S::Networking::NetworkPolicy` | Pod-level ingress/egress traffic rules. |
+| RBAC | `K8S::Rbac::ClusterRole` | Cluster-wide permission set. |
+| RBAC | `K8S::Rbac::ClusterRoleBinding` | Binds a ClusterRole to subjects cluster-wide. |
+| RBAC | `K8S::Rbac::Role` | Namespace-scoped permission set. |
+| RBAC | `K8S::Rbac::RoleBinding` | Binds a Role/ClusterRole within a namespace. |
+| Storage | `K8S::Storage::StorageClass` | Dynamic volume-provisioning profile. |
+| Storage | `K8S::Storage::CSIDriver` | Registration of a CSI storage driver. |
+| Admission Registration | `K8S::Admissionregistration::MutatingWebhookConfiguration` | External mutating admission webhooks. |
+| Admission Registration | `K8S::Admissionregistration::ValidatingWebhookConfiguration` | External validating admission webhooks. |
+| Admission Registration | `K8S::Admissionregistration::MutatingAdmissionPolicy` | In-tree, CEL-based mutation (GA in 1.36, [KEP-3962](https://kep.k8s.io/3962)); `v1.36+` schema trees only. |
+| API Extensions | `K8S::Apiextensions::CustomResourceDefinition` | Defines a new custom resource kind; blocks until `Established`. |
+| Custom | `K8S::Custom::Resource` | Generic catch-all for any CRD instance (free-form `spec`, no per-CRD code). |
+| Autoscaling | `K8S::Autoscaling::HorizontalPodAutoscaler` | Scales workload replicas on observed metrics. |
+| Policy | `K8S::Policy::PodDisruptionBudget` | Minimum availability during voluntary disruptions. |
+| Scheduling | `K8S::Scheduling::PriorityClass` | Pod scheduling priority. |
+| Coordination | `K8S::Coordination::Lease` | Lightweight lock for leader election / node heartbeats. |
+| Flow Control | `K8S::Flowcontrol::FlowSchema` | Classifies API requests into priority levels (APF). |
+| Flow Control | `K8S::Flowcontrol::PriorityLevelConfiguration` | Concurrency limits per priority level (APF). |
+| Node | `K8S::Node::RuntimeClass` | Selects the container runtime configuration for pods. |
 
 `MutatingAdmissionPolicy` reached GA in K8s 1.36 (KEP-3962) and is only
 present in the `v1.36+` schema trees; it cannot be referenced when
 `kubernetesVersion` is set to an earlier minor.
 
+**Custom resources.** `K8S::Custom::Resource` manages any CRD instance
+(cert-manager `Certificate`, Argo `Application`, and so on) through a generic
+catch-all — no per-CRD Go code or generated schema. A CRD and instances of the
+kind it defines can live in one forma and deploy in a single `formae apply`.
+Both custom types are `discoverable = false`, so they are managed via explicit
+declaration only, not surfaced by discovery.
+
 See [`schema/pkl/`](schema/pkl/) for the complete list of supported resource
 types.
-
-CRDs and arbitrary custom resources are not currently supported.
 
 ## Configuration
 

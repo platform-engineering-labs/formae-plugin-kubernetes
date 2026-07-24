@@ -8,6 +8,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Install with `sudo formae plugin install k8s` on the host that runs the
 formae agent.
 
+## [0.1.8]
+
+Requires formae >= 0.86.0.
+
+### Fixed
+
+- **Unreachable clusters are now reaped.** A resource `Read` against an
+  unreachable apiserver (connection refused, DNS failure, dial/read timeout)
+  fell through to a raw error the host rendered as `UnforeseenError`, which
+  carries no health signal — so the target reaper never saw the cluster as
+  unreachable and never reaped it. The `Read` funnel now maps a genuine
+  client-side transport failure to `NetworkFailure`/`ServiceTimeout`.
+  Auth/credential failures are deliberately excluded: a bad token surfaces as a
+  `*url.Error` that satisfies `net.Error` even though the apiserver is
+  reachable, so classification unwraps to concrete `net` types and skips the
+  auth path — a healthy cluster is never reaped over a bad credential.
+
+### Changed
+
+- **`client-go` bumped to `v0.36.3`** (`k8s.io/api` and `k8s.io/apimachinery`
+  moved in lockstep), staying pinned to the highest supported K8s minor (1.36).
+- **Builds on Go 1.26.** Workflow `go-version` pins now match the `go 1.26.0`
+  declared in `go.mod`.
+- **Examples pinned to formae 0.88.0.** The runtime requirement is unchanged —
+  `minFormaeVersion` remains 0.86.0.
+
 ## [0.1.7]
 
 Requires formae >= 0.86.0.
