@@ -253,13 +253,13 @@ function mapPodTemplateSpec(src: Any, ownerName: String, prefix: String): k8s.Po
 
 /// Map PodTemplate metadata (labels + annotations only).
 ///
-/// PodTemplateSpec.metadata is typed `k8s.ObjectMeta?` in the
-/// versioned schema (no separate PodTemplateMetadata class), so
-/// return ObjectMeta directly with `name` left null since pod
-/// templates inherit name from their owner.
-function mapPodTemplateMetadata(src: Any, ownerName: String): k8s.ObjectMeta =
-  new k8s.ObjectMeta {
-    name = ownerName
+/// PodTemplateSpec.metadata is typed `k8s.PodTemplateMetadata?` in the
+/// versioned schemas (labels + annotations only, no name — pod templates
+/// inherit name from their owner). Returning ObjectMeta here failed
+/// PodTemplateSpec's type check on every chart whose pod template carries
+/// labels or annotations, i.e. virtually all charts.
+function mapPodTemplateMetadata(src: Any, ownerName: String): k8s.PodTemplateMetadata =
+  new k8s.PodTemplateMetadata {
     when (src.labels != null) {
       labels = mapStringMapping(src.labels)
     }
