@@ -104,6 +104,9 @@ type EKSAuthConfig struct {
 	CloudAuthConfig
 	ClusterName string `json:"ClusterName"`
 	Region      string `json:"Region,omitempty"`
+	// Profile names an AWS shared-config credential profile used to sign the
+	// EKS STS token. Empty falls back to the default AWS credential chain.
+	Profile string `json:"Profile,omitempty"`
 }
 
 // AKSAuthConfig holds AKS-specific auth fields. Scope is optional and
@@ -187,7 +190,7 @@ func (c *Config) AuthType() string {
 // Composition (auth-type-specific):
 //
 //	Kubeconfig: "Kubeconfig|<kubeconfig-path>|<context>"
-//	EKS:        "EKS|<endpoint>|<cluster-name>|<region>"
+//	EKS:        "EKS|<endpoint>|<cluster-name>|<region>|<profile>"
 //	GKE:        "GKE|<endpoint>|<project>|<location>|<cluster-name>"
 //	AKS:        "AKS|<endpoint>|<resource-group>|<cluster-name>|<scope>"
 //	OVH:        "OVH|<endpoint>|<service-name>|<cluster-id>"
@@ -217,7 +220,7 @@ func (c *Config) CacheKey() (string, error) {
 		if err := json.Unmarshal(c.authRaw, &ac); err != nil {
 			return "", fmt.Errorf("CacheKey: parse EKS auth: %w", err)
 		}
-		return fmt.Sprintf("EKS|%s|%s|%s", ac.Endpoint, ac.ClusterName, ac.Region), nil
+		return fmt.Sprintf("EKS|%s|%s|%s|%s", ac.Endpoint, ac.ClusterName, ac.Region, ac.Profile), nil
 	case "GKE":
 		var ac GKEAuthConfig
 		if err := json.Unmarshal(c.authRaw, &ac); err != nil {
@@ -351,7 +354,7 @@ func (c *Config) newEKSProvider() (auth.AuthProvider, *CloudAuthConfig, error) {
 	if region == "" {
 		region = eks.RegionFromEndpoint(string(ac.Endpoint))
 	}
-	return eks.NewProvider(ac.ClusterName, region), &ac.CloudAuthConfig, nil
+	return eks.NewProvider(ac.ClusterName, region, ac.Profile), &ac.CloudAuthConfig, nil
 }
 
 func (c *Config) newGKEProvider() (auth.AuthProvider, *CloudAuthConfig, error) {

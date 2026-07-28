@@ -121,6 +121,11 @@ func TestCacheKey_DistinguishesClusters(t *testing.T) {
 			`{"Auth":{"Type":"EKS","Endpoint":"https://e","CertificateAuthority":"Y2E=","ClusterName":"b","Region":"us-east-1"}}`,
 		},
 		{
+			"EKS by credential profile",
+			`{"Auth":{"Type":"EKS","Endpoint":"https://e","CertificateAuthority":"Y2E=","ClusterName":"c","Region":"us-east-1","Profile":"blue"}}`,
+			`{"Auth":{"Type":"EKS","Endpoint":"https://e","CertificateAuthority":"Y2E=","ClusterName":"c","Region":"us-east-1","Profile":"green"}}`,
+		},
+		{
 			"GKE by project",
 			`{"Auth":{"Type":"GKE","Endpoint":"https://e","CertificateAuthority":"Y2E=","ProjectId":"p1","Location":"l","ClusterName":"c"}}`,
 			`{"Auth":{"Type":"GKE","Endpoint":"https://e","CertificateAuthority":"Y2E=","ProjectId":"p2","Location":"l","ClusterName":"c"}}`,
@@ -196,4 +201,3 @@ func TestCacheKey_UnsupportedAuth(t *testing.T) {
 		t.Error("expected error for unsupported auth type")
 	}
 }
-
