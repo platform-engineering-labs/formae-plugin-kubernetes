@@ -63,25 +63,25 @@ For knobs without env-var support (AWS `region`/`vpcCidr`/etc., GCP
 
 ```bash
 # Local cluster (OrbStack / kind / minikube)
-formae apply --mode reconcile --yes --watch \
+formae apply --mode reconcile --yes \
   examples/bookstore/local.pkl
 
 # AWS EKS
-formae apply --mode reconcile --yes --watch \
+formae apply --mode reconcile --yes \
   examples/bookstore/aws.pkl
 
 # Azure AKS
-formae apply --mode reconcile --yes --watch \
+formae apply --mode reconcile --yes \
   examples/bookstore/azure.pkl
 
 # GCP GKE
 GCP_PROJECT=my-gcp-project \
-  formae apply --mode reconcile --yes --watch \
+  formae apply --mode reconcile --yes \
   examples/bookstore/gcp.pkl
 
 # Oracle OKE
 OCI_COMPARTMENT_ID=ocid1.compartment.oc1..xxx \
-  formae apply --mode reconcile --yes --watch \
+  formae apply --mode reconcile --yes \
   examples/bookstore/oci.pkl
 ```
 

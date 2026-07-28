@@ -32,5 +32,5 @@ shape depends on the API server's minor version (e.g. `policy/v1` vs
 
 ```bash
 pkl project resolve examples/helm/
-formae apply --mode reconcile --yes --watch examples/helm/nginx.pkl
+formae apply --mode reconcile --yes examples/helm/nginx.pkl
 ```

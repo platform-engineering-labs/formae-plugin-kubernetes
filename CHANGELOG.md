@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Install with `sudo formae plugin install k8s` on the host that runs the
 formae agent.
 
+## [0.1.10]
+
+### Changed
+
+- Drop the removed `--watch` flag from the example commands in the README,
+  CONTRIBUTING, the helm/flux/crossplane/bookstore/custom-resource docs, and
+  the example file headers. `formae apply`/`destroy` are submit-then-poll.
+
 ## [0.1.9]
 
 ### Changed
