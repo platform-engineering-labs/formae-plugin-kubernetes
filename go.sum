@@ -159,8 +159,8 @@ github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 h1:C3w9PqII01/Oq
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
 github.com/naegelejd/go-acl v0.0.0-20260323030528-42e4d61407df h1:1xWk/De6cs3h2rv2LZA/jcLFTmEGD9EluHsKaYq+Gm0=
 github.com/naegelejd/go-acl v0.0.0-20260323030528-42e4d61407df/go.mod h1:sTJHuiEPB0WNdPYPOP9M6FQU4YTHemXgDLIQqkbBdDI=
-github.com/oracle/oci-go-sdk/v65 v65.121.1 h1:nXrE3r1qmBULT6Zp2koM2bJGDvsFtMX/be/NV9MS3Bw=
-github.com/oracle/oci-go-sdk/v65 v65.121.1/go.mod h1:Pzy+BpgkDesvGZXEHgslwhIYobHCPHg6wRta1mWnlqQ=
+github.com/oracle/oci-go-sdk/v65 v65.122.0 h1:yB587yZUGe/syyyp1CHlW74EXo38Rfye5vD3Ox4Cdq4=
+github.com/oracle/oci-go-sdk/v65 v65.122.0/go.mod h1:Pzy+BpgkDesvGZXEHgslwhIYobHCPHg6wRta1mWnlqQ=
 github.com/ovh/go-ovh v1.9.0 h1:6K8VoL3BYjVV3In9tPJUdT7qMx9h0GExN9EXx1r2kKE=
 github.com/ovh/go-ovh v1.9.0/go.mod h1:cTVDnl94z4tl8pP1uZ/8jlVxntjSIf09bNcQ5TJSC7c=
 github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c h1:+mdjkGKdHQG3305AYmdv1U2eRNDiU2ErMBj1gwrq8eQ=
