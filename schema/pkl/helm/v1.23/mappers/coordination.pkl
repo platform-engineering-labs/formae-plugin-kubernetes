@@ -10,7 +10,7 @@ import "common.pkl"
 // Lease (namespaced)
 // =============================================================================
 
-function mapLease(src: Any, prefix: String, namespace: String): lease.Lease =
+function mapLease(src: Any, prefix: String, namespace: common.NamespaceArg): lease.Lease =
   new lease.Lease {
     label = common.makeLabel(prefix, "lease", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)

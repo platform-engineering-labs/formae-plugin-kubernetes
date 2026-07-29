@@ -11,7 +11,7 @@ import "common.pkl"
 // FlowSchema (cluster-scoped)
 // =============================================================================
 
-function mapFlowSchema(src: Any, prefix: String, _namespace: String): fs.FlowSchema =
+function mapFlowSchema(src: Any, prefix: String, _namespace: common.NamespaceArg): fs.FlowSchema =
   new fs.FlowSchema {
     label = common.makeLabel(prefix, "flowschema", src.metadata.name)
     metadata = common.mapClusterMeta(src.metadata)
@@ -109,7 +109,7 @@ function mapNonResourcePolicyRule(src: Any): fs.NonResourcePolicyRule =
 // PriorityLevelConfiguration (cluster-scoped)
 // =============================================================================
 
-function mapPriorityLevelConfiguration(src: Any, prefix: String, _namespace: String): plc.PriorityLevelConfiguration =
+function mapPriorityLevelConfiguration(src: Any, prefix: String, _namespace: common.NamespaceArg): plc.PriorityLevelConfiguration =
   new plc.PriorityLevelConfiguration {
     label = common.makeLabel(prefix, "prioritylevelconfiguration", src.metadata.name)
     metadata = common.mapClusterMeta(src.metadata)

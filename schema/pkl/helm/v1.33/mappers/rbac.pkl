@@ -50,7 +50,7 @@ function mapSubject(src: Any): k8s.Subject =
 // Role
 // =============================================================================
 
-function mapRole(src: Any, prefix: String, namespace: String): role.Role =
+function mapRole(src: Any, prefix: String, namespace: common.NamespaceArg): role.Role =
   new role.Role {
     label = common.makeLabel(prefix, "role", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)
@@ -65,7 +65,7 @@ function mapRole(src: Any, prefix: String, namespace: String): role.Role =
 // RoleBinding
 // =============================================================================
 
-function mapRoleBinding(src: Any, prefix: String, namespace: String): rb.RoleBinding =
+function mapRoleBinding(src: Any, prefix: String, namespace: common.NamespaceArg): rb.RoleBinding =
   new rb.RoleBinding {
     label = common.makeLabel(prefix, "rolebinding", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)
@@ -83,7 +83,7 @@ function mapRoleBinding(src: Any, prefix: String, namespace: String): rb.RoleBin
 // ClusterRole (cluster-scoped)
 // =============================================================================
 
-function mapClusterRole(src: Any, prefix: String, _namespace: String): cr.ClusterRole =
+function mapClusterRole(src: Any, prefix: String, _namespace: common.NamespaceArg): cr.ClusterRole =
   new cr.ClusterRole {
     label = common.makeLabel(prefix, "clusterrole", src.metadata.name)
     metadata = common.mapClusterMeta(src.metadata)
@@ -113,7 +113,7 @@ function mapClusterRole(src: Any, prefix: String, _namespace: String): cr.Cluste
 // ClusterRoleBinding (cluster-scoped)
 // =============================================================================
 
-function mapClusterRoleBinding(src: Any, prefix: String, _namespace: String): crb.ClusterRoleBinding =
+function mapClusterRoleBinding(src: Any, prefix: String, _namespace: common.NamespaceArg): crb.ClusterRoleBinding =
   new crb.ClusterRoleBinding {
     label = common.makeLabel(prefix, "clusterrolebinding", src.metadata.name)
     metadata = common.mapClusterMeta(src.metadata)
