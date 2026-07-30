@@ -9,6 +9,14 @@ import "@formae/formae.pkl"
 import "../../../v1.33/k8s.pkl" as k8s
 import "../../../v1.33/core/Namespace.pkl" as ns
 
+/// A mapper's target namespace. Normally the literal namespace string, but
+/// when HelmChart.createNamespace is set it is a formae.Resolvable pointing at
+/// the chart-created Namespace resource — that reference is what makes formae
+/// order the namespace before the resources placed in it (fixes the
+/// "namespaces <x> not found" apply race). NamespacedObjectMeta.namespace
+/// already accepts this union, so the value threads straight through.
+typealias NamespaceArg = String | formae.Resolvable
+
 // =============================================================================
 // Label generation
 // =============================================================================
@@ -23,10 +31,18 @@ function makeLabel(prefix: String, kind: String, name: String): String =
 // =============================================================================
 
 /// Map a pkl-k8s ObjectMeta to k8s ObjectMeta (namespaced resource).
-function mapObjectMeta(src: Any, defaultNamespace: String): k8s.NamespacedObjectMeta =
+function mapObjectMeta(src: Any, defaultNamespace: NamespaceArg): k8s.NamespacedObjectMeta =
   new k8s.NamespacedObjectMeta {
     name = src.name
-    namespace = if (src.namespace != null) src.namespace else defaultNamespace
+    // A resolvable defaultNamespace means the caller is creating/controlling
+    // the namespace (HelmChart.createNamespace): force every resource into it
+    // so the reference becomes formae's ordering edge, overriding any literal
+    // `namespace:` helm stamped into the rendered manifest. A plain-string
+    // default keeps the prior behaviour: prefer the manifest's own namespace.
+    namespace =
+      if (defaultNamespace is formae.Resolvable) defaultNamespace
+      else if (src.namespace != null) src.namespace
+      else defaultNamespace
     when (src.labels != null) {
       labels = mapStringMapping(src.labels)
     }
@@ -135,6 +151,23 @@ function mapPodSpec(src: Any, prefix: String): k8s.PodSpec =
         mapContainer(_c)
       }
     }
+    // Init containers — Ory charts run DB automigration as an initContainer;
+    // dropping them meant migrations never ran.
+    when (src.initContainers != null) {
+      initContainers = new Listing {
+        for (_c in src.initContainers) {
+          mapContainer(_c)
+        }
+      }
+    }
+    // Pod volumes — config/secret/emptyDir volumes the containers mount.
+    when (src.volumes != null) {
+      volumes = new Listing {
+        for (_v in src.volumes) {
+          mapVolume(_v)
+        }
+      }
+    }
     when (src.restartPolicy != null) {
       restartPolicy = src.restartPolicy
     }
@@ -143,6 +176,16 @@ function mapPodSpec(src: Any, prefix: String): k8s.PodSpec =
     }
     when (src.serviceAccountName != null) {
       serviceAccountName = saRef(src.serviceAccountName, prefix)
+    }
+    // Pod-level image pull secrets. Dropping these made private-registry charts
+    // (Ory, NATS) render pods that pulled anonymously -> 401 ImagePullBackOff
+    // even when the chart values set imagePullSecrets correctly.
+    when (src.imagePullSecrets != null) {
+      imagePullSecrets = new Listing {
+        for (_ref in src.imagePullSecrets) {
+          new k8s.LocalObjectReference { name = _ref.name }
+        }
+      }
     }
   }
 
@@ -187,6 +230,13 @@ function mapContainer(src: Any): k8s.Container =
         }
       }
     }
+    when (src.envFrom != null) {
+      envFrom = new Listing {
+        for (_ef in src.envFrom) {
+          mapEnvFromSource(_ef)
+        }
+      }
+    }
     when (src.ports != null) {
       ports = new Listing {
         for (_p in src.ports) {
@@ -197,14 +247,126 @@ function mapContainer(src: Any): k8s.Container =
     when (src.resources != null) {
       resources = mapResourceRequirements(src.resources)
     }
+    // Volume mounts — dropping these left config-file volumes unmounted, so
+    // charts that read config from a mounted ConfigMap (Ory, NATS) crashed
+    // "no such file or directory".
+    when (src.volumeMounts != null) {
+      volumeMounts = new Listing {
+        for (_m in src.volumeMounts) {
+          mapVolumeMount(_m)
+        }
+      }
+    }
   }
 
-/// Map an environment variable.
+/// Map a VolumeMount.
+function mapVolumeMount(src: Any): k8s.VolumeMount =
+  new k8s.VolumeMount {
+    name = src.name
+    mountPath = src.mountPath
+    when (src.subPath != null) { subPath = src.subPath }
+    when (src.readOnly != null) { readOnly = src.readOnly }
+  }
+
+/// Map a pod Volume. Covers the source types charts use in practice
+/// (configMap, secret, emptyDir, persistentVolumeClaim). Exotic sources are
+/// intentionally not mapped yet — add them here when a chart needs one.
+function mapVolume(src: Any): k8s.Volume =
+  new k8s.Volume {
+    name = src.name
+    when (src.configMap != null) {
+      configMap = new k8s.ConfigMapVolumeSource {
+        when (src.configMap.name != null) { name = src.configMap.name }
+        when (src.configMap.defaultMode != null) { defaultMode = src.configMap.defaultMode }
+        when (src.configMap.optional != null) { optional = src.configMap.optional }
+        when (src.configMap.items != null) {
+          items = new Listing { for (_i in src.configMap.items) { mapKeyToPath(_i) } }
+        }
+      }
+    }
+    when (src.secret != null) {
+      secret = new k8s.SecretVolumeSource {
+        when (src.secret.secretName != null) { secretName = src.secret.secretName }
+        when (src.secret.defaultMode != null) { defaultMode = src.secret.defaultMode }
+        when (src.secret.optional != null) { optional = src.secret.optional }
+        when (src.secret.items != null) {
+          items = new Listing { for (_i in src.secret.items) { mapKeyToPath(_i) } }
+        }
+      }
+    }
+    when (src.emptyDir != null) {
+      emptyDir = new k8s.EmptyDirVolumeSource {
+        when (src.emptyDir.medium != null) { medium = src.emptyDir.medium }
+        when (src.emptyDir.sizeLimit != null) { sizeLimit = src.emptyDir.sizeLimit }
+      }
+    }
+    when (src.persistentVolumeClaim != null) {
+      persistentVolumeClaim = new k8s.PersistentVolumeClaimVolumeSource {
+        claimName = src.persistentVolumeClaim.claimName
+        when (src.persistentVolumeClaim.readOnly != null) { readOnly = src.persistentVolumeClaim.readOnly }
+      }
+    }
+  }
+
+/// Map a KeyToPath (configMap/secret volume item projection).
+function mapKeyToPath(src: Any): k8s.KeyToPath =
+  new k8s.KeyToPath {
+    key = src.key
+    path = src.path
+    when (src.mode != null) { mode = src.mode }
+  }
+
+/// Map an environment variable, including valueFrom sources. Dropping
+/// valueFrom left secret/configmap/field-sourced env empty — e.g. Ory's DB
+/// `dsn` (secretKeyRef) and ingress-nginx's `POD_NAMESPACE` (fieldRef) — which
+/// crashed those pods ("dsn must be set", "namespace : not found").
 function mapEnvVar(src: Any): k8s.EnvVar =
   new k8s.EnvVar {
     name = src.name
     when (src.value != null) {
       value = src.value
+    }
+    when (src.valueFrom != null) {
+      valueFrom = new k8s.EnvVarSource {
+        when (src.valueFrom.secretKeyRef != null) {
+          secretKeyRef = new k8s.SecretKeySelector {
+            when (src.valueFrom.secretKeyRef.name != null) { name = src.valueFrom.secretKeyRef.name }
+            key = src.valueFrom.secretKeyRef.key
+            when (src.valueFrom.secretKeyRef.optional != null) { optional = src.valueFrom.secretKeyRef.optional }
+          }
+        }
+        when (src.valueFrom.configMapKeyRef != null) {
+          configMapKeyRef = new k8s.ConfigMapKeySelector {
+            when (src.valueFrom.configMapKeyRef.name != null) { name = src.valueFrom.configMapKeyRef.name }
+            key = src.valueFrom.configMapKeyRef.key
+            when (src.valueFrom.configMapKeyRef.optional != null) { optional = src.valueFrom.configMapKeyRef.optional }
+          }
+        }
+        when (src.valueFrom.fieldRef != null) {
+          fieldRef = new k8s.ObjectFieldSelector {
+            fieldPath = src.valueFrom.fieldRef.fieldPath
+            when (src.valueFrom.fieldRef.apiVersion != null) { apiVersion = src.valueFrom.fieldRef.apiVersion }
+          }
+        }
+      }
+    }
+  }
+
+/// Map an EnvFromSource (whole-ConfigMap/Secret env injection).
+function mapEnvFromSource(src: Any): k8s.EnvFromSource =
+  new k8s.EnvFromSource {
+    when (src.prefix != null) { prefix = src.prefix }
+    when (src.configMapRef != null) {
+      configMapRef = new k8s.ConfigMapEnvSource {
+        when (src.configMapRef.name != null) { name = src.configMapRef.name }
+        when (src.configMapRef.optional != null) { optional = src.configMapRef.optional }
+      }
+    }
+    when (src.secretRef != null) {
+      secretRef = new k8s.SecretEnvSource {
+        when (src.secretRef.name != null) { name = src.secretRef.name }
+        when (src.secretRef.optional != null) { optional = src.secretRef.optional }
+      }
     }
   }
 

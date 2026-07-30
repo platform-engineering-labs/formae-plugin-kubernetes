@@ -13,7 +13,7 @@ import "common.pkl"
 // Ingress
 // =============================================================================
 
-function mapIngress(src: Any, prefix: String, namespace: String): ing.Ingress =
+function mapIngress(src: Any, prefix: String, namespace: common.NamespaceArg): ing.Ingress =
   new ing.Ingress {
     label = common.makeLabel(prefix, "ingress", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)
@@ -94,7 +94,7 @@ function mapIngressBackend(src: Any): ing.IngressBackend =
 // IngressClass (cluster-scoped)
 // =============================================================================
 
-function mapIngressClass(src: Any, prefix: String, _namespace: String): ic.IngressClass =
+function mapIngressClass(src: Any, prefix: String, _namespace: common.NamespaceArg): ic.IngressClass =
   new ic.IngressClass {
     label = common.makeLabel(prefix, "ingressclass", src.metadata.name)
     metadata = common.mapClusterMeta(src.metadata)
@@ -126,7 +126,7 @@ function mapIngressClass(src: Any, prefix: String, _namespace: String): ic.Ingre
 // NetworkPolicy
 // =============================================================================
 
-function mapNetworkPolicy(src: Any, prefix: String, namespace: String): np.NetworkPolicy =
+function mapNetworkPolicy(src: Any, prefix: String, namespace: common.NamespaceArg): np.NetworkPolicy =
   new np.NetworkPolicy {
     label = common.makeLabel(prefix, "networkpolicy", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)

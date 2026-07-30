@@ -11,7 +11,7 @@ import "common.pkl"
 // PodDisruptionBudget
 // =============================================================================
 
-function mapPodDisruptionBudget(src: Any, prefix: String, namespace: String): pdb.PodDisruptionBudget =
+function mapPodDisruptionBudget(src: Any, prefix: String, namespace: common.NamespaceArg): pdb.PodDisruptionBudget =
   new pdb.PodDisruptionBudget {
     label = common.makeLabel(prefix, "poddisruptionbudget", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)

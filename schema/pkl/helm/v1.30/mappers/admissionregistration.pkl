@@ -60,7 +60,7 @@ function mapMatchCondition(src: Any): k8s.MatchCondition =
 // ValidatingWebhookConfiguration (cluster-scoped)
 // =============================================================================
 
-function mapValidatingWebhookConfiguration(src: Any, prefix: String, _namespace: String): vwc.ValidatingWebhookConfiguration =
+function mapValidatingWebhookConfiguration(src: Any, prefix: String, _namespace: common.NamespaceArg): vwc.ValidatingWebhookConfiguration =
   new vwc.ValidatingWebhookConfiguration {
     label = common.makeLabel(prefix, "validatingwebhookconfiguration", src.metadata.name)
     metadata = common.mapClusterMeta(src.metadata)
@@ -114,7 +114,7 @@ function mapValidatingWebhook(src: Any): vwc.ValidatingWebhook =
 // MutatingWebhookConfiguration (cluster-scoped)
 // =============================================================================
 
-function mapMutatingWebhookConfiguration(src: Any, prefix: String, _namespace: String): mwc.MutatingWebhookConfiguration =
+function mapMutatingWebhookConfiguration(src: Any, prefix: String, _namespace: common.NamespaceArg): mwc.MutatingWebhookConfiguration =
   new mwc.MutatingWebhookConfiguration {
     label = common.makeLabel(prefix, "mutatingwebhookconfiguration", src.metadata.name)
     metadata = common.mapClusterMeta(src.metadata)

@@ -20,7 +20,7 @@ import "common.pkl"
 // Namespace (cluster-scoped)
 // =============================================================================
 
-function mapNamespace(src: Any, prefix: String, _namespace: String): ns.Namespace =
+function mapNamespace(src: Any, prefix: String, _namespace: common.NamespaceArg): ns.Namespace =
   new ns.Namespace {
     label = common.makeLabel(prefix, "namespace", src.metadata.name)
     metadata = common.mapNamespaceMetadata(src.metadata)
@@ -30,7 +30,7 @@ function mapNamespace(src: Any, prefix: String, _namespace: String): ns.Namespac
 // Pod
 // =============================================================================
 
-function mapPod(src: Any, prefix: String, namespace: String): pod.Pod =
+function mapPod(src: Any, prefix: String, namespace: common.NamespaceArg): pod.Pod =
   new pod.Pod {
     label = common.makeLabel(prefix, "pod", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)
@@ -41,7 +41,7 @@ function mapPod(src: Any, prefix: String, namespace: String): pod.Pod =
 // ConfigMap
 // =============================================================================
 
-function mapConfigMap(src: Any, prefix: String, namespace: String): cm.ConfigMap =
+function mapConfigMap(src: Any, prefix: String, namespace: common.NamespaceArg): cm.ConfigMap =
   new cm.ConfigMap {
     label = common.makeLabel(prefix, "configmap", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)
@@ -60,7 +60,7 @@ function mapConfigMap(src: Any, prefix: String, namespace: String): cm.ConfigMap
 // Secret
 // =============================================================================
 
-function mapSecret(src: Any, prefix: String, namespace: String): secret.Secret =
+function mapSecret(src: Any, prefix: String, namespace: common.NamespaceArg): secret.Secret =
   new secret.Secret {
     label = common.makeLabel(prefix, "secret", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)
@@ -82,7 +82,7 @@ function mapSecret(src: Any, prefix: String, namespace: String): secret.Secret =
 // ServiceAccount
 // =============================================================================
 
-function mapServiceAccount(src: Any, prefix: String, namespace: String): sa.ServiceAccount =
+function mapServiceAccount(src: Any, prefix: String, namespace: common.NamespaceArg): sa.ServiceAccount =
   new sa.ServiceAccount {
     label = common.makeLabel(prefix, "serviceaccount", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)
@@ -104,7 +104,7 @@ function mapServiceAccount(src: Any, prefix: String, namespace: String): sa.Serv
 // Service
 // =============================================================================
 
-function mapService(src: Any, prefix: String, namespace: String): svc.Service =
+function mapService(src: Any, prefix: String, namespace: common.NamespaceArg): svc.Service =
   new svc.Service {
     label = common.makeLabel(prefix, "service", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)
@@ -158,7 +158,7 @@ function mapServicePort(src: Any): svc.ServicePort =
 // Endpoints
 // =============================================================================
 
-function mapEndpoints(src: Any, prefix: String, namespace: String): ep.Endpoints =
+function mapEndpoints(src: Any, prefix: String, namespace: common.NamespaceArg): ep.Endpoints =
   new ep.Endpoints {
     label = common.makeLabel(prefix, "endpoints", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)
@@ -200,7 +200,7 @@ function mapEndpoints(src: Any, prefix: String, namespace: String): ep.Endpoints
 // LimitRange
 // =============================================================================
 
-function mapLimitRange(src: Any, prefix: String, namespace: String): lr.LimitRange =
+function mapLimitRange(src: Any, prefix: String, namespace: common.NamespaceArg): lr.LimitRange =
   new lr.LimitRange {
     label = common.makeLabel(prefix, "limitrange", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)
@@ -231,7 +231,7 @@ function mapLimitRange(src: Any, prefix: String, namespace: String): lr.LimitRan
 // PersistentVolume (cluster-scoped)
 // =============================================================================
 
-function mapPersistentVolume(src: Any, prefix: String, _namespace: String): pv.PersistentVolume =
+function mapPersistentVolume(src: Any, prefix: String, _namespace: common.NamespaceArg): pv.PersistentVolume =
   new pv.PersistentVolume {
     label = common.makeLabel(prefix, "persistentvolume", src.metadata.name)
     metadata = common.mapClusterMeta(src.metadata)
@@ -262,7 +262,7 @@ function mapPersistentVolume(src: Any, prefix: String, _namespace: String): pv.P
 // PersistentVolumeClaim
 // =============================================================================
 
-function mapPersistentVolumeClaim(src: Any, prefix: String, namespace: String): pvc.PersistentVolumeClaim =
+function mapPersistentVolumeClaim(src: Any, prefix: String, namespace: common.NamespaceArg): pvc.PersistentVolumeClaim =
   new pvc.PersistentVolumeClaim {
     label = common.makeLabel(prefix, "persistentvolumeclaim", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)
@@ -287,7 +287,7 @@ function mapPersistentVolumeClaim(src: Any, prefix: String, namespace: String): 
 // ResourceQuota
 // =============================================================================
 
-function mapResourceQuota(src: Any, prefix: String, namespace: String): rq.ResourceQuota =
+function mapResourceQuota(src: Any, prefix: String, namespace: common.NamespaceArg): rq.ResourceQuota =
   new rq.ResourceQuota {
     label = common.makeLabel(prefix, "resourcequota", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)

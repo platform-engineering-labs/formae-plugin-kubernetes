@@ -11,7 +11,7 @@ import "common.pkl"
 // StorageClass (cluster-scoped)
 // =============================================================================
 
-function mapStorageClass(src: Any, prefix: String, _namespace: String): sc.StorageClass =
+function mapStorageClass(src: Any, prefix: String, _namespace: common.NamespaceArg): sc.StorageClass =
   new sc.StorageClass {
     label = common.makeLabel(prefix, "storageclass", src.metadata.name)
     metadata = common.mapClusterMeta(src.metadata)
@@ -34,7 +34,7 @@ function mapStorageClass(src: Any, prefix: String, _namespace: String): sc.Stora
 // CSIDriver (cluster-scoped)
 // =============================================================================
 
-function mapCSIDriver(src: Any, prefix: String, _namespace: String): csi.CSIDriver =
+function mapCSIDriver(src: Any, prefix: String, _namespace: common.NamespaceArg): csi.CSIDriver =
   new csi.CSIDriver {
     label = common.makeLabel(prefix, "csidriver", src.metadata.name)
     metadata = common.mapClusterMeta(src.metadata)
