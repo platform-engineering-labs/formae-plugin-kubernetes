@@ -10,6 +10,16 @@ formae agent.
 
 ## [0.1.10]
 
+### Added
+
+- **AWS credential profile on `EKSAuth`.** The EKS auth block now accepts an
+  optional `profile` that selects a named AWS shared-config profile for
+  minting the cluster's STS token. Previously token minting used only the
+  default credential chain, which fell through to EC2 IMDS off-cluster and
+  failed with `no EC2 IMDS role found`. The profile is folded into the client
+  cache key, so two targets reaching one cluster via different profiles no
+  longer alias the same cached client.
+
 ### Changed
 
 - Drop the removed `--watch` flag from the example commands in the README,

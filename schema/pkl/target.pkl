@@ -88,10 +88,14 @@ class EKSAuth extends Auth {
   hidden certificateAuthority: (String|formae.Resolvable)
   hidden clusterName: (String|formae.Resolvable)
   hidden region: (String|formae.Resolvable)?
+  /// AWS shared-config credential profile used to sign the EKS STS token.
+  /// Omit to use the agent's default AWS credential chain.
+  hidden profile: String?
   fixed Endpoint: (String|formae.Resolvable) = endpoint
   fixed CertificateAuthority: (String|formae.Resolvable) = certificateAuthority
   fixed ClusterName: (String|formae.Resolvable) = clusterName
   fixed Region: (String|formae.Resolvable)? = region
+  fixed Profile: String? = profile
 }
 
 /// Google GKE auth via OAuth2 access token.

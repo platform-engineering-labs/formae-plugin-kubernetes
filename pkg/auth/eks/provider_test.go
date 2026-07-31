@@ -14,7 +14,7 @@ import (
 )
 
 func TestEKSProvider_ConfigureTransport_SetsWrapTransport(t *testing.T) {
-	provider := eks.NewProvider("my-cluster", "us-west-2")
+	provider := eks.NewProvider("my-cluster", "us-west-2", "")
 	cfg := &rest.Config{}
 
 	if err := provider.ConfigureTransport(cfg); err != nil {
@@ -23,6 +23,14 @@ func TestEKSProvider_ConfigureTransport_SetsWrapTransport(t *testing.T) {
 
 	if cfg.WrapTransport == nil {
 		t.Fatal("expected WrapTransport to be set")
+	}
+}
+
+func TestEKSProvider_NewProvider_StoresProfile(t *testing.T) {
+	provider := eks.NewProvider("my-cluster", "us-west-2", "blue")
+
+	if provider.Profile != "blue" {
+		t.Errorf("Profile = %q, want %q", provider.Profile, "blue")
 	}
 }
 

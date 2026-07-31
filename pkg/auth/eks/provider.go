@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/auth"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/auth"
 	"k8s.io/client-go/rest"
 )
 
@@ -32,17 +32,21 @@ const tokenFetchTimeout = 10 * time.Second
 type Provider struct {
 	ClusterName string
 	Region      string
+	// Profile names an AWS shared-config credential profile to sign the STS
+	// GetCallerIdentity call with. Empty means the default credential chain.
+	Profile string
 }
 
-// NewProvider creates an EKS auth provider.
-func NewProvider(clusterName, region string) *Provider {
-	return &Provider{ClusterName: clusterName, Region: region}
+// NewProvider creates an EKS auth provider. profile is optional; empty uses
+// the default AWS credential chain.
+func NewProvider(clusterName, region, profile string) *Provider {
+	return &Provider{ClusterName: clusterName, Region: region, Profile: profile}
 }
 
 // ConfigureTransport sets WrapTransport on the rest.Config to inject
 // fresh STS presigned tokens on every K8S API request.
 func (p *Provider) ConfigureTransport(cfg *rest.Config) error {
-	source := &tokenSource{clusterName: p.ClusterName, region: p.Region}
+	source := &tokenSource{clusterName: p.ClusterName, region: p.Region, profile: p.Profile}
 	cached := auth.NewCachedTokenSource(source)
 	cfg.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
 		return auth.NewTokenTransport(rt, cached)
@@ -54,6 +58,7 @@ func (p *Provider) ConfigureTransport(cfg *rest.Config) error {
 type tokenSource struct {
 	clusterName string
 	region      string
+	profile     string
 }
 
 // Token generates a presigned STS GetCallerIdentity URL for EKS auth.
@@ -68,6 +73,9 @@ func (s *tokenSource) Token(ctx context.Context) (string, time.Time, error) {
 	opts := []func(*awsconfig.LoadOptions) error{}
 	if s.region != "" {
 		opts = append(opts, awsconfig.WithRegion(s.region))
+	}
+	if s.profile != "" {
+		opts = append(opts, awsconfig.WithSharedConfigProfile(s.profile))
 	}
 
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx, opts...)
