@@ -196,10 +196,10 @@ choosing the matching file.
 pkl project resolve examples/
 
 # Pick a cloud by choosing the matching file
-formae apply --mode reconcile --watch examples/bookstore/local.pkl
-formae apply --mode reconcile --watch examples/bookstore/aws.pkl
-formae apply --mode reconcile --watch examples/lgtm-observability/azure.pkl
-formae apply --mode reconcile --watch examples/crossplane/gcp.pkl
+formae apply --mode reconcile examples/bookstore/local.pkl
+formae apply --mode reconcile examples/bookstore/aws.pkl
+formae apply --mode reconcile examples/lgtm-observability/azure.pkl
+formae apply --mode reconcile examples/crossplane/gcp.pkl
 ```
 
 Each workload example has a per-directory README with prerequisites, smoke
@@ -219,8 +219,8 @@ to render Helm charts into typed K8s resources.
 
 ```bash
 pkl eval examples/helm/nginx-v1.31.pkl --project-dir examples/helm/
-formae apply examples/helm/nginx-v1.31.pkl --mode reconcile --yes --watch
-formae destroy examples/helm/nginx-v1.31.pkl --yes --watch
+formae apply examples/helm/nginx-v1.31.pkl --mode reconcile --yes
+formae destroy examples/helm/nginx-v1.31.pkl --yes
 ```
 
 ## Targets
