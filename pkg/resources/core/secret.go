@@ -6,6 +6,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -20,6 +21,34 @@ import (
 )
 
 const ResourceTypeSecret = "K8S::Core::Secret"
+
+// enrichDecodedData attaches the secret's base64-decoded payload as a read-only
+// `decodedData` field on the live-state properties. The Kubernetes API returns
+// secret values base64-encoded on the wire, but client-go decodes them into
+// Secret.Data (map[string][]byte), so the raw bytes are already the plaintext
+// value and are converted to strings verbatim (no second decode).
+//
+// decodedData is deliberately separate from `data`: `data` round-trips as
+// base64 on Create/Update, so decoding it in place would make actual state
+// diverge from desired and produce perpetual drift. The schema types
+// decodedData with formae.SecretValue and marks it writeOnly, so the agent
+// hashes it at rest and excludes it from drift detection; consumers reference a
+// value with `secret.res.secretValue.at("key")`.
+func enrichDecodedData(properties []byte, data map[string][]byte) ([]byte, error) {
+	if len(data) == 0 {
+		return properties, nil
+	}
+	var props map[string]any
+	if err := json.Unmarshal(properties, &props); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal secret properties for decode enrichment: %w", err)
+	}
+	decoded := make(map[string]string, len(data))
+	for k, v := range data {
+		decoded[k] = string(v)
+	}
+	props["decodedData"] = decoded
+	return json.Marshal(props)
+}
 
 func init() {
 	registry.Register(
@@ -68,6 +97,10 @@ func (s *Secret) Create(ctx context.Context, request *resource.CreateRequest) (*
 	if err != nil {
 		return nil, fmt.Errorf("failed to get secret live state: %w", err)
 	}
+	properties, err = enrichDecodedData(properties, result.Data)
+	if err != nil {
+		return nil, err
+	}
 
 	return &resource.CreateResult{
 		ProgressResult: &resource.ProgressResult{
@@ -99,6 +132,10 @@ func (s *Secret) Read(ctx context.Context, request *resource.ReadRequest) (*reso
 	properties, err := prov.LiveState[v1coreac.SecretApplyConfiguration](result, "Secret", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get secret live state: %w", err)
+	}
+	properties, err = enrichDecodedData(properties, result.Data)
+	if err != nil {
+		return nil, err
 	}
 
 	return &resource.ReadResult{
@@ -137,6 +174,10 @@ func (s *Secret) Update(ctx context.Context, request *resource.UpdateRequest) (*
 	properties, err := prov.LiveState[v1coreac.SecretApplyConfiguration](result, "Secret", "v1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get secret live state: %w", err)
+	}
+	properties, err = enrichDecodedData(properties, result.Data)
+	if err != nil {
+		return nil, err
 	}
 
 	return &resource.UpdateResult{
@@ -199,6 +240,10 @@ func (s *Secret) Status(ctx context.Context, request *resource.StatusRequest) (*
 	if err != nil {
 		return nil, fmt.Errorf("failed to get secret live state: %w", err)
 	}
+	properties, err = enrichDecodedData(properties, result.Data)
+	if err != nil {
+		return nil, err
+	}
 
 	return &resource.StatusResult{
 		ProgressResult: &resource.ProgressResult{
@@ -230,7 +275,6 @@ func (s *Secret) List(ctx context.Context, request *resource.ListRequest) (*reso
 	}); err != nil {
 		return nil, fmt.Errorf("failed to list secrets: %w", err)
 	}
-
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,

@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -48,7 +49,14 @@ func SetupEnv(t *testing.T) *TestEnv {
 		ns = ns[:63]
 	}
 
-	targetJSON := `{"Auth": {"Type": "Kubeconfig", "Context": "orbstack"}}`
+	// The kube context defaults to "orbstack" but can be overridden with
+	// KUBE_CONTEXT (e.g. "kind-formae-secrets") so the suite runs against any
+	// local cluster.
+	kubeContext := os.Getenv("KUBE_CONTEXT")
+	if kubeContext == "" {
+		kubeContext = "orbstack"
+	}
+	targetJSON := fmt.Sprintf(`{"Auth": {"Type": "Kubeconfig", "Context": %q}}`, kubeContext)
 	cfg, err := config.FromTargetConfig([]byte(targetJSON))
 	if err != nil {
 		t.Fatalf("failed to parse target config: %v", err)
