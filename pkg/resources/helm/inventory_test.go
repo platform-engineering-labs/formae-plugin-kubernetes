@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/release"
 	helmtime "helm.sh/helm/v3/pkg/time"
 )
@@ -387,5 +388,64 @@ func TestValidateChartRef(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "repoURL") {
 		t.Errorf("error does not name the fix: %v", err)
+	}
+}
+
+func relWithChart(name, version string) *release.Release {
+	r := relAt(release.StatusDeployed, 1, time.Minute)
+	r.Chart = &chart.Chart{Metadata: &chart.Metadata{Name: name, Version: version}}
+	return r
+}
+
+// Helm keeps the whole chart in the release record, so re-applying the deployed
+// version needs no fetch — and therefore no repoURL. That is what lets an
+// extracted forma be adopted without repository information, which Helm cannot
+// give us anyway.
+func TestStoredChartUsable(t *testing.T) {
+	cur := relWithChart("kratos", "0.62.1")
+
+	if !storedChartUsable(cur, &releaseProperties{Chart: "kratos", Version: "0.62.1"}) {
+		t.Error("bare name at the deployed version should reuse the stored chart")
+	}
+	if !storedChartUsable(cur, &releaseProperties{Chart: "ory/kratos", Version: "0.62.1"}) {
+		t.Error("repo-qualified name at the deployed version should reuse the stored chart")
+	}
+	if !storedChartUsable(cur, &releaseProperties{
+		Chart: "oci://registry-1.docker.io/charts/kratos", Version: "0.62.1"}) {
+		t.Error("oci reference at the deployed version should reuse the stored chart")
+	}
+
+	// A different version has to be fetched.
+	if storedChartUsable(cur, &releaseProperties{Chart: "kratos", Version: "0.63.0"}) {
+		t.Error("a version bump must not reuse the stored chart")
+	}
+	// A different chart entirely has to be fetched.
+	if storedChartUsable(cur, &releaseProperties{Chart: "hydra", Version: "0.62.1"}) {
+		t.Error("a different chart must not reuse the stored chart")
+	}
+	// No version means "newest at apply time"; reusing the stored chart would
+	// silently pin the release forever.
+	if storedChartUsable(cur, &releaseProperties{Chart: "kratos"}) {
+		t.Error("an unpinned version must still be fetched")
+	}
+	if storedChartUsable(nil, &releaseProperties{Chart: "kratos", Version: "0.62.1"}) {
+		t.Error("no current release means nothing to reuse")
+	}
+	if storedChartUsable(relAt(release.StatusDeployed, 1, time.Minute),
+		&releaseProperties{Chart: "kratos", Version: "0.62.1"}) {
+		t.Error("a release record without a chart means nothing to reuse")
+	}
+}
+
+func TestChartRefName(t *testing.T) {
+	for in, want := range map[string]string{
+		"kratos":     "kratos",
+		"ory/kratos": "kratos",
+		"oci://registry-1.docker.io/charts/kratos": "kratos",
+		"./testdata/charts/hooked":                 "hooked",
+	} {
+		if got := chartRefName(in); got != want {
+			t.Errorf("chartRefName(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

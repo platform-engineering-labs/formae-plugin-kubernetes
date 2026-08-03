@@ -257,6 +257,40 @@ func planSubmit(current *release.Release, isCreate bool) (action submitAction, t
 	return actionUpgrade, current.Version + 1
 }
 
+// storedChartUsable reports whether the chart already in the release record
+// satisfies what the forma asks for, making a fetch unnecessary.
+//
+// Helm persists the whole chart — templates included — in the release Secret;
+// that is how `helm rollback` re-renders without network access. So re-applying
+// the version that is already deployed needs nothing fetched, and therefore needs
+// no repoURL. That matters for adoption: an extracted forma describes the live
+// release exactly, so it can be adopted with no repository information at all,
+// which is just as well because Helm does not record where a chart came from.
+//
+// Deliberately requires an explicit version. An empty version means "newest at
+// apply time", and reusing the stored chart then would silently pin the release
+// to its current version and never upgrade it again.
+func storedChartUsable(current *release.Release, props *releaseProperties) bool {
+	if current == nil || current.Chart == nil || current.Chart.Metadata == nil {
+		return false
+	}
+	if props.Version == "" || props.Version != current.Chart.Metadata.Version {
+		return false
+	}
+	// The chart reference may be a bare name, a repo-qualified name, an oci://
+	// URL or a path; all that can be compared against the record is the name.
+	return chartRefName(props.Chart) == current.Chart.Metadata.Name
+}
+
+// chartRefName reduces a chart reference to its chart name.
+func chartRefName(ref string) string {
+	ref = strings.TrimSuffix(ref, "/")
+	if i := strings.LastIndex(ref, "/"); i >= 0 {
+		return ref[i+1:]
+	}
+	return ref
+}
+
 // ---------------------------------------------------------------------------
 // Create / Update
 // ---------------------------------------------------------------------------
@@ -373,9 +407,16 @@ func (r *Release) submit(
 		return nil, goerrors.New(stalledMessage(current, ns, name))
 	}
 
-	chrt, err := loadChart(conf, props)
-	if err != nil {
-		return nil, err
+	// Reuse the stored chart when the forma asks for what is already deployed,
+	// so re-applying an unchanged release needs no repository access.
+	var chrt *chart.Chart
+	if storedChartUsable(current, props) {
+		chrt = current.Chart
+	} else {
+		chrt, err = loadChart(conf, props)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Detached: the request context is cancelled the moment submit returns.

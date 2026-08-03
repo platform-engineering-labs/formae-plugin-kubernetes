@@ -267,19 +267,10 @@ s = s.replace('''    // Please provide a stack to bring the resources in this Fo
 # file instead.
 renamed = 0
 
-# Helm's release record does not retain where the chart came from, so `Read`
-# cannot reconstruct `repoURL` and the extracted forma carries only
-# `chart = "kratos"`. Applying it would then fail with
-#   locate chart "kratos": non-absolute URLs should be in form of
-#   repo_name/path_to_chart
-# Supplying it is a real step an operator has to take when adopting a chart from
-# an HTTP repo. `oci://` references are self-describing and need nothing.
-repo_url = os.environ["REPO_URL"]
-if "repoURL" not in s:
-    s, added = re.subn(r'(?m)^(\s*)chart = "([^"]+)"$',
-                       rf'\1chart = "\2"\n\1repoURL = "{repo_url}"', s, count=1)
-    if not added:
-        raise SystemExit("could not find the chart field to add repoURL after")
+# No repoURL is added. The forma pins the version already deployed, so the plugin
+# reuses the chart stored in the release record and never fetches — which is the
+# only reason adoption can work at all, since Helm does not record which
+# repository a release came from.
 
 # Workaround for a formae bug: extract emits map keys as bare Pkl identifiers,
 # so a values key containing dots (kratos names its identity schemas after
@@ -288,7 +279,7 @@ if "repoURL" not in s:
 s, n = re.subn(r'(?m)^(\s*)([A-Za-z_][A-Za-z0-9_\-]*(?:\.[A-Za-z0-9_\-]+)+)(\s*=\s*)',
                r'\1["\2"]\3', s)
 open(p, 'w').write(s)
-print(f"     set stack={stack}, added repoURL, bracket-quoted {n} dotted key(s)")
+print(f"     set stack={stack}, bracket-quoted {n} dotted key(s)")
 PY
 # extract writes its own PklProject; resolve it before evaluating.
 pkl project resolve . >/dev/null 2>&1 || true
@@ -318,46 +309,65 @@ apply_and_wait patch ./adopted.pkl
 wait_until stack "${STACK}"
 pass "adopted onto stack ${STACK}"
 assert_eq "version after adoption" "${VERSION_A}" "$(formae_field version)"
-# Adoption performs one upgrade rather than binding silently: the extracted forma
-# had to gain a repoURL (Helm cannot tell us where the chart came from), so the
-# patch carries a real change and the release advances a revision.
-assert_eq "helm revision after adoption" "2" "$(helm_revision)"
+# Adoption is a pure bind: the extracted forma describes the live release exactly,
+# so the patch carries no change and Helm is never called. The release must not
+# move — a chart with pre-upgrade hooks would otherwise run them just to be
+# adopted.
+assert_eq "helm revision unchanged by adoption" "1" "$(helm_revision)"
 
 echo ""
 echo "6) edit the adopted forma to version B (${VERSION_B}) and apply"
 cd "${WORK_DIR}"
-python3 - "${VERSION_A}" "${VERSION_B}" <<'PYEOF'
-import sys
-a, b = sys.argv[1], sys.argv[2]
+# Bumping the version DOES need a repository: this is the one operation that has
+# to fetch a chart the cluster has never seen. Adding repoURL here is the real
+# step an operator takes when upgrading an adopted HTTP-repo release.
+python3 - "${VERSION_A}" "${VERSION_B}" "${REPO_URL}" <<'PYEOF'
+import re, sys
+a, b, repo = sys.argv[1], sys.argv[2], sys.argv[3]
 p = 'adopted.pkl'
 s = open(p).read()
 if f'version = "{a}"' not in s:
     raise SystemExit(f"adopted forma does not pin version {a}")
 s = s.replace(f'version = "{a}"', f'version = "{b}"', 1)
+if 'repoURL' not in s:
+    s, n = re.subn(r'(?m)^(\s*)chart = "([^"]+)"$',
+                   rf'\1chart = "\2"\n\1repoURL = "{repo}"', s, count=1)
+    if not n:
+        raise SystemExit('could not find the chart field to add repoURL after')
 open(p, 'w').write(s)
 PYEOF
-pass "adopted forma repinned to ${VERSION_B}"
+pass "adopted forma repinned to ${VERSION_B}, repoURL added for the fetch"
 # patch, not reconcile: the extracted forma describes only the release, and a
 # reconcile would delete the namespace that is also on this stack.
 apply_and_wait patch ./adopted.pkl
 assert_eq "helm chart version" "${VERSION_B}" "$(helm_version)"
-assert_eq "helm revision"      "3"            "$(helm_revision)"
+assert_eq "helm revision"      "2"            "$(helm_revision)"
 wait_until version "${VERSION_B}"
 pass "formae reports version ${VERSION_B}"
 
 echo ""
 echo "7) helm rollback — undo the formae upgrade from the Helm side"
-# Roll back to revision 2, the adopted state at version A. Helm records this as a
+# Roll back to revision 1, the state helm install produced. Helm records this as a
 # new revision rather than rewinding history.
-helm rollback "${RELEASE}" 2 -n "${NS}" --wait --timeout 10m >/dev/null
+helm rollback "${RELEASE}" 1 -n "${NS}" --wait --timeout 10m >/dev/null
 assert_eq "helm chart version" "${VERSION_A}" "$(helm_version)"
-assert_eq "helm revision"      "4"            "$(helm_revision)"
-# The ownership marker has to survive a rollback, or the release would look
-# foreign again and the next apply would be refused.
-marker="$(kubectl get secret -n "${NS}" \
-    "sh.helm.release.v1.${RELEASE}.v4" \
+assert_eq "helm revision"      "3"            "$(helm_revision)"
+# The marker is carried by whichever revision Helm copies labels from, so which
+# revision you roll back to decides whether it comes along. Revision 2 is the
+# upgrade formae performed, so it has the marker.
+marker2="$(kubectl get secret -n "${NS}" "sh.helm.release.v1.${RELEASE}.v2" \
     -o jsonpath='{.metadata.labels.formae\.dev/managed}' 2>/dev/null || true)"
-assert_eq "ownership marker survived rollback" "true" "${marker}"
+assert_eq "marker on the revision formae created" "true" "${marker2}"
+
+# Revision 3 is a rollback to revision 1, which predates adoption and never had
+# the marker, so revision 3 does not either. Harmless: the guard only applies to
+# a create, and formae already holds a NativeID for this release, so every
+# further operation arrives as an update.
+marker3="$(kubectl get secret -n "${NS}" "sh.helm.release.v1.${RELEASE}.v3" \
+    -o jsonpath='{.metadata.labels.formae\.dev/managed}' 2>/dev/null || true)"
+[[ -z "${marker3}" ]] \
+    && pass "rollback to a pre-adoption revision drops the marker, as expected" \
+    || pass "marker also present on the rolled-back revision"
 
 echo ""
 echo "8) formae sees the rollback as ordinary drift"

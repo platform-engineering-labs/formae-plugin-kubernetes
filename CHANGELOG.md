@@ -61,6 +61,14 @@ formae agent.
   formae, and Helm then rejected the next upgrade outright with "user supplied
   labels contains system reserved label name".
 
+- **Re-applying the deployed version needs no chart fetch.** Helm stores the whole
+  chart in the release record, so when a forma pins the version already deployed
+  the plugin reuses it instead of resolving a repository. This is what lets an
+  adopted release be managed with no `repoURL` at all — `Read` cannot reconstruct
+  one, because Helm does not record where a chart came from. Bumping the version
+  still fetches, and still needs `repoURL`. An unpinned `version` always fetches:
+  reusing the stored chart there would silently pin the release forever.
+
 - **A bare chart name without `repoURL` is rejected up front**, naming the fix,
   instead of failing inside Helm with "non-absolute URLs should be in form of
   repo_name/path_to_chart". Most often hit when adopting a release installed from
