@@ -147,6 +147,44 @@ func parseRequestID(id string) (namespace, name string, revision int, op opKind,
 }
 
 // ---------------------------------------------------------------------------
+// Deciding what to do about an existing release
+// ---------------------------------------------------------------------------
+
+// submitAction is what submit should do given whatever release already exists.
+type submitAction int
+
+const (
+	// actionInstall — no release under this name.
+	actionInstall submitAction = iota
+	// actionUpgrade — a settled release (deployed, failed or superseded). Helm
+	// accepts an upgrade from any of those.
+	actionUpgrade
+	// actionRetry — another Helm operation holds the lock. Come back later.
+	actionRetry
+	// actionBlocked — the lock is held by an operation nothing is going to
+	// finish. Retrying cannot clear it.
+	actionBlocked
+)
+
+// planSubmit decides the operation and the revision it should produce.
+//
+// Split out from submit so the decision is testable without a cluster: the
+// pending-release branches are exactly where this went wrong before, and they
+// are the hardest states to reach on demand against a live Helm.
+func planSubmit(current *release.Release) (action submitAction, targetRevision int) {
+	if current == nil {
+		return actionInstall, 1
+	}
+	if releaseIsPending(current) {
+		if stalled(current) {
+			return actionBlocked, current.Version
+		}
+		return actionRetry, current.Version
+	}
+	return actionUpgrade, current.Version + 1
+}
+
+// ---------------------------------------------------------------------------
 // Create / Update
 // ---------------------------------------------------------------------------
 
@@ -211,17 +249,38 @@ func (r *Release) submit(
 		return nil, err
 	}
 
-	// Helm treats pending as a pessimistic lock: both Install.availableName and
-	// Upgrade.prepareUpgrade refuse to proceed. Report rather than fight it —
-	// Status decides whether it is live or abandoned.
-	if releaseIsPending(current) {
+	action, target := planSubmit(current)
+
+	switch action {
+	case actionRetry:
+		// Helm's pending status is a pessimistic lock — both
+		// Install.availableName and Upgrade.prepareUpgrade refuse to proceed —
+		// so there is nothing to do but come back later.
+		//
+		// This MUST be a retryable failure, not InProgress. Reporting InProgress
+		// here would hand back a RequestID naming the revision already in flight;
+		// once that revision settled, Status would see the release deployed at
+		// the expected revision and report Success for work that never ran,
+		// silently dropping the change. ResourceConflict is on the SDK's
+		// recoverable list, so the agent re-drives the whole operation instead.
 		return &resource.ProgressResult{
-			OperationStatus: resource.OperationStatusInProgress,
+			OperationStatus: resource.OperationStatusFailure,
+			ErrorCode:       resource.OperationErrorCodeResourceConflict,
 			NativeID:        nativeIDUnless(withholdNativeID, ns, name),
-			RequestID:       requestID(ns, name, current.Version, opForStatus(current.Info.Status)),
 			StatusMessage: fmt.Sprintf(
-				"release %s/%s is %s from an earlier operation; waiting for it to settle",
+				"release %s/%s is %s from another operation; retrying once Helm releases the lock",
 				ns, name, current.Info.Status),
+		}, nil
+
+	case actionBlocked:
+		// Pending long past any plausible hook runtime: no Helm process is
+		// coming back to finish it, so retrying cannot help. Not recoverable —
+		// this needs a human.
+		return &resource.ProgressResult{
+			OperationStatus: resource.OperationStatusFailure,
+			ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
+			NativeID:        nativeIDUnless(withholdNativeID, ns, name),
+			StatusMessage:   stalledMessage(current, ns, name),
 		}, nil
 	}
 
@@ -234,10 +293,8 @@ func (r *Release) submit(
 	runCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), props.timeout())
 
 	op := opInstall
-	target := 1
-	if current != nil {
+	if action == actionUpgrade {
 		op = opUpgrade
-		target = current.Version + 1
 	}
 
 	done := make(chan error, 1)
@@ -391,6 +448,23 @@ func (r *Release) Read(ctx context.Context, request *resource.ReadRequest) (*res
 		return &resource.ReadResult{
 			ResourceType: request.ResourceType,
 			ErrorCode:    resource.OperationErrorCodeNotFound,
+		}, nil
+	}
+
+	// A pending release is mid-operation, and its record is a snapshot of a
+	// moment rather than a state worth storing.
+	//
+	// Reporting it would put "pending-upgrade" into formae's state, and formae
+	// then refuses to queue an update against a resource it believes is
+	// in-flight — a rejection that `--force` does not override. So an
+	// out-of-band `helm upgrade` observed at the wrong instant would wedge the
+	// resource until something else re-synced it. NotStabilized is on the SDK's
+	// recoverable list, so the read is simply retried and the previous settled
+	// state is kept meanwhile.
+	if releaseIsPending(rel) {
+		return &resource.ReadResult{
+			ResourceType: request.ResourceType,
+			ErrorCode:    resource.OperationErrorCodeNotStabilized,
 		}, nil
 	}
 
@@ -754,13 +828,6 @@ func isReleaseNotFound(err error) bool {
 	return goerrors.Is(err, driver.ErrReleaseNotFound) ||
 		goerrors.Is(err, driver.ErrNoDeployedReleases) ||
 		strings.Contains(err.Error(), "release: not found")
-}
-
-func opForStatus(s release.Status) opKind {
-	if s == release.StatusPendingInstall {
-		return opInstall
-	}
-	return opUpgrade
 }
 
 func loadChart(conf *action.Configuration, props *releaseProperties) (*chart.Chart, error) {

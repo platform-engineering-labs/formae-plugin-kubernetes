@@ -177,6 +177,70 @@ func TestNativeIDUnless(t *testing.T) {
 	}
 }
 
+func relAt(status release.Status, revision int, age time.Duration) *release.Release {
+	return &release.Release{
+		Version: revision,
+		Info: &release.Info{
+			Status:       status,
+			LastDeployed: helmtime.Time{Time: time.Now().Add(-age)},
+		},
+	}
+}
+
+func TestPlanSubmit_NoReleaseInstallsRevisionOne(t *testing.T) {
+	action, target := planSubmit(nil)
+	if action != actionInstall || target != 1 {
+		t.Fatalf("got action=%d target=%d, want install/1", action, target)
+	}
+}
+
+func TestPlanSubmit_SettledReleaseUpgradesToNextRevision(t *testing.T) {
+	// Helm accepts an upgrade from deployed, failed and superseded alike
+	// (upgrade.go:226-234), so all three must plan an upgrade rather than stall.
+	for _, status := range []release.Status{
+		release.StatusDeployed,
+		release.StatusFailed,
+		release.StatusSuperseded,
+	} {
+		action, target := planSubmit(relAt(status, 4, time.Minute))
+		if action != actionUpgrade || target != 5 {
+			t.Errorf("status %s: got action=%d target=%d, want upgrade/5", status, action, target)
+		}
+	}
+}
+
+// The regression this whole refactor exists for.
+//
+// A live pending release must plan a RETRY. The bug was reporting InProgress
+// against the in-flight revision: once that revision settled, Status saw the
+// release deployed at the expected revision and reported Success for work that
+// never ran, so the requested change was dropped while formae recorded success.
+func TestPlanSubmit_LivePendingReleaseRetriesRatherThanClaimingProgress(t *testing.T) {
+	for _, status := range []release.Status{
+		release.StatusPendingInstall,
+		release.StatusPendingUpgrade,
+		release.StatusPendingRollback,
+	} {
+		action, target := planSubmit(relAt(status, 2, 5*time.Second))
+		if action != actionRetry {
+			t.Errorf("status %s: got action=%d, want actionRetry", status, action)
+		}
+		// Must NOT be read as "revision 2 is what we asked for".
+		if action == actionUpgrade && target == 2 {
+			t.Errorf("status %s: planned an upgrade to the in-flight revision", status)
+		}
+	}
+}
+
+func TestPlanSubmit_AbandonedPendingReleaseIsBlockedNotRetried(t *testing.T) {
+	// Nothing is coming back to finish it, so retrying just burns the attempt
+	// budget before failing with a less useful message.
+	action, _ := planSubmit(relAt(release.StatusPendingInstall, 1, 3*defaultTimeoutSeconds*time.Second))
+	if action != actionBlocked {
+		t.Fatalf("got action=%d, want actionBlocked", action)
+	}
+}
+
 func TestStalled_OnlyAfterTwiceTheOperationTimeout(t *testing.T) {
 	pendingSince := func(d time.Duration) *release.Release {
 		return &release.Release{Info: &release.Info{

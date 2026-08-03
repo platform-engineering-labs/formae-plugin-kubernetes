@@ -90,17 +90,13 @@ for r in json.load(sys.stdin)["Resources"]:
 # formae apply returns as soon as the agent accepts the command. Swallowing its
 # output hides both CLI errors and agent-side failures, so capture the command id
 # and poll it to a terminal state.
-apply_and_wait() {
-    local out id state tries=0
-    if ! out="$("${FORMAE}" apply --mode reconcile --yes "$@" 2>&1)"; then
-        echo "${out}" | sed 's/^/     /' >&2
-        fail "formae apply exited nonzero"
-    fi
-    id="$(printf '%s' "${out}" | grep -oE "id:[A-Za-z0-9]+" | head -1 | cut -d: -f2)"
-    if [[ -z "${id}" ]]; then
-        echo "${out}" | sed 's/^/     /' >&2
-        fail "formae apply submitted no command"
-    fi
+# Extracts the command id formae prints on submit.
+command_id() { printf '%s' "$1" | grep -oE "id:[A-Za-z0-9]+" | head -1 | cut -d: -f2; }
+
+# Polls one command to a terminal state. Both apply and destroy are accepted
+# asynchronously, so anything that does not wait here races the next step.
+wait_command() {
+    local id="$1" quiet="${2:-}" state tries=0
     while :; do
         state="$("${FORMAE}" status command --query="id:${id}" --output-consumer machine 2>/dev/null \
             | python3 -c '
@@ -110,15 +106,52 @@ except Exception: cs = []
 print(cs[0].get("State","") if cs else "")
 ')"
         case "${state}" in
-            Success)  return 0 ;;
+            Success) return 0 ;;
             Failed|Rejected|Canceled)
+                [[ -n "${quiet}" ]] && return 1
                 "${FORMAE}" status command --query="id:${id}" 2>&1 | sed 's/^/     /' >&2
                 fail "command ${id} ended ${state}" ;;
         esac
         tries=$((tries + 1))
-        [[ ${tries} -gt 120 ]] && fail "command ${id} did not finish (last state '${state}')"
+        if [[ ${tries} -gt 120 ]]; then
+            [[ -n "${quiet}" ]] && return 1
+            fail "command ${id} did not finish (last state '${state}')"
+        fi
         sleep 3
     done
+}
+
+# formae apply returns as soon as the agent accepts the command. Swallowing its
+# output hides both CLI errors and agent-side failures, so capture the command id
+# and poll it to a terminal state.
+# A bare `Rejected` with no ErrorMessage and no attempt count never reached the
+# plugin — the agent turned the submit down up front. Besides drift (which
+# --force covers) that happens when a background sync lands between the CLI's
+# pre-flight read and its submit, so the stack version the CLI carried is already
+# stale. That is an optimistic-concurrency conflict and the client's job to
+# retry, so retry a few times before calling it a failure.
+apply_and_wait() {
+    local out id attempt
+    for attempt in 1 2 3 4; do
+        if ! out="$("${FORMAE}" apply --mode reconcile --yes "$@" 2>&1)"; then
+            # A pre-flight refusal prints to stderr and exits nonzero; that is
+            # the drift guard, which the caller may be asserting on purpose.
+            echo "${out}" | sed 's/^/     /' >&2
+            fail "formae apply exited nonzero"
+        fi
+        id="$(command_id "${out}")"
+        if [[ -z "${id}" ]]; then
+            echo "${out}" | sed 's/^/     /' >&2
+            fail "formae apply submitted no command"
+        fi
+        if wait_command "${id}" quiet; then
+            return 0
+        fi
+        echo "     submit ${id} was turned down (attempt ${attempt}); retrying" >&2
+        sleep 10
+    done
+    "${FORMAE}" status command --query="id:${id}" 2>&1 | sed 's/^/     /' >&2
+    fail "apply kept being rejected after 4 attempts"
 }
 
 # formae apply is asynchronous; block until the release settles or time out.
@@ -142,10 +175,17 @@ wait_for_formae() {
     done
 }
 
+# Destroy is asynchronous too. Returning before it finishes leaves the stack
+# half-torn-down, and the next run's apply is then rejected as drift against a
+# stack that is still being removed — which looks like a plugin fault and is not.
 cleanup() {
+    local out id
     echo ""
     echo "Cleaning up..."
-    "${FORMAE}" destroy --yes "${FORMA_FILE}" >/dev/null 2>&1 || true
+    if out="$("${FORMAE}" destroy --yes "${FORMA_FILE}" 2>&1)"; then
+        id="$(command_id "${out}")"
+        [[ -n "${id}" ]] && wait_command "${id}" quiet || true
+    fi
     helm uninstall "${RELEASE}" -n "${NS}" >/dev/null 2>&1 || true
     kubectl delete namespace "${NS}" --wait=false >/dev/null 2>&1 || true
 }
