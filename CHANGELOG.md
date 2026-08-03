@@ -40,11 +40,33 @@ formae agent.
   prefer `HelmChart` when per-object formae state matters more than chart
   fidelity.
 
+- **Ownership guard on adoption.** A release this plugin did not install is no
+  longer taken over silently. Every release formae installs carries a
+  `formae.dev/managed=true` Helm release label; Helm carries release labels
+  forward across `upgrade` and `rollback`, so the marker identifies a release
+  lineage rather than one revision. Applying a forma over a release without it
+  fails with instructions to adopt via `formae extract` instead. The marker is
+  also what lets a failed first install be retried — formae withholds the
+  NativeID until a release is deployed, so the retry arrives as a create.
+
 - **`repoURL` on `K8S::Helm::Release`.** Set it alongside a bare chart name
   (`repoURL = "https://k8s.ory.sh/helm/charts"`, `chart = "kratos"`) to resolve a
   chart from a classic HTTP repo. Without it a `repo/chart` reference only works
   if someone has run `helm repo add` on the host running the formae agent, which
   a forma cannot depend on. Not needed for `oci://` refs or local paths.
+
+- **Helm's reserved release labels no longer leak.** The secrets driver filters
+  them on `Get` but not on the list/last paths, so `Read` was exposing `name`,
+  `owner`, `status`, `version` and `modifiedAt`. They were copied into extracted
+  formae, and Helm then rejected the next upgrade outright with "user supplied
+  labels contains system reserved label name".
+
+- **A bare chart name without `repoURL` is rejected up front**, naming the fix,
+  instead of failing inside Helm with "non-absolute URLs should be in form of
+  repo_name/path_to_chart". Most often hit when adopting a release installed from
+  an HTTP repo: Helm does not record which repository a release came from, so
+  `Read` cannot reconstruct `repoURL` and it has to be supplied by hand. `oci://`
+  references are self-describing and unaffected.
 
 - **Chart-owned objects are collapsed in discovery.** Objects a Helm release
   renders no longer surface as unmanaged alongside the release that owns them.

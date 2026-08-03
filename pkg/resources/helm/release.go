@@ -147,6 +147,66 @@ func parseRequestID(id string) (namespace, name string, revision int, op opKind,
 }
 
 // ---------------------------------------------------------------------------
+// Ownership
+// ---------------------------------------------------------------------------
+
+// formaeManagedLabel marks a release as one this plugin installed.
+//
+// Stored as a Helm release label, which the secrets driver persists on the
+// release Secret and restores on read (driver/secrets.go:76). Crucially Helm
+// carries release labels forward: `upgrade` merges the previous release's labels
+// under the new ones (upgrade.go:300) and `rollback` copies them
+// (rollback.go:155). So the marker survives an out-of-band `helm upgrade` or
+// `helm rollback` — it identifies the release lineage, not a single revision.
+const formaeManagedLabel = "formae.dev/managed"
+
+// releaseLabels stamps the ownership marker onto the user's release labels.
+// Helm rejects its own reserved names (name, owner, status, version, createdAt,
+// modifiedAt), which this key is not.
+func releaseLabels(props *releaseProperties) map[string]string {
+	labels := make(map[string]string, len(props.Metadata.Labels)+1)
+	// Defensive: a forma extracted by an older build may still carry Helm's
+	// reserved names, and Helm rejects the whole operation if it sees one.
+	for k, v := range withoutSystemLabels(props.Metadata.Labels) {
+		labels[k] = v
+	}
+	labels[formaeManagedLabel] = "true"
+	return labels
+}
+
+// withoutSystemLabels drops Helm's own bookkeeping labels.
+//
+// Needed because the secrets driver only filters them on Get; the list and last
+// paths hand them back verbatim (driver/secrets.go:103,141). Left in place they
+// leak into Read, get copied into an extracted forma, and Helm then rejects the
+// next upgrade with "user supplied labels contains system reserved label name".
+func withoutSystemLabels(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	system := make(map[string]struct{}, 8)
+	for _, k := range driver.GetSystemLabels() {
+		system[k] = struct{}{}
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		if _, reserved := system[k]; reserved {
+			continue
+		}
+		out[k] = v
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// formaeOwns reports whether this plugin installed the release.
+func formaeOwns(rel *release.Release) bool {
+	return rel != nil && rel.Labels[formaeManagedLabel] == "true"
+}
+
+// ---------------------------------------------------------------------------
 // Deciding what to do about an existing release
 // ---------------------------------------------------------------------------
 
@@ -164,14 +224,24 @@ const (
 	// actionBlocked — the lock is held by an operation nothing is going to
 	// finish. Retrying cannot clear it.
 	actionBlocked
+	// actionForeign — a release under this name exists and this plugin did not
+	// install it. Taking it over would rewrite someone else's release.
+	actionForeign
 )
 
 // planSubmit decides the operation and the revision it should produce.
 //
 // Split out from submit so the decision is testable without a cluster: the
-// pending-release branches are exactly where this went wrong before, and they
-// are the hardest states to reach on demand against a live Helm.
-func planSubmit(current *release.Release) (action submitAction, targetRevision int) {
+// pending and foreign branches are exactly where this went wrong before, and
+// they are the hardest states to reach on demand against a live Helm.
+//
+// isCreate says formae has no NativeID for this resource, i.e. it believes the
+// release does not exist. That is what makes a collision detectable — but it is
+// not sufficient on its own, because Create withholds the NativeID until the
+// release is fully deployed, so formae also retries as Create after a failed
+// first install. The ownership marker separates "our own abandoned attempt",
+// which we may take over, from a genuinely foreign release, which we may not.
+func planSubmit(current *release.Release, isCreate bool) (action submitAction, targetRevision int) {
 	if current == nil {
 		return actionInstall, 1
 	}
@@ -180,6 +250,9 @@ func planSubmit(current *release.Release) (action submitAction, targetRevision i
 			return actionBlocked, current.Version
 		}
 		return actionRetry, current.Version
+	}
+	if isCreate && !formaeOwns(current) {
+		return actionForeign, current.Version
 	}
 	return actionUpgrade, current.Version + 1
 }
@@ -228,10 +301,13 @@ func (r *Release) Update(ctx context.Context, request *resource.UpdateRequest) (
 // the record and reports a stalled operation. Blocking here instead would give
 // exactly the same wedge whenever formae's call deadline fired first, minus any
 // progress reporting.
+// isCreate is true when called from Create: formae has no NativeID for this
+// resource yet, which is both why the NativeID is withheld and how a collision
+// with a pre-existing release becomes detectable.
 func (r *Release) submit(
 	ctx context.Context,
 	props *releaseProperties,
-	withholdNativeID bool,
+	isCreate bool,
 ) (*resource.ProgressResult, error) {
 	ns := props.Metadata.Namespace
 	name := props.Metadata.Name
@@ -249,7 +325,7 @@ func (r *Release) submit(
 		return nil, err
 	}
 
-	action, target := planSubmit(current)
+	action, target := planSubmit(current, isCreate)
 
 	switch action {
 	case actionRetry:
@@ -266,22 +342,35 @@ func (r *Release) submit(
 		return &resource.ProgressResult{
 			OperationStatus: resource.OperationStatusFailure,
 			ErrorCode:       resource.OperationErrorCodeResourceConflict,
-			NativeID:        nativeIDUnless(withholdNativeID, ns, name),
+			NativeID:        nativeIDUnless(isCreate, ns, name),
 			StatusMessage: fmt.Sprintf(
 				"release %s/%s is %s from another operation; retrying once Helm releases the lock",
 				ns, name, current.Info.Status),
 		}, nil
 
+	case actionForeign:
+		// Mirrors the guard the render-and-decompose path had. Overwriting the
+		// release record of a release formae did not create would rewrite its
+		// history, and `helm rollback` would then roll back to revisions this
+		// forma never described.
+		//
+		// Returned as a Go error, not a Failure ProgressResult: the host records
+		// ErrorMessage for the former and drops StatusMessage for the latter, and
+		// a refusal the operator cannot read is not actionable. Terminal either
+		// way — AlreadyExists is not on the recoverable list.
+		return nil, fmt.Errorf(
+			"release %s/%s already exists at revision %d and was not created by formae: "+
+				"applying would overwrite that record and destroy its rollback history. "+
+				"Adopt it first with `formae extract --query 'type:%s managed:false'`, "+
+				"or choose a different metadata.name",
+			ns, name, current.Version, ResourceTypeRelease)
+
 	case actionBlocked:
 		// Pending long past any plausible hook runtime: no Helm process is
-		// coming back to finish it, so retrying cannot help. Not recoverable —
-		// this needs a human.
-		return &resource.ProgressResult{
-			OperationStatus: resource.OperationStatusFailure,
-			ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			NativeID:        nativeIDUnless(withholdNativeID, ns, name),
-			StatusMessage:   stalledMessage(current, ns, name),
-		}, nil
+		// coming back to finish it, so retrying cannot help. A Go error for the
+		// same reason as actionForeign — the recovery instructions have to reach
+		// whoever is going to act on them.
+		return nil, goerrors.New(stalledMessage(current, ns, name))
 	}
 
 	chrt, err := loadChart(conf, props)
@@ -323,7 +412,7 @@ func (r *Release) submit(
 
 	return &resource.ProgressResult{
 		OperationStatus: resource.OperationStatusInProgress,
-		NativeID:        nativeIDUnless(withholdNativeID, ns, name),
+		NativeID:        nativeIDUnless(isCreate, ns, name),
 		RequestID:       requestID(ns, name, target, op),
 	}, nil
 }
@@ -395,7 +484,8 @@ func runInstall(ctx context.Context, conf *action.Configuration, props *releaseP
 	inst.DisableHooks = props.DisableHooks
 	inst.Atomic = props.Atomic
 	inst.Timeout = props.timeout()
-	inst.Labels = props.Metadata.Labels
+	// Carries the ownership marker; see formaeManagedLabel.
+	inst.Labels = releaseLabels(props)
 
 	// Readiness is Status's job, polled from the cluster. Letting Helm block on
 	// Wait would defeat the async model. Note this does NOT make the call
@@ -413,7 +503,7 @@ func runUpgrade(ctx context.Context, conf *action.Configuration, props *releaseP
 	up.DisableHooks = props.DisableHooks
 	up.Atomic = props.Atomic
 	up.Timeout = props.timeout()
-	up.Labels = props.Metadata.Labels
+	up.Labels = releaseLabels(props)
 	up.Wait = false
 
 	// MaxHistory bounds the release Secrets Helm accumulates. Unbounded history
@@ -490,7 +580,7 @@ func propertiesFromRelease(rel *release.Release) *releaseProperties {
 		Metadata: releaseMetadata{
 			Name:      rel.Name,
 			Namespace: rel.Namespace,
-			Labels:    rel.Labels,
+			Labels:    withoutSystemLabels(rel.Labels),
 		},
 		Values:        rel.Config,
 		Revision:      rel.Version,
@@ -830,9 +920,34 @@ func isReleaseNotFound(err error) bool {
 		strings.Contains(err.Error(), "release: not found")
 }
 
+// validateChartRef rejects a chart reference Helm cannot resolve, before handing
+// it to LocateChart.
+//
+// A bare name like "kratos" is unresolvable without somewhere to fetch it from,
+// and Helm's own complaint ("non-absolute URLs should be in form of
+// repo_name/path_to_chart") does not say what to do about it. This case is
+// reached most often by adopting a release installed from an HTTP repo: Helm's
+// release record does not retain the repository it came from, so Read cannot
+// reconstruct repoURL and an extracted forma arrives with the bare name alone.
+func validateChartRef(chartRef, repoURL string) error {
+	if repoURL != "" || strings.Contains(chartRef, "/") || strings.HasPrefix(chartRef, "oci://") {
+		return nil
+	}
+	return fmt.Errorf(
+		"%s: chart %q is a bare name with no repoURL, which Helm cannot resolve. "+
+			"Set repoURL to the chart repository, use a repo-qualified name, an oci:// "+
+			"reference, or a local path. Adopting a release installed from an HTTP repo "+
+			"always needs this: Helm does not record which repository a release came from, "+
+			"so it cannot be discovered",
+		ResourceTypeRelease, chartRef)
+}
+
 func loadChart(conf *action.Configuration, props *releaseProperties) (*chart.Chart, error) {
 	if props.Chart == "" {
 		return nil, fmt.Errorf("%s: chart is required", ResourceTypeRelease)
+	}
+	if err := validateChartRef(props.Chart, props.RepoURL); err != nil {
+		return nil, err
 	}
 
 	// Only locates and caches the chart; carries no cluster auth.

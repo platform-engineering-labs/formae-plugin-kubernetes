@@ -7,6 +7,7 @@
 package helm
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -178,17 +179,26 @@ func TestNativeIDUnless(t *testing.T) {
 }
 
 func relAt(status release.Status, revision int, age time.Duration) *release.Release {
-	return &release.Release{
+	r := &release.Release{
 		Version: revision,
 		Info: &release.Info{
 			Status:       status,
 			LastDeployed: helmtime.Time{Time: time.Now().Add(-age)},
 		},
 	}
+	// Owned by this plugin unless a test says otherwise.
+	r.Labels = map[string]string{formaeManagedLabel: "true"}
+	return r
+}
+
+func foreignRelAt(status release.Status, revision int) *release.Release {
+	r := relAt(status, revision, time.Minute)
+	r.Labels = map[string]string{"someone": "else"}
+	return r
 }
 
 func TestPlanSubmit_NoReleaseInstallsRevisionOne(t *testing.T) {
-	action, target := planSubmit(nil)
+	action, target := planSubmit(nil, true)
 	if action != actionInstall || target != 1 {
 		t.Fatalf("got action=%d target=%d, want install/1", action, target)
 	}
@@ -202,7 +212,7 @@ func TestPlanSubmit_SettledReleaseUpgradesToNextRevision(t *testing.T) {
 		release.StatusFailed,
 		release.StatusSuperseded,
 	} {
-		action, target := planSubmit(relAt(status, 4, time.Minute))
+		action, target := planSubmit(relAt(status, 4, time.Minute), false)
 		if action != actionUpgrade || target != 5 {
 			t.Errorf("status %s: got action=%d target=%d, want upgrade/5", status, action, target)
 		}
@@ -221,7 +231,7 @@ func TestPlanSubmit_LivePendingReleaseRetriesRatherThanClaimingProgress(t *testi
 		release.StatusPendingUpgrade,
 		release.StatusPendingRollback,
 	} {
-		action, target := planSubmit(relAt(status, 2, 5*time.Second))
+		action, target := planSubmit(relAt(status, 2, 5*time.Second), false)
 		if action != actionRetry {
 			t.Errorf("status %s: got action=%d, want actionRetry", status, action)
 		}
@@ -235,7 +245,7 @@ func TestPlanSubmit_LivePendingReleaseRetriesRatherThanClaimingProgress(t *testi
 func TestPlanSubmit_AbandonedPendingReleaseIsBlockedNotRetried(t *testing.T) {
 	// Nothing is coming back to finish it, so retrying just burns the attempt
 	// budget before failing with a less useful message.
-	action, _ := planSubmit(relAt(release.StatusPendingInstall, 1, 3*defaultTimeoutSeconds*time.Second))
+	action, _ := planSubmit(relAt(release.StatusPendingInstall, 1, 3*defaultTimeoutSeconds*time.Second), true)
 	if action != actionBlocked {
 		t.Fatalf("got action=%d, want actionBlocked", action)
 	}
@@ -259,5 +269,123 @@ func TestStalled_OnlyAfterTwiceTheOperationTimeout(t *testing.T) {
 	}
 	if stalled(&release.Release{Info: &release.Info{Status: release.StatusPendingInstall}}) {
 		t.Error("a release with no timestamp was called stalled")
+	}
+}
+
+// The adoption guard. Create means formae believes the release does not exist,
+// so a settled release it did not install is someone else's — taking it over
+// would rewrite that release's history and make `helm rollback` roll back to
+// revisions this forma never described.
+func TestPlanSubmit_ForeignReleaseIsRefusedOnCreate(t *testing.T) {
+	action, _ := planSubmit(foreignRelAt(release.StatusDeployed, 7), true)
+	if action != actionForeign {
+		t.Fatalf("got action=%d, want actionForeign", action)
+	}
+}
+
+// Once adopted, formae holds a NativeID, so the operation arrives as Update and
+// the guard must stand aside — otherwise adoption could never complete.
+func TestPlanSubmit_ForeignReleaseIsUpgradableOnUpdate(t *testing.T) {
+	action, target := planSubmit(foreignRelAt(release.StatusDeployed, 7), false)
+	if action != actionUpgrade || target != 8 {
+		t.Fatalf("got action=%d target=%d, want upgrade/8", action, target)
+	}
+}
+
+// Create withholds the NativeID until the release is deployed, so a failed first
+// install is retried as a Create. Our own marker is what lets that retry through
+// instead of being mistaken for a foreign release.
+func TestPlanSubmit_OwnFailedInstallIsRetakenOnCreate(t *testing.T) {
+	action, target := planSubmit(relAt(release.StatusFailed, 1, time.Minute), true)
+	if action != actionUpgrade || target != 2 {
+		t.Fatalf("got action=%d target=%d, want upgrade/2", action, target)
+	}
+}
+
+func TestFormaeOwns(t *testing.T) {
+	if formaeOwns(nil) {
+		t.Error("nil release reported as owned")
+	}
+	if formaeOwns(&release.Release{}) {
+		t.Error("unlabelled release reported as owned")
+	}
+	if !formaeOwns(relAt(release.StatusDeployed, 1, time.Minute)) {
+		t.Error("marked release not reported as owned")
+	}
+}
+
+func TestReleaseLabels_PreservesUserLabelsAndAddsMarker(t *testing.T) {
+	got := releaseLabels(&releaseProperties{
+		Metadata: releaseMetadata{Labels: map[string]string{"team": "identity"}},
+	})
+	if got["team"] != "identity" {
+		t.Errorf("user label dropped: %v", got)
+	}
+	if got[formaeManagedLabel] != "true" {
+		t.Errorf("ownership marker missing: %v", got)
+	}
+}
+
+// Helm's own bookkeeping labels must never reach a forma or come back to Helm.
+// The secrets driver filters them on Get but not on the list/last paths
+// (driver/secrets.go:103,141), so an extracted forma picked them up and Helm then
+// rejected the next upgrade outright.
+func TestWithoutSystemLabels(t *testing.T) {
+	got := withoutSystemLabels(map[string]string{
+		"name":             "kratos",
+		"owner":            "helm",
+		"status":           "deployed",
+		"version":          "1",
+		"modifiedAt":       "1785760601",
+		formaeManagedLabel: "true",
+		"team":             "identity",
+	})
+	if len(got) != 2 || got[formaeManagedLabel] != "true" || got["team"] != "identity" {
+		t.Fatalf("got %v, want only the marker and team", got)
+	}
+	if withoutSystemLabels(map[string]string{"owner": "helm"}) != nil {
+		t.Error("a labels map of only system labels should reduce to nil")
+	}
+	if withoutSystemLabels(nil) != nil {
+		t.Error("nil in, nil out")
+	}
+}
+
+func TestReleaseLabels_DropsSystemLabelsFromTheForma(t *testing.T) {
+	// A forma extracted before the Read-side filter existed still carries them.
+	got := releaseLabels(&releaseProperties{Metadata: releaseMetadata{
+		Labels: map[string]string{"owner": "helm", "version": "1", "team": "identity"},
+	}})
+	for _, reserved := range []string{"owner", "version"} {
+		if _, present := got[reserved]; present {
+			t.Errorf("reserved label %q passed through to Helm", reserved)
+		}
+	}
+	if got["team"] != "identity" || got[formaeManagedLabel] != "true" {
+		t.Errorf("got %v, want team plus the marker", got)
+	}
+}
+
+// Helm's own error for a bare chart name ("non-absolute URLs should be in form
+// of repo_name/path_to_chart") does not say what to do. This case is reached by
+// adopting a release installed from an HTTP repo, because Helm does not record
+// which repository a release came from.
+func TestValidateChartRef(t *testing.T) {
+	for _, ok := range []struct{ chart, repo string }{
+		{"kratos", "https://k8s.ory.sh/helm/charts"}, // repoURL supplied
+		{"ory/kratos", ""},                           // repo-qualified
+		{"oci://registry-1.docker.io/bitnamicharts/nginx", ""},
+		{"./testdata/charts/hooked", ""}, // local path
+	} {
+		if err := validateChartRef(ok.chart, ok.repo); err != nil {
+			t.Errorf("validateChartRef(%q, %q) rejected a resolvable ref: %v", ok.chart, ok.repo, err)
+		}
+	}
+	err := validateChartRef("kratos", "")
+	if err == nil {
+		t.Fatal("a bare chart name with no repoURL was accepted")
+	}
+	if !strings.Contains(err.Error(), "repoURL") {
+		t.Errorf("error does not name the fix: %v", err)
 	}
 }

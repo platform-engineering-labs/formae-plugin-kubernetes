@@ -1,0 +1,147 @@
+/// Adopt a Helm-installed release, upgrade it with formae, roll it back with Helm.
+///
+/// The release in this demo is created by `helm install` — not by formae. formae
+/// discovers it as an unmanaged `K8S::Helm::Release`, `formae extract` brings it
+/// under management, this forma then moves it to a newer chart version, and
+/// finally `helm rollback` undoes that from the Helm side.
+///
+/// Two properties worth watching:
+///
+///  1. Before adoption, applying this forma is **refused**. A release formae did
+///     not install is not formae's to overwrite — doing so would rewrite its
+///     record and make `helm rollback` roll back to revisions no forma ever
+///     described. Adoption is an explicit act.
+///
+///  2. `helm rollback` is just another out-of-band change. It lands as a new
+///     revision carrying the *old* chart version, so formae sees a plain diff on
+///     `version` — the same as any other drift.
+///
+/// Note this forma declares the release at version B and is what step 2 applies
+/// to demonstrate the refusal. It is NOT what performs the adoption: adoption
+/// binds by resource label, and `formae extract` labels the discovered release
+/// after its native id (with a dedup suffix when one is needed), so the adopted
+/// resource is managed through the extracted forma rather than this one.
+///
+/// Run it with the script, which asserts each step:
+///   make helm-adopt-test
+///
+/// See README.md in this directory for the manual walkthrough.
+amends "@formae/forma.pkl"
+
+import "@formae/formae.pkl"
+import "@k8s/v1.33/k8s.pkl" as k8s
+import "@k8s/v1.33/core/Namespace.pkl" as ns
+import "@k8s/v1.33/helm/Release.pkl" as helm
+
+/// The version formae upgrades TO. `helm install` seeds the release at the older
+/// version, so this forma is the change being applied.
+local chartVersionB = "0.63.0"
+
+/// Minimal identity schema. Kratos refuses to start without one.
+local identitySchema = """
+{
+  "$id": "https://schemas.ory.sh/presets/kratos/identity.email.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Person",
+  "type": "object",
+  "properties": {
+    "traits": {
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "title": "E-Mail",
+          "ory.sh/kratos": {
+            "credentials": { "password": { "identifier": true } },
+            "verification": { "via": "email" },
+            "recovery": { "via": "email" }
+          }
+        }
+      },
+      "required": ["email"],
+      "additionalProperties": false
+    }
+  }
+}
+"""
+
+forma {
+  new formae.Stack {
+    label = "helm-adopt"
+    description = "Release installed by Helm, adopted and upgraded by formae"
+  }
+
+  new formae.Target {
+    label = "k8s-local"
+    config = new k8s.Config {
+      kubernetesVersion = "1.33"
+      auth = new k8s.KubeconfigAuth {}
+    }
+  }
+
+  // The namespace already exists — `helm install --create-namespace` made it.
+  // Declaring it here puts it under management alongside the release.
+  local appNs = new ns.Namespace {
+    label = "adopt-namespace"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-helm-adopt"
+    }
+  }
+  appNs
+
+  new helm.Release {
+label = "kratos"
+    metadata {
+      name = "kratos"
+      namespace = appNs.res.name
+    }
+
+    chart = "kratos"
+    repoURL = "https://k8s.ory.sh/helm/charts"
+    version = chartVersionB
+
+    timeoutSeconds = 900
+
+    // Must match what `helm install` was given, or the adopted release would
+    // show a values diff on top of the version diff and the demo would be
+    // measuring two changes at once.
+    values = new Dynamic {
+      kratos {
+        development = true
+        automigration {
+          enabled = true
+          type = "job"
+        }
+        config {
+          dsn = "memory"
+          secrets {
+            // Bracket syntax required: `default` is a reserved property on a Pkl
+            // Dynamic, so `default = ...` is silently dropped.
+            ["default"] = new Listing { "abcdefghijklmnopqrstuvwxyz123456" }
+          }
+          selfservice {
+            default_browser_return_url = "http://127.0.0.1/"
+            flows {
+              settings {
+                ui_url = "http://127.0.0.1/settings"
+              }
+            }
+          }
+          identity {
+            default_schema_id = "default"
+            schemas = new Listing {
+              new Dynamic {
+                id = "default"
+                url = "file:///etc/config/identity.default.schema.json"
+              }
+            }
+          }
+        }
+        identitySchemas {
+          ["identity.default.schema.json"] = identitySchema
+        }
+      }
+    }
+  }
+}
