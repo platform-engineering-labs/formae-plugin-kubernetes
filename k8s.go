@@ -174,6 +174,26 @@ func (p *Plugin) DiscoveryFilters() []model.MatchFilter {
 				{PropertyPath: "$.type", PropertyValue: "kubernetes.io/service-account-token"},
 			},
 		},
+		// Exclude Helm's release storage. Every revision of every release is a
+		// Secret of type helm.sh/release.v1 named
+		// sh.helm.release.v1.<release>.v<n>, so one release at the default
+		// MaxHistory would otherwise surface ten unmanaged Secrets. They are
+		// Helm's bookkeeping, never a user resource.
+		//
+		// This has to live here rather than in the K8S::Helm::Release inventory
+		// collapse: that collapse hides objects a chart *renders*, and a release
+		// Secret appears in no manifest. The Secret's `type` is a static property,
+		// which is precisely what a DiscoveryFilter can express.
+		//
+		// Only the secret driver is covered, which is the one this plugin uses
+		// (see helmDriver). A cluster running HELM_DRIVER=configmap keeps its
+		// records in ConfigMaps labelled owner=helm instead; not filtered.
+		{
+			ResourceTypes: []string{"K8S::Core::Secret"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.type", PropertyValue: "helm.sh/release.v1"},
+			},
+		},
 		// Exclude Leases in kube-system — all are control-plane leader
 		// election artifacts (kube-controller-manager, kube-scheduler,
 		// cloud-controller-manager, node leases, etc.).

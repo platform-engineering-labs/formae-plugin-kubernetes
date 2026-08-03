@@ -25,7 +25,6 @@ import (
 	"helm.sh/helm/v3/pkg/kube"
 	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/storage/driver"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 const ResourceTypeRelease = "K8S::Helm::Release"
@@ -684,28 +683,40 @@ func (r *Release) Delete(ctx context.Context, request *resource.DeleteRequest) (
 	}
 
 	un := action.NewUninstall(conf)
-	un.Wait = false
+	// Wait for the objects to actually go, not just for the deletes to be
+	// accepted. Returning before termination let a destroy-then-apply race the
+	// objects it had just asked Kubernetes to remove.
+	un.Wait = true
 	un.Timeout = defaultTimeoutSeconds * time.Second
 	// KeepHistory=false: formae's own state records the intent to delete, so a
 	// retained uninstall record buys nothing and makes a later reinstall of the
 	// same name need a replace strategy.
 	un.KeepHistory = false
 
-	if _, err := un.Run(name); err != nil {
-		if k8serrors.IsNotFound(err) || isReleaseNotFound(err) {
-			return &resource.DeleteResult{ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-			}}, nil
-		}
-		return nil, fmt.Errorf("uninstall release %s/%s: %w", ns, name, err)
-	}
-	invalidateInventory(r.Config)
+	// Fired rather than awaited, for the same reason install is: Helm blocks on
+	// pre-delete and post-delete hooks regardless of Wait, so a chart with a
+	// teardown hook would otherwise hold the Delete call open for its full
+	// duration.
+	//
+	// The release record is the completion signal, and Helm's ordering makes it
+	// an exact one: the record is moved to `uninstalling` before any object is
+	// deleted (uninstall.go:119) and purged only after WaitForDelete and the
+	// post-delete hooks have finished (uninstall.go:155). So "record gone" means
+	// the objects are gone too.
+	//
+	// Uninstall has no RunWithContext in Helm v3 (helm#12109 is not in), so
+	// u.Timeout is what bounds it.
+	go func() {
+		defer invalidateInventory(r.Config)
+		_, _ = un.Run(name)
+	}()
 
 	return &resource.DeleteResult{ProgressResult: &resource.ProgressResult{
 		Operation:       resource.OperationDelete,
-		OperationStatus: resource.OperationStatusSuccess,
+		OperationStatus: resource.OperationStatusInProgress,
 		NativeID:        prov.NativeID(ns, name),
+		RequestID:       requestID(ns, name, rel.Version, opDelete),
+		StatusMessage:   fmt.Sprintf("uninstalling release %s/%s", ns, name),
 	}}, nil
 }
 
@@ -735,22 +746,49 @@ func (r *Release) Status(ctx context.Context, request *resource.StatusRequest) (
 	}
 
 	if op == opDelete {
-		return &resource.StatusResult{ProgressResult: deleteStatus(rel, ns, name)}, nil
+		return &resource.StatusResult{ProgressResult: deleteStatus(rel, ns, name, request.RequestID)}, nil
 	}
 	return r.installStatus(ctx, conf, rel, ns, name, wantRevision, op, request.RequestID)
 }
 
-func deleteStatus(rel *release.Release, ns, name string) *resource.ProgressResult {
-	if rel == nil {
+// deleteStatus reports on an uninstall in flight.
+//
+// The release record's absence is the completion signal: Helm purges it only
+// after WaitForDelete and the post-delete hooks are done, so by then the objects
+// are gone too.
+func deleteStatus(rel *release.Release, ns, name string, reqID string) *resource.ProgressResult {
+	nativeID := prov.NativeID(ns, name)
+
+	// Purged, or KeepHistory left an uninstalled record behind — either way the
+	// release is gone.
+	if rel == nil || rel.Info == nil || rel.Info.Status == release.StatusUninstalled {
 		return &resource.ProgressResult{
 			Operation:       resource.OperationCheckStatus,
 			OperationStatus: resource.OperationStatusSuccess,
 		}
 	}
+
+	// Nothing is coming back to finish it. Reported rather than healed: the
+	// remaining objects are whatever Helm managed to delete before it died, and
+	// working that out is an operator's job.
+	if stalled(rel) {
+		return &resource.ProgressResult{
+			Operation:       resource.OperationCheckStatus,
+			OperationStatus: resource.OperationStatusFailure,
+			ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
+			NativeID:        nativeID,
+			StatusMessage: fmt.Sprintf(
+				"release %s/%s stuck %s since %s; no Helm process is finishing it. "+
+					"Inspect with `helm status %s -n %s`, then `helm uninstall %s -n %s` to clear it",
+				ns, name, rel.Info.Status, rel.Info.LastDeployed, name, ns, name, ns),
+		}
+	}
+
 	return &resource.ProgressResult{
 		Operation:       resource.OperationCheckStatus,
 		OperationStatus: resource.OperationStatusInProgress,
-		NativeID:        prov.NativeID(ns, name),
+		RequestID:       reqID,
+		NativeID:        nativeID,
 		StatusMessage:   fmt.Sprintf("release %s/%s still present (%s)", ns, name, rel.Info.Status),
 	}
 }

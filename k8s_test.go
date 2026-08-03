@@ -271,3 +271,27 @@ func TestDiscoveryFilters_BuiltIns(t *testing.T) {
 			"ClusterRoleBinding should be filtered by ^system: prefix at plugin level")
 	})
 }
+
+//nolint:gocritic // table-free assertion is clearer for a single filter
+func TestDiscoveryFilters_ExcludesHelmReleaseStorage(t *testing.T) {
+	// Every revision of every Helm release is a Secret of this type, so one
+	// release at the default MaxHistory would surface ten unmanaged Secrets.
+	// The K8S::Helm::Release inventory collapse cannot hide them: it hides
+	// objects a chart *renders*, and a release Secret appears in no manifest.
+	var found bool
+	for _, f := range (&Plugin{}).DiscoveryFilters() {
+		for _, rt := range f.ResourceTypes {
+			if rt != "K8S::Core::Secret" {
+				continue
+			}
+			for _, c := range f.Conditions {
+				if c.PropertyPath == "$.type" && c.PropertyValue == "helm.sh/release.v1" {
+					found = true
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no DiscoveryFilter excludes Secrets of type helm.sh/release.v1")
+	}
+}

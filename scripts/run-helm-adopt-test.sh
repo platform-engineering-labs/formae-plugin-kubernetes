@@ -88,6 +88,20 @@ for r in rs:
 ' "$1"
 }
 
+# Every native id the inventory holds for one resource type, whatever stack it is
+# on. Used to prove the discovery collapse: a chart's objects must not be here.
+formae_ids_of_type() {
+    "${FORMAE}" inventory resources --output-consumer machine 2>/dev/null \
+        | python3 -c '
+import json,sys
+try: rs = json.load(sys.stdin).get("Resources", [])
+except Exception: sys.exit(0)
+for r in rs:
+    if r["Type"] == sys.argv[1]:
+        print(r.get("NativeId") or r.get("Label",""))
+' "$1"
+}
+
 command_id() { printf '%s' "$1" | grep -oE "id:[A-Za-z0-9]+" | head -1 | cut -d: -f2; }
 
 wait_command() {
@@ -186,6 +200,9 @@ cleanup() {
         id="$(command_id "${out}")"
         [[ -n "${id}" ]] && wait_command "${id}" quiet || true
     fi
+    for ctl in configmap/ctl-configmap deployment/ctl-deployment service/ctl-service serviceaccount/ctl-sa; do
+        kubectl delete "${ctl}" -n "${NS}" --wait=false >/dev/null 2>&1 || true
+    done
     helm uninstall "${RELEASE}" -n "${NS}" >/dev/null 2>&1 || true
     kubectl delete namespace "${NS}" --wait=false >/dev/null 2>&1 || true
     rm -rf "${WORK_DIR}"
@@ -242,6 +259,57 @@ echo "3) discovery — the release shows up as unmanaged"
 wait_until stack '$unmanaged'
 pass "discovered on the \$unmanaged stack"
 assert_eq "discovered version" "${VERSION_A}" "$(formae_field version)"
+
+echo ""
+echo "3b) discovery collapses the chart's own objects"
+# The release renders a Deployment, a StatefulSet, three Services, a ConfigMap and
+# a ServiceAccount. The profile discovers all those kinds, so if the collapse were
+# not working they would each appear as unmanaged resources next to the release.
+collapse_failures=0
+for pair in \
+    "K8S::Apps::Deployment|${NS}/${RELEASE}" \
+    "K8S::Apps::StatefulSet|${NS}/${RELEASE}-courier" \
+    "K8S::Core::Service|${NS}/${RELEASE}-admin" \
+    "K8S::Core::Service|${NS}/${RELEASE}-public" \
+    "K8S::Core::ConfigMap|${NS}/${RELEASE}-config" \
+    "K8S::Core::ServiceAccount|${NS}/${RELEASE}"
+do
+    rtype="${pair%%|*}"; rid="${pair##*|}"
+    if formae_ids_of_type "${rtype}" | grep -qx "${rid}"; then
+        echo "  ✗ ${rtype} ${rid} surfaced in discovery; the collapse did not hide it" >&2
+        collapse_failures=$((collapse_failures + 1))
+    fi
+done
+[[ ${collapse_failures} -eq 0 ]] \
+    || fail "${collapse_failures} chart-rendered object(s) leaked into discovery"
+pass "none of the chart's 6 rendered objects surfaced"
+
+# Negative controls, one per kind whose absence is asserted above. Without these
+# the assertions could pass vacuously: discovery might simply not have run for a
+# kind yet, and "not in the inventory" would prove nothing about the filter.
+#
+# Each is an object in the same namespace that no chart rendered, so each MUST be
+# discovered. Deployment uses replicas=0 to avoid waiting on a pod.
+kubectl create configmap ctl-configmap -n "${NS}" --from-literal=k=v >/dev/null 2>&1 || true
+kubectl create deployment ctl-deployment -n "${NS}" --image=busybox:1.36 --replicas=0 >/dev/null 2>&1 || true
+kubectl create service clusterip ctl-service -n "${NS}" --tcp=80:80 >/dev/null 2>&1 || true
+kubectl create serviceaccount ctl-sa -n "${NS}" >/dev/null 2>&1 || true
+
+for pair in \
+    "K8S::Core::ConfigMap|${NS}/ctl-configmap" \
+    "K8S::Apps::Deployment|${NS}/ctl-deployment" \
+    "K8S::Core::Service|${NS}/ctl-service" \
+    "K8S::Core::ServiceAccount|${NS}/ctl-sa"
+do
+    rtype="${pair%%|*}"; rid="${pair##*|}"
+    tries=0
+    until formae_ids_of_type "${rtype}" | grep -qx "${rid}"; do
+        tries=$((tries + 1))
+        [[ ${tries} -gt 40 ]] && fail "control ${rtype} ${rid} never discovered — either discovery does not cover this kind, so the collapse assertion above was vacuous, or the filter is over-matching"
+        sleep 3
+    done
+done
+pass "hand-made Deployment, Service, ConfigMap and ServiceAccount all still discovered"
 
 echo ""
 echo "4) formae extract — generate a forma describing the live release"

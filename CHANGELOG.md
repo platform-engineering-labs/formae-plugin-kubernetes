@@ -49,6 +49,15 @@ formae agent.
   also what lets a failed first install be retried — formae withholds the
   NativeID until a release is deployed, so the retry arrives as a create.
 
+- **Delete waits for the objects to actually go.** It set `Wait = false` and
+  returned `Success` as soon as Helm accepted the uninstall, so a
+  destroy-then-apply could race objects still terminating. It now fires the
+  uninstall with `Wait = true` and returns `InProgress`; `Status` treats the
+  release record's absence as completion, which Helm's ordering makes exact — the
+  record is purged only after `WaitForDelete` and the post-delete hooks finish.
+  This also wires up the previously dead `:delete` request-id path, and reports a
+  stalled uninstall instead of hanging.
+
 - **`repoURL` on `K8S::Helm::Release`.** Set it alongside a bare chart name
   (`repoURL = "https://k8s.ory.sh/helm/charts"`, `chart = "kratos"`) to resolve a
   chart from a classic HTTP repo. Without it a `repo/chart` reference only works
@@ -75,6 +84,13 @@ formae agent.
   an HTTP repo: Helm does not record which repository a release came from, so
   `Read` cannot reconstruct `repoURL` and it has to be supplied by hand. `oci://`
   references are self-describing and unaffected.
+
+- **Helm's release storage no longer surfaces in discovery.** Every revision of
+  every release is a Secret of type `helm.sh/release.v1`, so one release at the
+  default `MaxHistory` showed up as ten unmanaged Secrets. Excluded via
+  `DiscoveryFilters()` rather than the release inventory: that inventory hides
+  objects a chart *renders*, and a release Secret appears in no manifest. Only the
+  secret driver is covered, which is the one this plugin uses.
 
 - **Chart-owned objects are collapsed in discovery.** Objects a Helm release
   renders no longer surface as unmanaged alongside the release that owns them.
