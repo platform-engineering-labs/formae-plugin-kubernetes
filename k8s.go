@@ -26,6 +26,7 @@ import (
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/core"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/custom"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/flowcontrol"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/helm"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/networking"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/node"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/policy"
@@ -651,5 +652,39 @@ func (p *Plugin) List(ctx context.Context, req *resource.ListRequest) (*resource
 		// discovery error on every pass.
 		return &resource.ListResult{}, nil
 	}
-	return provisioner.List(ctx, req)
+	result, err := provisioner.List(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return collapseHelmOwned(ctx, client, req, result), nil
+}
+
+// collapseHelmOwned drops objects a Helm release renders, so a chart appears in
+// discovery as the single K8S::Helm::Release that owns it rather than as its
+// several dozen constituent resources.
+//
+// Applied here — the one List routing point — rather than via
+// DiscoveryFilters(). Those filters are static structs returned once at plugin
+// init and cannot consult live Helm state, so the only ownership signal they
+// could express is the `app.kubernetes.io/managed-by: Helm` label, which chart
+// authors are free to omit.
+//
+// A failure to build the inventory leaves the list untouched. Showing chart
+// objects as unmanaged is noisy; hiding real resources because Helm was briefly
+// unreachable would be a silent loss.
+func collapseHelmOwned(
+	ctx context.Context,
+	client *transport.Client,
+	req *resource.ListRequest,
+	result *resource.ListResult,
+) *resource.ListResult {
+	if result == nil || len(result.NativeIDs) == 0 || req.ResourceType == helm.ResourceTypeRelease {
+		return result
+	}
+	inv, err := helm.InventoryFor(ctx, client.Config)
+	if err != nil {
+		return result
+	}
+	result.NativeIDs = helm.FilterHelmOwned(inv, req.ResourceType, result.NativeIDs)
+	return result
 }

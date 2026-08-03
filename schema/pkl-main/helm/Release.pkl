@@ -1,0 +1,180 @@
+/*
+ * © 2026 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * K8S Plugin Schema - Helm release driven by the Helm SDK.
+ */
+module release
+
+import "@formae/formae.pkl"
+import "../k8s-subresources.pkl" as k8s
+
+const type = "K8S::Helm::Release"
+
+open class ReleaseResolvable extends formae.Resolvable {
+  hidden type = module.type
+  hidden name: ReleaseResolvable = (this) { property = "metadata.name" }
+  hidden namespace: ReleaseResolvable = (this) { property = "metadata.namespace" }
+}
+
+/// A Helm release, installed and upgraded through the embedded Helm SDK.
+///
+/// Formae manages the *release*; Helm manages the objects the chart renders.
+/// That split is the point. Hooks, hook weights, hook delete policies, CRD
+/// install ordering and revision history are Helm behaviours, and the plugin
+/// gets all of them by calling Helm rather than reimplementing them.
+///
+/// The objects a release renders are hidden from discovery — the release stands
+/// in for them — and listed on [resourceNames] so a collapsed release still
+/// says what it owns. Objects created *downstream* of the chart by controllers
+/// (the Pods behind a Deployment, the Jobs behind a CronJob) are not in the
+/// rendered manifest and are still discovered individually.
+///
+/// ## Compared with [K8S::Helm::Chart]
+///
+/// `Chart` renders the chart client-side and decomposes it into typed formae
+/// resources, so every Deployment and Service is separately managed, diffed and
+/// referenceable. It cannot honour hooks. `Release` honours everything Helm
+/// does but exposes one resource. Prefer `Release` for charts that carry hooks,
+/// CRDs or subcharts; prefer `Chart` when per-object formae state matters more
+/// than chart fidelity.
+///
+/// ## What is not modelled
+///
+/// - `helm rollback` — revert the values here and re-apply instead. Note that
+///   this fires `pre-upgrade` hooks, not `pre-rollback` hooks.
+/// - `helm test` — a CI verb, not desired state.
+/// - Drift *inside* the release. Editing a chart-owned Deployment by hand is
+///   invisible here, exactly as it is invisible to Helm itself.
+/// - Uninstall residue. Objects from the chart's `crds/` directory and any
+///   object annotated `helm.sh/resource-policy: keep` outlive a delete, and
+///   correctly reappear as unmanaged once no release claims them.
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.metadata.name"
+  discoverable = true
+  parent = "K8S::Core::Namespace"
+  listParam = new formae.ListProperty {
+    parentProperty = "metadata.name"
+    listParameter = "namespace"
+  }
+}
+open class Release extends formae.Resource {
+  hidden parent = this
+  fixed hidden resourceType: String = module.type
+
+  hidden res: ReleaseResolvable = new {
+    label = parent.label
+    stack = parent.stack?.label
+  }
+
+  /// Release name and namespace. Both are immutable: Helm cannot rename a
+  /// release or move it between namespaces, so a change to either has to be a
+  /// replace.
+  @k8s.FieldHint { required = true }
+  metadata: ReleaseObjectMeta
+
+  /// Chart reference. A repo URL, an `oci://` reference, or a local path —
+  /// whatever `helm install` accepts.
+  ///
+  /// Chart *contents* are not part of the diff. A mutable tag or a re-published
+  /// repo version changes what installs without changing this field, so no
+  /// upgrade is planned. Pin [version] to avoid that.
+  @k8s.FieldHint { required = true }
+  chart: String
+
+  /// Exact chart version. Leaving this unset resolves to the newest version at
+  /// apply time, which makes the applied result depend on when you applied.
+  @k8s.FieldHint {}
+  version: String?
+
+  /// Chart values, as they would appear in a `values.yaml`. Write them with
+  /// `new Dynamic { ... }` so arbitrary nesting is allowed.
+  ///
+  /// Round-trips against the release's stored config, which holds only the
+  /// user-supplied values — not the chart's defaults merged in — so unset
+  /// chart defaults do not show up as permanent drift.
+  ///
+  /// Typed `Dynamic?` with an explicit null default, not `Mapping<String, Any>`:
+  /// the renderer reads a mapping's value type eagerly and `Any` has no default,
+  /// which fails with "Tried to read property `default` but its value is
+  /// undefined" for every chart that needs no overrides. HelmChart.pkl hit the
+  /// same thing.
+  @k8s.FieldHint {}
+  values: Dynamic? = null
+
+  /// Create the target namespace if absent, like `helm install
+  /// --create-namespace`. Prefer declaring a `K8S::Core::Namespace` resource
+  /// and referencing it, so formae owns the namespace's lifecycle.
+  @k8s.FieldHint {}
+  createNamespace: Boolean?
+
+  /// Skip installing the chart's `crds/` directory.
+  @k8s.FieldHint {}
+  skipCrds: Boolean?
+
+  /// Skip the chart's hooks entirely.
+  ///
+  /// Setting this gives up the main reason to use this resource over
+  /// [K8S::Helm::Chart]. Charts that install CRDs or migrate databases in a
+  /// `pre-install` hook will apply incompletely.
+  @k8s.FieldHint {}
+  disableHooks: Boolean?
+
+  /// Roll back automatically if the operation fails.
+  ///
+  /// On upgrade this is a genuine safety net. On a first install there is no
+  /// previous revision to roll back to, so it only adds a purge.
+  @k8s.FieldHint {}
+  atomic: Boolean?
+
+  /// Seconds a single Helm operation may take before it is abandoned. Defaults
+  /// to 600.
+  ///
+  /// This has to cover hook execution: Helm blocks on hook Jobs regardless of
+  /// any wait setting, so a chart with a slow `pre-install` migration needs a
+  /// value above that migration's runtime.
+  @k8s.FieldHint {}
+  timeoutSeconds: Int?
+
+  /// Current Helm revision. Advances by one per install or upgrade.
+  @k8s.FieldHint { hasProviderDefault = true }
+  revision: Int?
+
+  /// Helm release status: `deployed`, `failed`, `pending-install`,
+  /// `pending-upgrade`, `pending-rollback`, `uninstalling`, `superseded`.
+  @k8s.FieldHint { hasProviderDefault = true }
+  status: String?
+
+  /// The chart's `appVersion`, i.e. the version of the application shipped.
+  @k8s.FieldHint { hasProviderDefault = true }
+  appVersion: String?
+
+  /// Objects the release rendered, grouped by `apiVersion/Kind`, each entry
+  /// `namespace/name`. This is what the release manages and what discovery
+  /// hides on its behalf.
+  @k8s.FieldHint { hasProviderDefault = true }
+  resourceNames: Mapping<String, Listing<String>>?
+}
+
+/// Metadata for a Helm release.
+///
+/// Both fields are `createOnly`: Helm has no rename and no namespace move, so
+/// changing either must replace the release rather than mutate it.
+@k8s.SubResourceHint {}
+open class ReleaseObjectMeta extends formae.SubResource {
+  @k8s.FieldHint { required = true; createOnly = true }
+  name: String
+
+  @k8s.FieldHint { required = true; createOnly = true }
+  namespace: (String|formae.Resolvable)
+
+  /// Labels stamped onto the release record, so `helm list -l` can select it.
+  /// Not propagated to the chart's objects.
+  @k8s.FieldHint { hasProviderDefault = true }
+  labels: Mapping<String, String>?
+
+  @k8s.FieldHint { hasProviderDefault = true }
+  annotations: Mapping<String, String>?
+}

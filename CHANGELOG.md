@@ -8,6 +8,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Install with `sudo formae plugin install k8s` on the host that runs the
 formae agent.
 
+## [Unreleased]
+
+### Added
+
+- **`K8S::Helm::Release` — Helm charts driven by the embedded Helm SDK.** Formae
+  manages the release; Helm manages the objects the chart renders. Hooks, hook
+  weights, hook delete policies, CRD install ordering and revision history all
+  work because Helm implements them, not because the plugin reimplements them.
+  The release is a genuine Helm release, so `helm list`, `helm history` and
+  `helm rollback` see it.
+
+  `Create`/`Update` submit with `Wait=false` and return `InProgress` once Helm
+  has written the release record; `Status` polls the record and then checks every
+  rendered object with Helm's own `ReadyChecker`. The plugin stores nothing — all
+  state lives in the release Secret and the cluster.
+
+  Complements `HelmChart.pkl`, which renders client-side and decomposes into
+  typed resources. Prefer `Release` for charts with hooks, CRDs or subcharts;
+  prefer `HelmChart` when per-object formae state matters more than chart
+  fidelity.
+
+- **Chart-owned objects are collapsed in discovery.** Objects a Helm release
+  renders no longer surface as unmanaged alongside the release that owns them.
+  Ownership comes from the release's stored manifest rather than the
+  `app.kubernetes.io/managed-by: Helm` label, which chart authors are free to
+  omit. The inventory is exposed on the release's `resourceNames` so a collapsed
+  release still says what it manages.
+
+  Objects created *downstream* of the chart by controllers (the Pods behind a
+  Deployment) are not in any manifest and are still discovered individually.
+
 ## [0.1.8]
 
 Requires formae >= 0.86.0.

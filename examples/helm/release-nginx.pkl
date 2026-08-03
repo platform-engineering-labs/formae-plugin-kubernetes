@@ -1,0 +1,74 @@
+/// bitnami/nginx via K8S::Helm::Release — the Helm SDK drives the install.
+///
+/// Contrast with nginx.pkl, which uses HelmChart.pkl to render the chart and
+/// decompose it into individually-managed typed resources. Here formae manages
+/// one resource, the release, and Helm manages everything the chart renders.
+/// The chart's Deployment, Service and ConfigMap are hidden from discovery and
+/// listed on the release's `resourceNames` instead.
+///
+/// Needs no pkl-reader-helm binary — the plugin embeds the Helm SDK.
+///
+/// Resolve Pkl dependencies (first time, or after PklProject changes):
+///   pkl project resolve examples/helm/
+///
+/// Usage:
+///   pkl eval examples/helm/release-nginx.pkl
+///   formae apply --mode reconcile --yes --watch examples/helm/release-nginx.pkl
+///
+/// Verify Helm sees the release formae created:
+///   helm list -n formae-helm-release
+///   helm history nginx -n formae-helm-release
+///
+/// Verify the chart's objects are collapsed under the release:
+///   formae discover --target k8s-local   # one Helm::Release, not ~4 objects
+amends "@formae/forma.pkl"
+
+import "@formae/formae.pkl"
+import "@k8s/v1.33/k8s.pkl" as k8s
+import "@k8s/v1.33/core/Namespace.pkl" as ns
+import "@k8s/v1.33/helm/Release.pkl" as helm
+
+forma {
+  new formae.Stack {
+    label = "helm-release-nginx"
+    description = "bitnami/nginx installed through the Helm SDK"
+  }
+
+  new formae.Target {
+    label = "k8s-local"
+    config = new k8s.Config {
+      kubernetesVersion = "1.33"
+      auth = new k8s.KubeconfigAuth {}
+    }
+  }
+
+  local appNs = new ns.Namespace {
+    label = "release-namespace"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-helm-release"
+    }
+  }
+  appNs
+
+  new helm.Release {
+    label = "nginx"
+    metadata {
+      name = "nginx"
+      // Resolved from the Namespace above so formae orders the two and owns
+      // the namespace's lifecycle, rather than letting createNamespace leave
+      // an unmanaged namespace behind on destroy.
+      namespace = appNs.res.name
+    }
+
+    chart = "oci://registry-1.docker.io/bitnamicharts/nginx"
+    // Pinned. Unpinned, the applied result depends on when you applied.
+    version = "19.0.0"
+
+    values = new Dynamic {
+      replicaCount = 1
+      service {
+        type = "ClusterIP"
+      }
+    }
+  }
+}
