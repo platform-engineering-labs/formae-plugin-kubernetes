@@ -27,7 +27,7 @@ FORMAE_BINARY ?= $(shell realpath $(firstword $(wildcard $(CURDIR)/../../formae/
 PLUGIN_BASE_DIR := $(HOME)/.pel/formae/plugins
 INSTALL_DIR := $(PLUGIN_BASE_DIR)/$(PLUGIN_NAME)/v$(PLUGIN_VERSION)
 
-.PHONY: all build test test-unit test-integration lint verify-schema clean install help setup-credentials clean-environment conformance-test conformance-test-crud conformance-test-discovery conformance-test-crud-run conformance-test-discovery-run conformance-test-resources conformance-test-charts generate-schema chart-test drift-test
+.PHONY: all build test test-unit test-integration lint verify-schema clean install help setup-credentials clean-environment conformance-test conformance-test-crud conformance-test-discovery conformance-test-crud-run conformance-test-discovery-run conformance-test-resources conformance-test-charts generate-schema chart-test drift-test helm-drift-test
 
 all: build
 
@@ -309,6 +309,12 @@ conformance-test-charts: install setup-credentials
 chart-test: install
 	@echo "Running chart smoke tests..."
 	@FORMAE_BINARY="$(FORMAE_BINARY)" CHART_TEST_TIMEOUT="$(or $(TIMEOUT),120)" ./scripts/run-chart-tests.sh $(CHART)
+
+## helm-drift-test: Deploy a chart version A with formae, upgrade to B with the
+## Helm CLI, then show formae detect the drift and reconcile it back.
+## Requires `make install` and a running agent.
+helm-drift-test:
+	@FORMAE_BINARY="$(FORMAE_BINARY)" ./scripts/run-helm-drift-test.sh
 
 ## drift-test: Run drift detection + reconciliation test
 ## Deploys drift-demo.pkl, introduces drift via kubectl, force reconciles,
