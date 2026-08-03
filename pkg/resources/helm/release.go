@@ -71,6 +71,7 @@ type releaseProperties struct {
 	Metadata releaseMetadata `json:"metadata"`
 
 	Chart           string         `json:"chart"`
+	RepoURL         string         `json:"repoURL,omitempty"`
 	Version         string         `json:"version,omitempty"`
 	Values          map[string]any `json:"values,omitempty"`
 	CreateNamespace bool           `json:"createNamespace,omitempty"`
@@ -775,6 +776,9 @@ func loadChart(conf *action.Configuration, props *releaseProperties) (*chart.Cha
 	// chart reference fails to resolve.
 	inst := action.NewInstall(conf)
 	inst.Version = props.Version
+	// Resolves a bare chart name against the repo index directly, so the agent
+	// host needs no `helm repo add`.
+	inst.RepoURL = props.RepoURL
 
 	path, err := inst.LocateChart(props.Chart, settings)
 	if err != nil {

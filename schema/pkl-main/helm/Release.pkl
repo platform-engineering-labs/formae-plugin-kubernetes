@@ -84,6 +84,16 @@ open class Release extends formae.Resource {
   @k8s.FieldHint { required = true }
   chart: String
 
+  /// Chart repository URL, for charts in a classic HTTP repo.
+  ///
+  /// Set this and give [chart] the bare chart name — `repoURL =
+  /// "https://k8s.ory.sh/helm/charts"` with `chart = "kratos"`. Without it, a
+  /// `repo/chart` reference resolves only if someone has run `helm repo add` on
+  /// the host running the formae agent, which is not something a forma can
+  /// depend on. Not needed for `oci://` references or local paths.
+  @k8s.FieldHint {}
+  repoURL: String?
+
   /// Exact chart version. Leaving this unset resolves to the newest version at
   /// apply time, which makes the applied result depend on when you applied.
   @k8s.FieldHint {}
@@ -101,6 +111,13 @@ open class Release extends formae.Resource {
   /// which fails with "Tried to read property `default` but its value is
   /// undefined" for every chart that needs no overrides. HelmChart.pkl hit the
   /// same thing.
+  ///
+  /// One trap worth knowing: a values key literally named `default` must use
+  /// bracket syntax — `["default"] = ...`, not `default = ...`. On a `Dynamic`,
+  /// `default` is a reserved property that supplies the default value for new
+  /// members, so the plain form is silently swallowed and the chart receives an
+  /// empty block. `ory/kratos` has exactly this shape at
+  /// `kratos.config.secrets.default`.
   @k8s.FieldHint {}
   values: Dynamic? = null
 

@@ -40,6 +40,12 @@ formae agent.
   prefer `HelmChart` when per-object formae state matters more than chart
   fidelity.
 
+- **`repoURL` on `K8S::Helm::Release`.** Set it alongside a bare chart name
+  (`repoURL = "https://k8s.ory.sh/helm/charts"`, `chart = "kratos"`) to resolve a
+  chart from a classic HTTP repo. Without it a `repo/chart` reference only works
+  if someone has run `helm repo add` on the host running the formae agent, which
+  a forma cannot depend on. Not needed for `oci://` refs or local paths.
+
 - **Chart-owned objects are collapsed in discovery.** Objects a Helm release
   renders no longer surface as unmanaged alongside the release that owns them.
   Ownership comes from the release's stored manifest rather than the

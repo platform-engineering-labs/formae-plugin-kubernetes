@@ -259,6 +259,17 @@ func TestReleaseLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
+	// An upgrade is as asynchronous as an install: Helm blocks on pre-upgrade
+	// hooks and Wait is off, so completion is only knowable by polling Status.
+	// Returning Success straight from Update would report a release as upgraded
+	// while its objects were still rolling out.
+	if updated.ProgressResult.OperationStatus != resource.OperationStatusInProgress {
+		t.Fatalf("Update returned %s, want InProgress — completion must come from Status",
+			updated.ProgressResult.OperationStatus)
+	}
+	if updated.ProgressResult.RequestID == "" {
+		t.Fatal("Update returned no RequestID; Status has nothing to poll")
+	}
 	// Asymmetric with Create by design: the resource is already in formae's
 	// state, so there is nothing to withhold and dropping the handle mid-upgrade
 	// would only risk losing it.
