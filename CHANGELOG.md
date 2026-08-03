@@ -85,6 +85,19 @@ formae agent.
   `Read` cannot reconstruct `repoURL` and it has to be supplied by hand. `oci://`
   references are self-describing and unaffected.
 
+- **Conformance test coverage for `K8S::Helm::Release`.** `testdata/main/shared/helmrelease{,-update,-replace}.pkl`
+  put the resource through the same 24-step CRUD suite and 7-step discovery suite
+  every other resource type runs: create, extract round-trip, sync idempotency,
+  update, replace via a `createOnly` change, destroy, and out-of-band delete
+  detection. Uses podinfo — two objects, no hooks — so the cycle stays quick; the
+  hook and adoption behaviour that needs a heavy chart is covered by the
+  `helm-drift-test` and `helm-adopt-test` scripts against ory/kratos.
+
+  `make conformance-test` gains an opt-in `K8S_MINOR` parameter that scopes the
+  run to one generated testdata tree, matching what `conformance-version.yml` does
+  in CI. Unset, the runner walks all of `testdata/` — `main/` plus every generated
+  `v1.XX/` tree — so each case runs ~17 times and a filtered run looks like a hang.
+
 - **Helm's release storage no longer surfaces in discovery.** Every revision of
   every release is a Secret of type `helm.sh/release.v1`, so one release at the
   default `MaxHistory` showed up as ten unmanaged Secrets. Excluded via

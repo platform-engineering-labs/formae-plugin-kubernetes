@@ -221,6 +221,8 @@ clean-environment:
 ##   TEST         - Filter tests by name pattern (e.g., TEST=namespace)
 ##   PARALLEL     - Max parallel tests (default: 1 = sequential)
 ##   TIMEOUT      - Timeout in minutes for long-running operations (default: 5)
+##   K8S_MINOR    - Scope to one generated testdata tree, e.g. K8S_MINOR=1.33.
+##                  Strongly recommended locally; see the note below.
 ##   FORMAE_BINARY - Path to formae binary (auto-detected from ../formae/bin/ or $PATH)
 conformance-test: install setup-credentials
 	@echo "Pre-test cleanup..."
@@ -259,15 +261,28 @@ conformance-test-discovery: install setup-credentials
 
 ## conformance-test-crud-run: Run only CRUD lifecycle tests (no cleanup)
 ## Used by CI matrix jobs where cleanup is managed separately.
+## K8S_MINOR scopes the run to one generated testdata tree, the way CI does
+## (conformance-version.yml sets FORMAE_TEST_TESTDATA_DIR per matrix entry).
+## Leave it unset and the runner walks all of testdata/, which means main/ plus
+## every generated v1.XX/ tree — so each test case runs ~17 times and a filtered
+## run looks like a hang. Set it to your cluster's minor:
+##   make conformance-test TEST=helmrelease K8S_MINOR=1.33
+## It also pins FORMAE_K8S_VERSION so the target's kubernetesVersion in
+## testdata/.../config/vars.pkl matches the tree being run.
+K8S_MINOR ?=
+ifneq ($(K8S_MINOR),)
+CONFORMANCE_SCOPE := FORMAE_TEST_TESTDATA_DIR=testdata/generated/v$(K8S_MINOR)/shared FORMAE_K8S_VERSION=$(K8S_MINOR)
+endif
+
 conformance-test-crud-run:
 	@echo "Running CRUD conformance tests..."
-	@FORMAE_BINARY="$(FORMAE_BINARY)" FORMAE_TEST_FILTER="$(TEST)" FORMAE_TEST_TYPE=crud FORMAE_TEST_PARALLEL="$(PARALLEL)" FORMAE_TEST_TIMEOUT="$(TIMEOUT)" ./scripts/run-conformance-tests.sh $(VERSION)
+	@$(CONFORMANCE_SCOPE) FORMAE_BINARY="$(FORMAE_BINARY)" FORMAE_TEST_FILTER="$(TEST)" FORMAE_TEST_TYPE=crud FORMAE_TEST_PARALLEL="$(PARALLEL)" FORMAE_TEST_TIMEOUT="$(TIMEOUT)" ./scripts/run-conformance-tests.sh $(VERSION)
 
 ## conformance-test-discovery-run: Run only discovery tests (no cleanup)
 ## Used by CI matrix jobs where cleanup is managed separately.
 conformance-test-discovery-run:
 	@echo "Running discovery conformance tests..."
-	@FORMAE_BINARY="$(FORMAE_BINARY)" FORMAE_TEST_FILTER="$(TEST)" FORMAE_TEST_TYPE=discovery FORMAE_TEST_PARALLEL="$(PARALLEL)" FORMAE_TEST_TIMEOUT="$(TIMEOUT)" ./scripts/run-conformance-tests.sh $(VERSION)
+	@$(CONFORMANCE_SCOPE) FORMAE_BINARY="$(FORMAE_BINARY)" FORMAE_TEST_FILTER="$(TEST)" FORMAE_TEST_TYPE=discovery FORMAE_TEST_PARALLEL="$(PARALLEL)" FORMAE_TEST_TIMEOUT="$(TIMEOUT)" ./scripts/run-conformance-tests.sh $(VERSION)
 
 ## conformance-test-resources: Run conformance tests for non-chart resource types only
 ## Excludes *-chart tests via RE2 regex (no negative lookahead in Go regexp).

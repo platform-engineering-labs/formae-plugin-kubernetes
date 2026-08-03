@@ -1,0 +1,54 @@
+/*
+ * Conformance Test: Helm Release (Update)
+ *
+ * Changes only mutable properties — `values`. The chart version is deliberately
+ * left at the created one, which exercises the path where the plugin reuses the
+ * chart already stored in the release record instead of fetching: Helm persists the
+ * whole chart, so re-rendering the deployed version needs no repository access.
+ *
+ * The release must advance one revision and the new values must round-trip through
+ * Read, which returns the release's stored user-supplied values.
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.21/core/Namespace.pkl" as ns
+import "@k8s/v1.21/helm/Release.pkl" as helm
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local appNs = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  appNs
+
+  new helm.Release {
+    label = "test-helm-release"
+    metadata {
+      // Unchanged: both are createOnly, so touching either would be a replace.
+      name = "test-release-\(v.testRunID)"
+      namespace = appNs.res.name
+    }
+
+    chart = "podinfo"
+    repoURL = "https://stefanprodan.github.io/podinfo"
+    version = "6.7.1"
+
+    values = new Dynamic {
+      replicaCount = 2
+      ui {
+        message = "conformance update"
+      }
+    }
+  }
+}

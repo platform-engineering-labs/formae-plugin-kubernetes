@@ -1,0 +1,56 @@
+/*
+ * Conformance Test: Helm Release (Create)
+ *
+ * podinfo is deliberately chosen over a bigger chart: two objects, no hooks, no
+ * CRDs, no subcharts, and a ~15KB download, so the CRUD and discovery cycles stay
+ * quick. The hook, CRD and adoption behaviour that actually needs a heavy chart is
+ * covered by scripts/run-helm-drift-test.sh and scripts/run-helm-adopt-test.sh
+ * against ory/kratos.
+ *
+ * `chart` is the bare name plus `repoURL`, not an `oci://` reference. That is not
+ * arbitrary: Helm's release record stores the chart *name*, so Read reports
+ * "podinfo" whatever reference was used to fetch it. A bare name round-trips; an
+ * oci:// reference would read back as "podinfo" and show as permanent drift.
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.23/core/Namespace.pkl" as ns
+import "@k8s/v1.23/helm/Release.pkl" as helm
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local appNs = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  appNs
+
+  new helm.Release {
+    label = "test-helm-release"
+    metadata {
+      name = "test-release-\(v.testRunID)"
+      namespace = appNs.res.name
+    }
+
+    chart = "podinfo"
+    repoURL = "https://stefanprodan.github.io/podinfo"
+    version = "6.7.1"
+
+    values = new Dynamic {
+      replicaCount = 1
+      ui {
+        message = "conformance create"
+      }
+    }
+  }
+}
