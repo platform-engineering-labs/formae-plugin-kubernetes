@@ -132,17 +132,34 @@ func TestReleaseLifecycle(t *testing.T) {
 	if created.ProgressResult.OperationStatus != resource.OperationStatusInProgress {
 		t.Fatalf("Create returned %s, want InProgress", created.ProgressResult.OperationStatus)
 	}
-	if created.ProgressResult.NativeID != nativeID {
-		t.Fatalf("Create NativeID = %q, want %q", created.ProgressResult.NativeID, nativeID)
+	// Withheld on purpose: formae records a resource once it has a NativeID, and
+	// a release at pending-install is not deployed yet.
+	if created.ProgressResult.NativeID != "" {
+		t.Errorf("Create returned NativeID %q; it must be withheld until deployed",
+			created.ProgressResult.NativeID)
+	}
+	// Which makes the RequestID the only handle Status has.
+	if created.ProgressResult.RequestID == "" {
+		t.Fatal("Create returned neither a NativeID nor a RequestID; Status has nothing to poll")
 	}
 	// The whole point of fire-and-poll: submit must not wait out the hook Job.
 	if submitDuration > 20*time.Second {
 		t.Errorf("Create blocked for %s — fire-and-poll is not working", submitDuration)
 	}
 
-	final := pollUntilTerminal(t, r, nativeID, created.ProgressResult.RequestID)
+	// Poll with an empty NativeID, exactly as the host will: it forwards
+	// whatever Create returned (plugin_operator.go:238-248).
+	final := pollUntilTerminal(t, r, "", created.ProgressResult.RequestID)
 	if final.OperationStatus != resource.OperationStatusSuccess {
 		t.Fatalf("install ended %s: %s", final.OperationStatus, final.StatusMessage)
+	}
+	// Only now does the release earn its NativeID, which is when formae records
+	// it as managed.
+	if final.NativeID != nativeID {
+		t.Fatalf("NativeID on success = %q, want %q", final.NativeID, nativeID)
+	}
+	if len(final.ResourceProperties) == 0 {
+		t.Error("no ResourceProperties on success; formae would record an empty resource")
 	}
 
 	// --- Read: values round-trip, inventory is exposed -----------------------
@@ -241,6 +258,13 @@ func TestReleaseLifecycle(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("Update: %v", err)
+	}
+	// Asymmetric with Create by design: the resource is already in formae's
+	// state, so there is nothing to withhold and dropping the handle mid-upgrade
+	// would only risk losing it.
+	if updated.ProgressResult.NativeID != nativeID {
+		t.Errorf("Update NativeID = %q, want %q — an upgrade must keep the handle",
+			updated.ProgressResult.NativeID, nativeID)
 	}
 	final = pollUntilTerminal(t, r, nativeID, updated.ProgressResult.RequestID)
 	if final.OperationStatus != resource.OperationStatusSuccess {

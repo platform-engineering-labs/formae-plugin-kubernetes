@@ -24,6 +24,17 @@ formae agent.
   rendered object with Helm's own `ReadyChecker`. The plugin stores nothing — all
   state lives in the release Secret and the cluster.
 
+  **A release is only recorded by formae once it is fully deployed.** `Create`
+  returns no `NativeID`, so a half-installed release is never put under
+  management; `Status` supplies it after the release reaches `deployed` and every
+  rendered object passes readiness. The `RequestID` carries namespace, name and
+  target revision, and is what `Status` uses to find the release meanwhile.
+  `Update` is exempt — the resource is already in state.
+
+  Consequence to be aware of: a first install that fails leaves formae with no
+  handle on the release, so `formae destroy` cannot clean it up and the wedged
+  release has to be removed with `helm uninstall`. The failure message says so.
+
   Complements `HelmChart.pkl`, which renders client-side and decomposes into
   typed resources. Prefer `Release` for charts with hooks, CRDs or subcharts;
   prefer `HelmChart` when per-object formae state matters more than chart

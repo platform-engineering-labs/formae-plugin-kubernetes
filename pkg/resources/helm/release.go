@@ -118,21 +118,31 @@ const (
 )
 
 // requestID formats "<namespace>/<name>@<revision>:<op>".
+//
+// This, not the NativeID, is the durable handle for an in-flight operation.
+// Create withholds the NativeID until the release is fully deployed, so Status
+// has to locate the release from here. The host preserves RequestID verbatim
+// across every poll of one operation (plugin_operator.go:238-248), which is what
+// makes that safe.
 func requestID(namespace, name string, revision int, op opKind) string {
 	return fmt.Sprintf("%s/%s@%d:%s", namespace, name, revision, op)
 }
 
-func parseRequestID(id string) (revision int, op opKind, err error) {
+func parseRequestID(id string) (namespace, name string, revision int, op opKind, err error) {
 	at := strings.LastIndex(id, "@")
 	colon := strings.LastIndex(id, ":")
 	if at < 0 || colon < at {
-		return 0, "", fmt.Errorf("malformed request id %q", id)
+		return "", "", 0, "", fmt.Errorf("malformed request id %q", id)
 	}
 	revision, err = strconv.Atoi(id[at+1 : colon])
 	if err != nil {
-		return 0, "", fmt.Errorf("malformed revision in request id %q: %w", id, err)
+		return "", "", 0, "", fmt.Errorf("malformed revision in request id %q: %w", id, err)
 	}
-	return revision, opKind(id[colon+1:]), nil
+	namespace, name, err = prov.ParseNamespacedNativeID(id[:at])
+	if err != nil {
+		return "", "", 0, "", fmt.Errorf("malformed target in request id %q: %w", id, err)
+	}
+	return namespace, name, revision, opKind(id[colon+1:]), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -144,7 +154,10 @@ func (r *Release) Create(ctx context.Context, request *resource.CreateRequest) (
 	if err != nil {
 		return nil, err
 	}
-	pr, err := r.submit(ctx, props)
+	// withholdNativeID: formae records a resource once it has a NativeID, so
+	// handing one back at pending-install would put a half-installed release
+	// under management. Status supplies it after the release is fully deployed.
+	pr, err := r.submit(ctx, props, true)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +170,10 @@ func (r *Release) Update(ctx context.Context, request *resource.UpdateRequest) (
 	if err != nil {
 		return nil, err
 	}
-	pr, err := r.submit(ctx, props)
+	// Update keeps returning the NativeID: the resource is already in formae's
+	// state, so there is nothing new to record and withholding it would only
+	// risk the updater losing the handle mid-upgrade.
+	pr, err := r.submit(ctx, props, false)
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +189,11 @@ func (r *Release) Update(ctx context.Context, request *resource.UpdateRequest) (
 // the record and reports a stalled operation. Blocking here instead would give
 // exactly the same wedge whenever formae's call deadline fired first, minus any
 // progress reporting.
-func (r *Release) submit(ctx context.Context, props *releaseProperties) (*resource.ProgressResult, error) {
+func (r *Release) submit(
+	ctx context.Context,
+	props *releaseProperties,
+	withholdNativeID bool,
+) (*resource.ProgressResult, error) {
 	ns := props.Metadata.Namespace
 	name := props.Metadata.Name
 	if ns == "" || name == "" {
@@ -196,7 +216,7 @@ func (r *Release) submit(ctx context.Context, props *releaseProperties) (*resour
 	if releaseIsPending(current) {
 		return &resource.ProgressResult{
 			OperationStatus: resource.OperationStatusInProgress,
-			NativeID:        prov.NativeID(ns, name),
+			NativeID:        nativeIDUnless(withholdNativeID, ns, name),
 			RequestID:       requestID(ns, name, current.Version, opForStatus(current.Info.Status)),
 			StatusMessage: fmt.Sprintf(
 				"release %s/%s is %s from an earlier operation; waiting for it to settle",
@@ -245,9 +265,18 @@ func (r *Release) submit(ctx context.Context, props *releaseProperties) (*resour
 
 	return &resource.ProgressResult{
 		OperationStatus: resource.OperationStatusInProgress,
-		NativeID:        prov.NativeID(ns, name),
+		NativeID:        nativeIDUnless(withholdNativeID, ns, name),
 		RequestID:       requestID(ns, name, target, op),
 	}, nil
+}
+
+// nativeIDUnless returns the native id, or "" when it is being withheld until
+// the release is fully deployed.
+func nativeIDUnless(withhold bool, namespace, name string) string {
+	if withhold {
+		return ""
+	}
+	return prov.NativeID(namespace, name)
 }
 
 // recordTimeout bounds the wait for Helm to write the release record.
@@ -479,11 +508,12 @@ func (r *Release) Delete(ctx context.Context, request *resource.DeleteRequest) (
 // ---------------------------------------------------------------------------
 
 func (r *Release) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	ns, name, err := prov.ParseNamespacedNativeID(request.NativeID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
-	}
-	wantRevision, op, err := parseRequestID(request.RequestID)
+	// The release is located from the RequestID, not the NativeID: Create
+	// withholds the NativeID until the release is fully deployed, so on an
+	// install poll the NativeID is empty by design. The RequestID carries
+	// namespace, name and target revision and the host preserves it verbatim
+	// across every poll of one operation.
+	ns, name, wantRevision, op, err := parseRequestID(request.RequestID)
 	if err != nil {
 		return nil, err
 	}
@@ -501,7 +531,7 @@ func (r *Release) Status(ctx context.Context, request *resource.StatusRequest) (
 	if op == opDelete {
 		return &resource.StatusResult{ProgressResult: deleteStatus(rel, ns, name)}, nil
 	}
-	return r.installStatus(ctx, conf, rel, ns, name, wantRevision, request.RequestID)
+	return r.installStatus(ctx, conf, rel, ns, name, wantRevision, op, request.RequestID)
 }
 
 func deleteStatus(rel *release.Release, ns, name string) *resource.ProgressResult {
@@ -525,39 +555,49 @@ func (r *Release) installStatus(
 	rel *release.Release,
 	ns, name string,
 	wantRevision int,
+	op opKind,
 	reqID string,
 ) (*resource.StatusResult, error) {
+	// A release only earns its NativeID once it is deployed and ready, because
+	// that is the moment formae records it as managed. Every non-terminal and
+	// failed result on the install path therefore reports none.
+	//
+	// The cost is real and deliberate: a failed first install leaves formae with
+	// no handle, so it cannot Delete the wedged release itself and the operator
+	// has to run `helm uninstall`. stalledMessage says so. Upgrades are exempt —
+	// the resource is already in state, so there is nothing to withhold.
+	pendingID := nativeIDUnless(op == opInstall, ns, name)
 	nativeID := prov.NativeID(ns, name)
 
 	if rel == nil {
 		// The record is written before any hook runs, so its absence this late
 		// means the operation never got off the ground.
-		return failure(nativeID, resource.OperationErrorCodeNotFound,
+		return failure(pendingID, resource.OperationErrorCodeNotFound,
 			fmt.Sprintf("release %s/%s not found", ns, name)), nil
 	}
 
 	// A newer revision means something else upgraded past us. Our operation's
 	// outcome is no longer observable, and reporting success would be a lie.
 	if rel.Version > wantRevision {
-		return failure(nativeID, resource.OperationErrorCodeGeneralServiceException,
+		return failure(pendingID, resource.OperationErrorCodeGeneralServiceException,
 			fmt.Sprintf("release %s/%s advanced to revision %d while waiting for %d",
 				ns, name, rel.Version, wantRevision)), nil
 	}
 
 	if rel.Version < wantRevision {
-		return inProgress(nativeID, reqID, nil,
+		return inProgress(pendingID, reqID, nil,
 			fmt.Sprintf("waiting for revision %d (at %d)", wantRevision, rel.Version)), nil
 	}
 
 	switch {
 	case releaseIsPending(rel):
 		if stalled(rel) {
-			return failure(nativeID, resource.OperationErrorCodeGeneralServiceException, stalledMessage(rel, ns, name)), nil
+			return failure(pendingID, resource.OperationErrorCodeGeneralServiceException, stalledMessage(rel, ns, name)), nil
 		}
-		return inProgress(nativeID, reqID, nil, fmt.Sprintf("release is %s", rel.Info.Status)), nil
+		return inProgress(pendingID, reqID, nil, fmt.Sprintf("release is %s", rel.Info.Status)), nil
 
 	case rel.Info.Status == release.StatusFailed:
-		return failure(nativeID, resource.OperationErrorCodeGeneralServiceException,
+		return failure(pendingID, resource.OperationErrorCodeGeneralServiceException,
 			fmt.Sprintf("release %s/%s failed: %s", ns, name, rel.Info.Description)), nil
 
 	case rel.Info.Status == release.StatusDeployed:
@@ -568,7 +608,7 @@ func (r *Release) installStatus(
 			return nil, err
 		}
 		if !ready {
-			return inProgress(nativeID, reqID, nil, msg), nil
+			return inProgress(pendingID, reqID, nil, msg), nil
 		}
 		props, err := json.Marshal(propertiesFromRelease(rel))
 		if err != nil {
@@ -583,7 +623,7 @@ func (r *Release) installStatus(
 		}}, nil
 
 	default:
-		return inProgress(nativeID, reqID, nil, fmt.Sprintf("release is %s", rel.Info.Status)), nil
+		return inProgress(pendingID, reqID, nil, fmt.Sprintf("release is %s", rel.Info.Status)), nil
 	}
 }
 

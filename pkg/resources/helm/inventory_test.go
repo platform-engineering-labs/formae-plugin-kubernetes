@@ -135,23 +135,45 @@ func TestKindFromResourceType(t *testing.T) {
 }
 
 func TestRequestIDRoundTrip(t *testing.T) {
+	// The RequestID is the only handle Status gets on an install: Create
+	// withholds the NativeID until the release is deployed, so namespace and
+	// name have to survive this round trip or Status cannot find the release.
 	id := requestID("monitoring", "prometheus", 7, opUpgrade)
-	rev, op, err := parseRequestID(id)
+	ns, name, rev, op, err := parseRequestID(id)
 	if err != nil {
 		t.Fatalf("parseRequestID(%q): %v", id, err)
 	}
-	if rev != 7 || op != opUpgrade {
-		t.Fatalf("got revision=%d op=%q, want 7/upgrade", rev, op)
+	if ns != "monitoring" || name != "prometheus" || rev != 7 || op != opUpgrade {
+		t.Fatalf("got %s/%s@%d:%s, want monitoring/prometheus@7:upgrade", ns, name, rev, op)
 	}
 }
 
 func TestParseRequestID_RejectsMalformed(t *testing.T) {
-	// Status has no operation field of its own, so a request id it cannot parse
-	// must be an error rather than a silent default to install.
-	for _, id := range []string{"", "ns/name", "ns/name@x:install", "ns/name:install"} {
-		if _, _, err := parseRequestID(id); err == nil {
+	// A request id Status cannot parse must error rather than silently default
+	// to install or to an empty namespace, which would send the lookup at the
+	// wrong release.
+	for _, id := range []string{
+		"",
+		"ns/name",
+		"ns/name@x:install",
+		"ns/name:install",
+		"name@1:install",  // no namespace
+		"/name@1:install", // empty namespace
+		"ns/@1:install",   // empty name
+		"a/b/c@1:install", // too many segments
+	} {
+		if _, _, _, _, err := parseRequestID(id); err == nil {
 			t.Errorf("parseRequestID(%q) accepted a malformed id", id)
 		}
+	}
+}
+
+func TestNativeIDUnless(t *testing.T) {
+	if got := nativeIDUnless(true, "ns", "name"); got != "" {
+		t.Errorf("withheld native id = %q, want empty", got)
+	}
+	if got := nativeIDUnless(false, "ns", "name"); got != "ns/name" {
+		t.Errorf("native id = %q, want ns/name", got)
 	}
 }
 
