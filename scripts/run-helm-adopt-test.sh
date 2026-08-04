@@ -98,7 +98,7 @@ try: rs = json.load(sys.stdin).get("Resources", [])
 except Exception: sys.exit(0)
 for r in rs:
     if r["Type"] == sys.argv[1]:
-        print(r.get("NativeId") or r.get("Label",""))
+        print(r.get("NativeID") or r.get("Label",""))
 ' "$1"
 }
 
@@ -315,8 +315,11 @@ do
     tries=0
     until formae_ids_of_type "${rtype}" | grep -qx "${rid}"; do
         tries=$((tries + 1))
-        [[ ${tries} -gt 40 ]] && fail "control ${rtype} ${rid} never discovered — either discovery does not cover this kind, so the collapse assertion above was vacuous, or the filter is over-matching"
-        sleep 3
+        # Discovery runs on an interval (60s in the helm-interop profile), and the
+        # controls are created after it has already swept once, so this has to
+        # outlast more than a single cycle.
+        [[ ${tries} -gt 60 ]] && fail "control ${rtype} ${rid} never discovered after $((tries * 5))s — either discovery does not cover this kind, so the collapse assertion above was vacuous, or the filter is over-matching"
+        sleep 5
     done
 done
 pass "hand-made Deployment, Service, ConfigMap and ServiceAccount all still discovered"
