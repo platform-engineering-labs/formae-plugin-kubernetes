@@ -17,6 +17,9 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/model"
 	"github.com/platform-engineering-labs/formae/pkg/plugin"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/dynamic"
 
 	// Import resources to trigger init() registration
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/admissionregistration"
@@ -732,6 +735,42 @@ func (p *Plugin) List(ctx context.Context, req *resource.ListRequest) (*resource
 	return collapseHelmOwned(ctx, client, req, result), nil
 }
 
+// ownerLookup returns an owner-reference reader backed by the cluster.
+//
+// Resolves each kind through the client's RESTMapper, so a custom resource kind
+// works the same as a built-in — which matters, because the owners worth finding
+// here are mostly CRs like prometheus-operator's Alertmanager and Prometheus.
+//
+// A kind that cannot be mapped, or an object that has since been deleted, yields
+// no owners rather than an error: both mean "cannot attribute this", and the
+// caller keeps the object either way.
+func ownerLookup(client *transport.Client) helm.OwnerLookup {
+	return func(ctx context.Context, kind, namespace, name string) ([]helm.OwnerRef, error) {
+		gvr, namespaced, ok := client.ResolveKind(kind)
+		if !ok {
+			return nil, nil
+		}
+		ri := client.Dynamic.Resource(gvr)
+		var getter dynamic.ResourceInterface = ri
+		if namespaced && namespace != "" {
+			getter = ri.Namespace(namespace)
+		}
+		obj, err := getter.Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil, nil
+			}
+			return nil, err
+		}
+		refs := obj.GetOwnerReferences()
+		out := make([]helm.OwnerRef, 0, len(refs))
+		for _, r := range refs {
+			out = append(out, helm.OwnerRef{Kind: r.Kind, Name: r.Name})
+		}
+		return out, nil
+	}
+}
+
 // collapseHelmOwned drops objects a Helm release renders, so a chart appears in
 // discovery as the single K8S::Helm::Release that owns it rather than as its
 // several dozen constituent resources.
@@ -769,6 +808,12 @@ func collapseHelmOwned(
 	}
 	before := len(result.NativeIDs)
 	result.NativeIDs = helm.FilterHelmOwned(inv, req.ResourceType, result.NativeIDs)
+	// Then the objects no manifest names but a controller created beneath one:
+	// the Pods behind a Deployment, and the Secrets, ConfigMaps and StatefulSets
+	// an operator generates from a custom resource the chart rendered.
+	result.NativeIDs = helm.FilterControllerOwned(
+		ctx, inv, req.ResourceType, result.NativeIDs, ownerLookup(client),
+	)
 	if inv.Len() == 0 && before > 0 {
 		// An inventory that built without error but holds nothing means no release
 		// was visible. Ordinary on a cluster running no Helm releases, and a silent
