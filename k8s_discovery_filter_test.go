@@ -8,7 +8,10 @@ package main
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
+
+	k8sregistry "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/registry"
 
 	"github.com/platform-engineering-labs/formae/pkg/model"
 	"github.com/stretchr/testify/assert"
@@ -141,6 +144,86 @@ func TestDiscoveryFilters_KeepsStandaloneEndpoints(t *testing.T) {
 func TestDiscoveryFilters_ExcludesDefaultKubernetesEndpoints(t *testing.T) {
 	assert.True(t, excludedByAny(t, endpointsFilters(t), defaultKubernetesEndpoints),
 		"the apiserver's default/kubernetes Endpoints must be filtered")
+}
+
+// A cluster-scoped object Helm applied for a release. Captured from a real
+// cluster: formae stores dotted annotation keys in BOTH forms, flat and expanded
+// into nested maps, so the filter has to read the flat one.
+const helmAppliedClusterRoleBinding = `{
+  "apiVersion": "rbac.authorization.k8s.io/v1",
+  "kind": "ClusterRoleBinding",
+  "metadata": {
+    "name": "kube-prom-kube-prometheus-operator",
+    "annotations": {
+      "meta": {"helm": {"sh/release-name": "kube-prom", "sh/release-namespace": "monitoring"}},
+      "meta.helm.sh/release-name": "kube-prom",
+      "meta.helm.sh/release-namespace": "monitoring"
+    },
+    "labels": {
+      "app.kubernetes.io/managed-by": "Helm",
+      "heritage": "Helm",
+      "release": "kube-prom"
+    }
+  }
+}`
+
+// Somebody's own ClusterRoleBinding. No Helm annotations, so it must survive.
+const handMadeClusterRoleBinding = `{
+  "apiVersion": "rbac.authorization.k8s.io/v1",
+  "kind": "ClusterRoleBinding",
+  "metadata": {"name": "my-own-binding"}
+}`
+
+func filtersFor(t *testing.T, resourceType string) []model.MatchFilter {
+	t.Helper()
+	var out []model.MatchFilter
+	for _, f := range (&Plugin{}).DiscoveryFilters() {
+		for _, rt := range f.ResourceTypes {
+			if rt == resourceType {
+				out = append(out, f)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// Anything Helm applied carries meta.helm.sh/release-name, and the
+// K8S::Helm::Release that owns it stands in for it. The manifest-based collapse
+// in collapseHelmOwned covers this too, but only while the release inventory can
+// be built — this filter is static, needs no apiserver call, and still holds when
+// that build fails.
+func TestDiscoveryFilters_ExcludesHelmAppliedObjects(t *testing.T) {
+	assert.True(t,
+		excludedByAny(t, filtersFor(t, "K8S::Rbac::ClusterRoleBinding"), helmAppliedClusterRoleBinding),
+		"an object carrying meta.helm.sh/release-name was applied by Helm and belongs to "+
+			"a release, so it must not surface as an unmanaged resource of its own")
+}
+
+func TestDiscoveryFilters_KeepsHandMadeClusterRoleBinding(t *testing.T) {
+	assert.False(t,
+		excludedByAny(t, filtersFor(t, "K8S::Rbac::ClusterRoleBinding"), handMadeClusterRoleBinding),
+		"a ClusterRoleBinding with no Helm annotations is somebody's own resource")
+}
+
+// The Helm-applied filter is only worth anything if it covers every type a chart
+// can render, so a missing entry is a silent hole rather than a visible error.
+func TestDiscoveryFilters_HelmAppliedCoversEveryDiscoverableType(t *testing.T) {
+	for _, rt := range k8sregistry.ResourceTypes() {
+		if rt == "K8S::Helm::Release" || strings.HasPrefix(rt, "K8S::Test::") {
+			continue // the release itself must stay discoverable
+		}
+		assert.Truef(t, excludedByAny(t, filtersFor(t, rt), helmAppliedClusterRoleBinding),
+			"%s has no Helm-applied filter, so Helm-owned objects of that type leak", rt)
+	}
+}
+
+// The release itself must never be filtered by its own ownership annotations —
+// it is the resource the collapse exists to surface.
+func TestDiscoveryFilters_KeepsTheReleaseItself(t *testing.T) {
+	assert.False(t,
+		excludedByAny(t, filtersFor(t, "K8S::Helm::Release"), helmAppliedClusterRoleBinding),
+		"K8S::Helm::Release must stay discoverable")
 }
 
 // Guards the specific mistake this file exists for: a filter that cannot fire.

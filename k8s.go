@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/k8sversion"
@@ -56,10 +57,46 @@ func (p *Plugin) RateLimit() model.RateLimitConfig {
 	}
 }
 
+// helmAppliedFilters excludes every object Helm applied for a release, on every
+// discoverable type except the release itself.
+//
+// Helm stamps meta.helm.sh/release-name and -namespace on everything it applies,
+// so this is ownership stated by the object itself: no apiserver call, no
+// manifest, nothing to go stale. The K8S::Helm::Release that owns the object
+// stands in for it, exactly as collapseHelmOwned intends.
+//
+// It overlaps collapseHelmOwned on purpose. That path is the more complete one —
+// it also covers hook objects, which carry no annotations — but it needs the
+// release inventory, and when that build fails it degrades to passing everything
+// through. This filter still holds in that case, so a chart's RBAC and CRDs do
+// not flood discovery just because one Helm call timed out.
+//
+// Driven off the registry rather than a hand-written list: a type added later
+// would otherwise silently have no filter, and a leak nobody notices is worse
+// than a compile error.
+func helmAppliedFilters() []model.MatchFilter {
+	var out []model.MatchFilter
+	for _, rt := range registry.ResourceTypes() {
+		// The release is the resource discovery is meant to surface, and its own
+		// storage Secret is filtered separately by type.
+		if rt == helm.ResourceTypeRelease || strings.HasPrefix(rt, "K8S::Test::") {
+			continue
+		}
+		out = append(out, model.MatchFilter{
+			ResourceTypes: []string{rt},
+			Conditions: []model.FilterCondition{
+				// Existence check: any release name at all means Helm applied it.
+				{PropertyPath: "$.metadata.annotations['meta.helm.sh/release-name']"},
+			},
+		})
+	}
+	return out
+}
+
 // DiscoveryFilters returns filters to exclude certain resources from discovery.
 // Excludes system namespaces by default.
 func (p *Plugin) DiscoveryFilters() []model.MatchFilter {
-	return []model.MatchFilter{
+	return append(helmAppliedFilters(), []model.MatchFilter{
 		// Exclude kube-system namespace resources
 		{
 			ResourceTypes: []string{"K8S::Core::Namespace"},
@@ -532,7 +569,7 @@ func (p *Plugin) DiscoveryFilters() []model.MatchFilter {
 				{PropertyPath: "$.metadata.name", PropertyValue: "kube-system-service-accounts"},
 			},
 		},
-	}
+	}...)
 }
 
 // LabelConfig returns the configuration for extracting human-readable labels
