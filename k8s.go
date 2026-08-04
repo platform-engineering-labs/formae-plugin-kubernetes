@@ -701,10 +701,28 @@ func collapseHelmOwned(
 	if result == nil || len(result.NativeIDs) == 0 || req.ResourceType == helm.ResourceTypeRelease {
 		return result
 	}
+	log := plugin.LoggerFromContext(ctx)
 	inv, err := helm.InventoryFor(ctx, client.Config)
 	if err != nil {
+		// Degrading quietly is what made this expensive to diagnose: every object
+		// a chart renders surfaces as unmanaged, which reads as the collapse never
+		// having been implemented rather than as one failed Helm call. The list is
+		// still returned untouched — see above — but no longer in silence.
+		log.Warn("helm collapse degraded, chart objects will surface as unmanaged",
+			"resourceType", req.ResourceType,
+			"objects", len(result.NativeIDs),
+			"error", err)
 		return result
 	}
+	before := len(result.NativeIDs)
 	result.NativeIDs = helm.FilterHelmOwned(inv, req.ResourceType, result.NativeIDs)
+	if inv.Len() == 0 && before > 0 {
+		// An inventory that built without error but holds nothing means no release
+		// was visible. Ordinary on a cluster running no Helm releases, and a silent
+		// collapse failure on one that is — indistinguishable from here, so it is
+		// reported at debug rather than warn.
+		log.Debug("helm collapse found no releases; nothing to hide",
+			"resourceType", req.ResourceType, "objects", before)
+	}
 	return result
 }
