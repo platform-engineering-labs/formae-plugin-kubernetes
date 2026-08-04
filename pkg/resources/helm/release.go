@@ -69,7 +69,13 @@ var _ prov.Provisioner = &Release{}
 type releaseProperties struct {
 	Metadata releaseMetadata `json:"metadata"`
 
-	Chart           string         `json:"chart"`
+	// omitempty is load-bearing, not tidiness: Read cannot recover the chart
+	// reference, so it must be *absent* from the reported state. Without
+	// omitempty the zero value is marshalled as "chart":"" and overwrites the
+	// desired value in formae's state, and every later plain apply is then
+	// refused as drift. repoURL has always had it, which is why that field
+	// never had the problem.
+	Chart           string         `json:"chart,omitempty"`
 	RepoURL         string         `json:"repoURL,omitempty"`
 	Version         string         `json:"version,omitempty"`
 	Values          map[string]any `json:"values,omitempty"`
@@ -630,9 +636,27 @@ func propertiesFromRelease(rel *release.Release) *releaseProperties {
 		props.Status = rel.Info.Status.String()
 	}
 	if rel.Chart != nil && rel.Chart.Metadata != nil {
-		props.Chart = rel.Chart.Metadata.Name
+		// version IS recoverable and must always be reported: it is how a
+		// Helm-side upgrade is detected as drift.
 		props.Version = rel.Chart.Metadata.Version
 		props.AppVersion = rel.Chart.Metadata.AppVersion
+
+		// chart is reported only for a release this plugin did NOT install.
+		//
+		// Helm records the chart's *name*, never the reference that fetched it. So
+		// for a release formae owns, reporting the name would answer "podinfo" for
+		// a desired "oci://ghcr.io/stefanprodan/charts/podinfo" and every later
+		// plain apply would be refused as drift. Omitting it instead lets formae
+		// keep the reference the user wrote — the same treatment repoURL has always
+		// had.
+		//
+		// A foreign release has no desired value to keep, and something has to be
+		// reported or discovery records it with no chart at all and
+		// `formae extract` emits a forma that cannot be applied. The name is the
+		// best that can be recovered, and it is what makes adoption work.
+		if !formaeOwns(rel) {
+			props.Chart = rel.Chart.Metadata.Name
+		}
 	}
 	return props
 }

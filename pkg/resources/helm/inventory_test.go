@@ -449,3 +449,37 @@ func TestChartRefName(t *testing.T) {
 		}
 	}
 }
+
+// Read reports `chart` only for a release this plugin does not own, and the two
+// halves of that rule fix different bugs.
+//
+// Owned: Helm records the chart *name*, not the reference, so reporting it would
+// answer "podinfo" for a desired "oci://…/podinfo" and every later plain apply
+// would be refused as drift. Omitted, formae keeps what the user wrote.
+//
+// Foreign: there is no desired value to keep, so something must be reported or
+// discovery records the release with no chart and `formae extract` emits a forma
+// that cannot be applied.
+func TestPropertiesFromRelease_ChartOnlyForForeignReleases(t *testing.T) {
+	withChart := func(r *release.Release) *release.Release {
+		r.Chart = &chart.Chart{Metadata: &chart.Metadata{Name: "podinfo", Version: "6.7.1"}}
+		return r
+	}
+
+	owned := withChart(relAt(release.StatusDeployed, 1, time.Minute)) // relAt marks it owned
+	if got := propertiesFromRelease(owned).Chart; got != "" {
+		t.Errorf("owned release reported chart %q; it must be omitted so formae keeps the reference", got)
+	}
+
+	foreign := withChart(foreignRelAt(release.StatusDeployed, 1))
+	if got := propertiesFromRelease(foreign).Chart; got != "podinfo" {
+		t.Errorf("foreign release reported chart %q, want %q — adoption needs it", got, "podinfo")
+	}
+
+	// version is recoverable either way and must always be reported.
+	for name, rel := range map[string]*release.Release{"owned": owned, "foreign": foreign} {
+		if got := propertiesFromRelease(rel).Version; got != "6.7.1" {
+			t.Errorf("%s release reported version %q, want 6.7.1", name, got)
+		}
+	}
+}

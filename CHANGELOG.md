@@ -70,6 +70,22 @@ formae agent.
   formae, and Helm then rejected the next upgrade outright with "user supplied
   labels contains system reserved label name".
 
+- **An `oci://` chart reference no longer drifts.** `Read` reports the chart only
+  for a release this plugin did *not* install. Helm records the chart's *name*,
+  never the reference that fetched it, so reporting it answered `podinfo` for a
+  desired `oci://ghcr.io/stefanprodan/charts/podinfo` and every later plain apply
+  was refused as drift. Omitting it lets formae keep the reference the user wrote
+  — the treatment `repoURL` has always had.
+
+  Three things had to line up, and each one alone was not enough: `chart` had to
+  become optional in the schema (omitting a *required* field makes formae treat the
+  resource as invalid and drop it from the inventory), the struct tag needed
+  `omitempty` (otherwise the zero value marshals as `"chart":""` and overwrites the
+  desired value), and the omission had to be conditional on ownership. A foreign
+  release has no desired value to keep, so the chart name is still reported for it
+  — without that, discovery records a release with no chart and `formae extract`
+  emits a forma that cannot be applied, which breaks adoption.
+
 - **Re-applying the deployed version needs no chart fetch.** Helm stores the whole
   chart in the release record, so when a forma pins the version already deployed
   the plugin reuses it instead of resolving a repository. This is what lets an

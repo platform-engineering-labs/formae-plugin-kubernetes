@@ -80,14 +80,25 @@ open class Release extends formae.Resource {
   @k8s.FieldHint { required = true }
   metadata: ReleaseObjectMeta
 
-  /// Chart reference. A repo URL, an `oci://` reference, or a local path —
-  /// whatever `helm install` accepts.
+  /// Chart reference: a bare name with [repoURL], an `oci://` reference, or a
+  /// local path — whatever `helm install` accepts.
   ///
-  /// Chart *contents* are not part of the diff. A mutable tag or a re-published
-  /// repo version changes what installs without changing this field, so no
-  /// upgrade is planned. Pin [version] to avoid that.
-  @k8s.FieldHint { required = true }
-  chart: String
+  /// Input-only, and therefore optional in the schema rather than required. Helm's
+  /// release record stores the chart's *name*, never the reference that fetched
+  /// it, so `Read` cannot report this field back. Reporting the name instead made
+  /// an `oci://` reference differ from desired on every sync and upgrade forever;
+  /// omitting a *required* field makes formae treat the resource as invalid and
+  /// drop it from the inventory. Optional-and-omitted is the combination that
+  /// works, exactly as it already does for [repoURL].
+  ///
+  /// Still mandatory in practice — the provisioner rejects an empty chart — but
+  /// the failure now arrives at apply time rather than at `pkl eval`.
+  ///
+  /// Chart *contents* are not part of the diff either. A mutable tag or a
+  /// re-published repo version changes what installs without changing this field,
+  /// so no upgrade is planned. Pin [version] to avoid that.
+  @k8s.FieldHint {}
+  chart: String?
 
   /// Chart repository URL, for charts in a classic HTTP repo.
   ///
