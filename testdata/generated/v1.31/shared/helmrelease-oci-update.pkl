@@ -1,0 +1,57 @@
+/*
+ * Conformance Test: Helm Release from an OCI registry (Update)
+ *
+ * Bumps the chart version, 6.7.0 -> 6.7.1, which is the one operation that has to
+ * pull a chart the cluster has never seen. So unlike the HTTP fixture's update —
+ * which changes only values and therefore reuses the chart already stored in the
+ * release record — this exercises fetching from an OCI registry on upgrade.
+ *
+ * It also covers the half of the chart-reporting rule that the create test cannot:
+ * after the upgrade the release is still formae-owned, so `chart` must still be
+ * omitted from Read and the desired OCI reference must still be what formae holds.
+ * Report the chart name here and the post-update comparison fails.
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.31/core/Namespace.pkl" as ns
+import "@k8s/v1.31/helm/Release.pkl" as helm
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local appNs = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  appNs
+
+  new helm.Release {
+    label = "test-helm-release-oci"
+    metadata {
+      // Unchanged: both are createOnly, so touching either would be a replace.
+      name = "test-oci-\(v.testRunID)"
+      namespace = appNs.res.name
+    }
+
+    chart = "oci://ghcr.io/stefanprodan/charts/podinfo"
+    // Changed: forces a fetch from the registry rather than a reuse of the stored
+    // chart.
+    version = "6.7.1"
+
+    values = new Dynamic {
+      replicaCount = 1
+      ui {
+        message = "conformance oci update"
+      }
+    }
+  }
+}

@@ -1,0 +1,65 @@
+/*
+ * Conformance Test: Helm Release from an OCI registry (Create)
+ *
+ * The companion to helmrelease.pkl, which fetches from a classic HTTP repo. This
+ * one exists because the two chart sources exercise different code and used to
+ * fail differently.
+ *
+ * Helm's release record stores the chart's *name*, never the reference that
+ * fetched it. So a desired `oci://ghcr.io/stefanprodan/charts/podinfo` used to be
+ * read back as `podinfo`, and every plain apply after the first was refused as
+ * drift. A bare name plus repoURL round-tripped by accident, which is why the
+ * HTTP fixture never caught it.
+ *
+ * The assertion that catches a regression here is step 9 — "verifying resource
+ * state unchanged after sync". With the bug, the synced state reports `podinfo`
+ * while the forma says `oci://…/podinfo`, and the comparison fails.
+ *
+ * OCI is not an exotic case: it is how most charts are distributed now, and it
+ * cannot be expressed as a bare name plus repoURL. `helm pull nginx --repo
+ * oci://…` fails with "invalid reference" because OCI registries have no index to
+ * resolve a name against — the full reference is mandatory.
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.33/core/Namespace.pkl" as ns
+import "@k8s/v1.33/helm/Release.pkl" as helm
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local appNs = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  appNs
+
+  new helm.Release {
+    label = "test-helm-release-oci"
+    metadata {
+      name = "test-oci-\(v.testRunID)"
+      namespace = appNs.res.name
+    }
+
+    // A full OCI reference, and deliberately no repoURL — an OCI registry has no
+    // repository index, so there is nothing for repoURL to point at.
+    chart = "oci://ghcr.io/stefanprodan/charts/podinfo"
+    version = "6.7.0"
+
+    values = new Dynamic {
+      replicaCount = 1
+      ui {
+        message = "conformance oci create"
+      }
+    }
+  }
+}
