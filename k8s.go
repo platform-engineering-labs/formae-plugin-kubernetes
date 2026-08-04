@@ -159,12 +159,28 @@ func (p *Plugin) DiscoveryFilters() []model.MatchFilter {
 				{PropertyPath: "$.metadata.ownerReferences[0]"},
 			},
 		},
-		// Exclude Endpoints objects — K8S maintains one per Service with
-		// the Service as owner.
+		// Exclude Endpoints the endpoints controller maintains for a Service.
+		//
+		// Keyed on the controller's own label, NOT on ownerReferences: an
+		// Endpoints object never has any. Kubernetes associates it with its
+		// Service by matching name and namespace instead, so the obvious
+		// `$.metadata.ownerReferences[0]` filter that used to be here could
+		// never match and quietly covered nothing — every Service a Helm chart
+		// renders leaked an unmanaged Endpoints row. The hardcoded
+		// default/kubernetes exception above was the same bug, worked around
+		// one object at a time.
+		//
+		// An Endpoints with no Service of its name is left alone by the
+		// controller and so carries no labels at all. That one is somebody's
+		// deliberate resource — the selectorless-Service pattern pointing at
+		// external addresses — and stays discoverable.
 		{
 			ResourceTypes: []string{"K8S::Core::Endpoints"},
 			Conditions: []model.FilterCondition{
-				{PropertyPath: "$.metadata.ownerReferences[0]"},
+				{
+					PropertyPath:  "$.metadata.labels['endpoints.kubernetes.io/managed-by']",
+					PropertyValue: "endpoint-controller",
+				},
 			},
 		},
 		// Exclude auto-generated ServiceAccount token Secrets.
