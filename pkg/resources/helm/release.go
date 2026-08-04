@@ -1032,16 +1032,62 @@ func isReleaseNotFound(err error) bool {
 // reached most often by adopting a release installed from an HTTP repo: Helm's
 // release record does not retain the repository it came from, so Read cannot
 // reconstruct repoURL and an extracted forma arrives with the bare name alone.
+// resolveChartRef turns the forma's (chart, repoURL) pair into the arguments Helm
+// actually wants: a chart reference, and the RepoURL to resolve it against.
+//
+// The split exists so `chart` is always the bare chart name — which is precisely
+// what Helm records in the release, so it round-trips. Put the whole
+// `oci://host/path/name` in `chart` instead and Read can only ever answer "name",
+// which used to make every plain apply after the first fail as drift.
+//
+// The two repository kinds need opposite handling, which is why this is not just
+// string concatenation:
+//
+//   - An HTTP repo has an index. Helm resolves a bare name against it, so the URL
+//     goes to RepoURL and the chart reference stays the bare name.
+//   - An OCI registry has no index. `helm pull nginx --repo oci://…` fails with
+//     "invalid reference"; the full reference is mandatory. So the registry prefix
+//     is joined onto the name here and RepoURL is left empty.
+func resolveChartRef(chartRef, repoURL string) (ref, repo string) {
+	if strings.HasPrefix(repoURL, ociScheme) {
+		return strings.TrimSuffix(repoURL, "/") + "/" + chartRef, ""
+	}
+	return chartRef, repoURL
+}
+
+const ociScheme = "oci://"
+
+// validateChartRef rejects a (chart, repoURL) pair Helm cannot resolve, before
+// handing it to LocateChart.
 func validateChartRef(chartRef, repoURL string) error {
-	if repoURL != "" || strings.Contains(chartRef, "/") || strings.HasPrefix(chartRef, "oci://") {
+	// A full OCI reference in `chart` works on first apply and then reports the
+	// bare name back forever, so it is refused in favour of the split form. This
+	// is a correctness guard, not style.
+	if strings.HasPrefix(chartRef, ociScheme) {
+		name := chartRef[strings.LastIndex(chartRef, "/")+1:]
+		return fmt.Errorf(
+			"%s: put the registry in repoURL and the chart name in chart, not a full "+
+				"OCI reference in chart. Use repoURL = %q with chart = %q instead of "+
+				"chart = %q. Helm records only the chart name, so the full reference "+
+				"cannot be read back and every apply after the first would report drift",
+			ResourceTypeRelease,
+			strings.TrimSuffix(chartRef, "/"+name), name, chartRef)
+	}
+
+	// A bare name with nowhere to fetch it from. Helm's own complaint
+	// ("non-absolute URLs should be in form of repo_name/path_to_chart") does not
+	// say what to do about it. Reached most often by adopting a release installed
+	// from a repo: Helm does not record which repository a release came from, so
+	// Read cannot reconstruct repoURL.
+	if repoURL != "" || strings.Contains(chartRef, "/") {
 		return nil
 	}
 	return fmt.Errorf(
 		"%s: chart %q is a bare name with no repoURL, which Helm cannot resolve. "+
-			"Set repoURL to the chart repository, use a repo-qualified name, an oci:// "+
-			"reference, or a local path. Adopting a release installed from an HTTP repo "+
-			"always needs this: Helm does not record which repository a release came from, "+
-			"so it cannot be discovered",
+			"Set repoURL to the chart repository — `https://…` for a classic repo or "+
+			"`oci://host/path` for a registry — or give chart a local path. Adopting a "+
+			"release installed from a repo always needs this: Helm does not record which "+
+			"repository a release came from, so it cannot be discovered",
 		ResourceTypeRelease, chartRef)
 }
 
@@ -1061,17 +1107,20 @@ func loadChart(conf *action.Configuration, props *releaseProperties) (*chart.Cha
 	// chart reference fails to resolve.
 	inst := action.NewInstall(conf)
 	inst.Version = props.Version
-	// Resolves a bare chart name against the repo index directly, so the agent
-	// host needs no `helm repo add`.
-	inst.RepoURL = props.RepoURL
 
-	path, err := inst.LocateChart(props.Chart, settings)
+	// Either resolves a bare name against a repo index, or joins an OCI registry
+	// prefix onto the name — see resolveChartRef. Either way the agent host needs
+	// no `helm repo add`.
+	ref, repo := resolveChartRef(props.Chart, props.RepoURL)
+	inst.RepoURL = repo
+
+	path, err := inst.LocateChart(ref, settings)
 	if err != nil {
-		return nil, fmt.Errorf("locate chart %q: %w", props.Chart, err)
+		return nil, fmt.Errorf("locate chart %q: %w", ref, err)
 	}
 	chrt, err := loader.Load(path)
 	if err != nil {
-		return nil, fmt.Errorf("load chart %q: %w", props.Chart, err)
+		return nil, fmt.Errorf("load chart %q: %w", ref, err)
 	}
 	return chrt, nil
 }

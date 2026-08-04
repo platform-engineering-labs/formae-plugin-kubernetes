@@ -290,10 +290,20 @@ pass "none of the chart's 6 rendered objects surfaced"
 #
 # Each is an object in the same namespace that no chart rendered, so each MUST be
 # discovered. Deployment uses replicas=0 to avoid waiting on a pod.
-kubectl create configmap ctl-configmap -n "${NS}" --from-literal=k=v >/dev/null 2>&1 || true
-kubectl create deployment ctl-deployment -n "${NS}" --image=busybox:1.36 --replicas=0 >/dev/null 2>&1 || true
-kubectl create service clusterip ctl-service -n "${NS}" --tcp=80:80 >/dev/null 2>&1 || true
-kubectl create serviceaccount ctl-sa -n "${NS}" >/dev/null 2>&1 || true
+# Created with the failure surfaced, not swallowed. A `|| true` here once turned a
+# namespace that was still Terminating from a previous run into a confusing
+# "control never discovered" failure several minutes later.
+create_control() {
+    local out
+    if ! out="$(kubectl create "$@" -n "${NS}" 2>&1)"; then
+        echo "     ${out}" >&2
+        fail "could not create control object (${*}); the namespace may still be Terminating from a previous run"
+    fi
+}
+create_control configmap ctl-configmap --from-literal=k=v
+create_control deployment ctl-deployment --image=busybox:1.36 --replicas=0
+create_control service clusterip ctl-service --tcp=80:80
+create_control serviceaccount ctl-sa
 
 for pair in \
     "K8S::Core::ConfigMap|${NS}/ctl-configmap" \

@@ -371,18 +371,57 @@ func TestReleaseLabels_DropsSystemLabelsFromTheForma(t *testing.T) {
 // of repo_name/path_to_chart") does not say what to do. This case is reached by
 // adopting a release installed from an HTTP repo, because Helm does not record
 // which repository a release came from.
+// The split form is what makes `chart` round-trip: it is always the bare chart
+// name, which is exactly what Helm records in the release.
+func TestResolveChartRef(t *testing.T) {
+	// OCI registries have no index, so `helm pull name --repo oci://…` fails.
+	// The prefix is joined onto the name and RepoURL is left empty.
+	ref, repo := resolveChartRef("podinfo", "oci://ghcr.io/stefanprodan/charts")
+	if ref != "oci://ghcr.io/stefanprodan/charts/podinfo" || repo != "" {
+		t.Errorf("oci: got ref=%q repo=%q", ref, repo)
+	}
+	// A trailing slash on the registry must not double up.
+	if ref, _ := resolveChartRef("podinfo", "oci://ghcr.io/charts/"); ref != "oci://ghcr.io/charts/podinfo" {
+		t.Errorf("trailing slash: got %q", ref)
+	}
+	// An HTTP repo does have an index, so Helm resolves the bare name against it.
+	ref, repo = resolveChartRef("kratos", "https://k8s.ory.sh/helm/charts")
+	if ref != "kratos" || repo != "https://k8s.ory.sh/helm/charts" {
+		t.Errorf("http: got ref=%q repo=%q", ref, repo)
+	}
+	// A local path, or a pre-added repo alias, passes through untouched.
+	if ref, repo := resolveChartRef("./testdata/charts/hooked", ""); ref != "./testdata/charts/hooked" || repo != "" {
+		t.Errorf("local: got ref=%q repo=%q", ref, repo)
+	}
+}
+
 func TestValidateChartRef(t *testing.T) {
 	for _, ok := range []struct{ chart, repo string }{
-		{"kratos", "https://k8s.ory.sh/helm/charts"}, // repoURL supplied
-		{"ory/kratos", ""},                           // repo-qualified
-		{"oci://registry-1.docker.io/bitnamicharts/nginx", ""},
+		{"podinfo", "oci://ghcr.io/stefanprodan/charts"}, // split OCI form
+		{"kratos", "https://k8s.ory.sh/helm/charts"},     // split HTTP form
+		{"ory/kratos", ""},               // pre-added repo alias
 		{"./testdata/charts/hooked", ""}, // local path
 	} {
 		if err := validateChartRef(ok.chart, ok.repo); err != nil {
-			t.Errorf("validateChartRef(%q, %q) rejected a resolvable ref: %v", ok.chart, ok.repo, err)
+			t.Errorf("validateChartRef(%q, %q) rejected a resolvable pair: %v", ok.chart, ok.repo, err)
 		}
 	}
-	err := validateChartRef("kratos", "")
+
+	// A full OCI reference in `chart` installs fine and then reports the bare name
+	// back forever, so it is refused in favour of the split form — and the message
+	// must show the exact split to use.
+	err := validateChartRef("oci://ghcr.io/stefanprodan/charts/podinfo", "")
+	if err == nil {
+		t.Fatal("a full OCI reference in chart was accepted")
+	}
+	for _, want := range []string{`"oci://ghcr.io/stefanprodan/charts"`, `"podinfo"`, "drift"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("message missing %s: %v", want, err)
+		}
+	}
+
+	// A bare name with nowhere to fetch it from.
+	err = validateChartRef("podinfo", "")
 	if err == nil {
 		t.Fatal("a bare chart name with no repoURL was accepted")
 	}

@@ -60,7 +60,8 @@ forma {
       namespace = appNs.res.name
     }
 
-    chart = "oci://registry-1.docker.io/bitnamicharts/nginx"
+    chart = "nginx"
+    repoURL = "oci://registry-1.docker.io/bitnamicharts"
     // Pinned. Unpinned, the applied result depends on when you applied.
     version = "19.0.0"
 

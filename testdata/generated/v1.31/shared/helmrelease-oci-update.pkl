@@ -35,14 +35,15 @@ forma {
   appNs
 
   new helm.Release {
-    label = "test-helm-release-oci"
+    // Unchanged from create: the label sets the release name, and both name and
+    // namespace are createOnly, so touching either would be a replace.
+    label = "test-oci-\(v.testRunID)"
     metadata {
-      // Unchanged: both are createOnly, so touching either would be a replace.
-      name = "test-oci-\(v.testRunID)"
       namespace = appNs.res.name
     }
 
-    chart = "oci://ghcr.io/stefanprodan/charts/podinfo"
+    chart = "podinfo"
+    repoURL = "oci://ghcr.io/stefanprodan/charts"
     // Changed: forces a fetch from the registry rather than a reuse of the stored
     // chart.
     version = "6.7.1"

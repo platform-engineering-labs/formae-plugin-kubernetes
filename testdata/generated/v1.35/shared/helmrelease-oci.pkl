@@ -6,19 +6,17 @@
  * fail differently.
  *
  * Helm's release record stores the chart's *name*, never the reference that
- * fetched it. So a desired `oci://ghcr.io/stefanprodan/charts/podinfo` used to be
- * read back as `podinfo`, and every plain apply after the first was refused as
- * drift. A bare name plus repoURL round-tripped by accident, which is why the
- * HTTP fixture never caught it.
+ * fetched it. Keeping the registry in repoURL and the name in chart is what makes
+ * the field survive a round trip; a full `oci://…` reference in chart is refused
+ * for exactly that reason.
  *
  * The assertion that catches a regression here is step 9 — "verifying resource
  * state unchanged after sync". With the bug, the synced state reports `podinfo`
  * while the forma says `oci://…/podinfo`, and the comparison fails.
  *
- * OCI is not an exotic case: it is how most charts are distributed now, and it
- * cannot be expressed as a bare name plus repoURL. `helm pull nginx --repo
- * oci://…` fails with "invalid reference" because OCI registries have no index to
- * resolve a name against — the full reference is mandatory.
+ * OCI is not an exotic case: it is how most charts are distributed now. Helm alone
+ * cannot resolve a bare name against a registry — `helm pull nginx --repo oci://…`
+ * fails with "invalid reference" — so the plugin joins the two itself.
  */
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
@@ -44,15 +42,18 @@ forma {
   appNs
 
   new helm.Release {
-    label = "test-helm-release-oci"
+    // No metadata.name: it defaults to this resource's label, which is the shape
+    // most formae will use.
+    label = "test-oci-\(v.testRunID)"
     metadata {
-      name = "test-oci-\(v.testRunID)"
       namespace = appNs.res.name
     }
 
-    // A full OCI reference, and deliberately no repoURL — an OCI registry has no
-    // repository index, so there is nothing for repoURL to point at.
-    chart = "oci://ghcr.io/stefanprodan/charts/podinfo"
+    // The split form: repoURL carries the registry, chart carries the name. An
+    // OCI registry has no index, so the plugin joins them rather than letting
+    // Helm resolve a name against a repo — `helm pull name --repo oci://…` fails.
+    chart = "podinfo"
+    repoURL = "oci://ghcr.io/stefanprodan/charts"
     version = "6.7.0"
 
     values = new Dynamic {
