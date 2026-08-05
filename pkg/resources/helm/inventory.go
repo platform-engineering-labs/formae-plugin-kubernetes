@@ -41,6 +41,10 @@ type Inventory struct {
 	byKind  map[kindRef]string  // kind+ns+name -> "namespace/releaseName"
 }
 
+// kindNamespace is special-cased by both filters: a Namespace is a discovery
+// parent, so hiding one hides everything inside it.
+const kindNamespace = "Namespace"
+
 // kindRef identifies an object without its apiVersion.
 //
 // The filter matches on Kind alone because formae's ListResult carries only
@@ -95,6 +99,18 @@ func KindFromResourceType(resourceType string) string {
 func FilterHelmOwned(inv *Inventory, resourceType string, nativeIDs []string) []string {
 	kind := KindFromResourceType(resourceType)
 	if kind == "" || inv == nil || len(nativeIDs) == 0 {
+		return nativeIDs
+	}
+	if kind == kindNamespace {
+		// Never hide a Namespace, even one a chart rendered. Every namespaced
+		// type declares parent = K8S::Core::Namespace and discovery walks
+		// children per *discovered* namespace, so dropping a Namespace removes
+		// everything inside it from discovery — objects Helm never touched
+		// included, and any K8S::Helm::Release installed there with them.
+		//
+		// Measured on a chart that templates its own namespace: a hand-made
+		// ConfigMap inside it vanished from discovery entirely. One extra
+		// unmanaged Namespace row is by far the cheaper mistake.
 		return nativeIDs
 	}
 	kept := make([]string, 0, len(nativeIDs))

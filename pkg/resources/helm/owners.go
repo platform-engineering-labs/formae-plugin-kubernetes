@@ -62,7 +62,9 @@ func FilterControllerOwned(
 		return nativeIDs
 	}
 	kind := KindFromResourceType(resourceType)
-	if kind == "" {
+	if kind == "" || kind == kindNamespace {
+		// Same reason as FilterHelmOwned: a Namespace is a discovery parent and
+		// hiding one blinds discovery to its whole contents.
 		return nativeIDs
 	}
 

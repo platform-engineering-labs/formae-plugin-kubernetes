@@ -210,12 +210,50 @@ func TestDiscoveryFilters_KeepsHandMadeClusterRoleBinding(t *testing.T) {
 // can render, so a missing entry is a silent hole rather than a visible error.
 func TestDiscoveryFilters_HelmAppliedCoversEveryDiscoverableType(t *testing.T) {
 	for _, rt := range k8sregistry.ResourceTypes() {
-		if rt == "K8S::Helm::Release" || strings.HasPrefix(rt, "K8S::Test::") {
-			continue // the release itself must stay discoverable
+		// Two deliberate exceptions, each with its own test above: the release is
+		// what the collapse exists to surface, and a Namespace is the discovery
+		// parent for every namespaced type — filtering one hides everything
+		// inside it.
+		if rt == "K8S::Helm::Release" || rt == "K8S::Core::Namespace" ||
+			strings.HasPrefix(rt, "K8S::Test::") {
+			continue
 		}
 		assert.Truef(t, excludedByAny(t, filtersFor(t, rt), helmAppliedClusterRoleBinding),
 			"%s has no Helm-applied filter, so Helm-owned objects of that type leak", rt)
 	}
+}
+
+// A Namespace a chart rendered. Helm stamps it exactly like any other object, so
+// the Helm-applied filter would hide it — and hiding a Namespace is not a
+// one-row decision.
+const helmAppliedNamespace = `{
+  "apiVersion": "v1",
+  "kind": "Namespace",
+  "metadata": {
+    "name": "hh-tmplns",
+    "annotations": {
+      "meta.helm.sh/release-name": "nsc",
+      "meta.helm.sh/release-namespace": "default"
+    }
+  }
+}`
+
+// Never filter a Namespace on Helm ownership.
+//
+// Every namespaced type declares parent = K8S::Core::Namespace and discovery
+// walks children per *discovered* namespace, so excluding a Namespace removes
+// everything inside it from discovery — including objects Helm never touched, and
+// including any K8S::Helm::Release installed there. Measured on a chart that
+// templates its own namespace: a hand-made ConfigMap in it disappeared from
+// discovery entirely.
+//
+// Showing one extra unmanaged Namespace row is the cheaper mistake by a wide
+// margin.
+func TestDiscoveryFilters_NeverFiltersANamespaceOnHelmOwnership(t *testing.T) {
+	assert.False(t,
+		excludedByAny(t, filtersFor(t, "K8S::Core::Namespace"), helmAppliedNamespace),
+		"a Namespace is a discovery parent: filtering it hides every resource "+
+			"inside it, Helm's or not")
 }
 
 // The release itself must never be filtered by its own ownership annotations —

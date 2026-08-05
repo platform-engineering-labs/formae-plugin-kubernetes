@@ -6,6 +6,7 @@
 
 package helm
 
+
 import (
 	"strings"
 	"testing"
@@ -520,5 +521,25 @@ func TestPropertiesFromRelease_ChartOnlyForForeignReleases(t *testing.T) {
 		if got := propertiesFromRelease(rel).Version; got != "6.7.1" {
 			t.Errorf("%s release reported version %q, want 6.7.1", name, got)
 		}
+	}
+}
+
+// A Namespace a chart renders must survive the manifest collapse.
+//
+// Discovery walks namespaced children per *discovered* namespace, so dropping a
+// Namespace removes everything inside it from discovery — objects Helm never
+// touched included, and any K8S::Helm::Release installed there with them. The
+// release standing in for its own namespace is not worth blinding discovery to
+// that namespace's contents.
+func TestFilterHelmOwned_KeepsNamespaces(t *testing.T) {
+	inv := newInventory()
+	inv.objects[ObjectID{APIVersion: "v1", Kind: "Namespace", Namespace: "hh-tmplns", Name: "hh-tmplns"}] = "default/nsc"
+	inv.byKind[kindRef{Kind: "Namespace", Namespace: "hh-tmplns", Name: "hh-tmplns"}] = "default/nsc"
+	inv.byKind[kindRef{Kind: "Namespace", Name: "hh-tmplns"}] = "default/nsc"
+
+	got := FilterHelmOwned(inv, "K8S::Core::Namespace", []string{"hh-tmplns"})
+
+	if len(got) != 1 || got[0] != "hh-tmplns" {
+		t.Errorf("a chart-rendered Namespace must stay discoverable, got %v", got)
 	}
 }

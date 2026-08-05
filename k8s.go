@@ -82,7 +82,16 @@ func helmAppliedFilters() []model.MatchFilter {
 	for _, rt := range registry.ResourceTypes() {
 		// The release is the resource discovery is meant to surface, and its own
 		// storage Secret is filtered separately by type.
-		if rt == helm.ResourceTypeRelease || strings.HasPrefix(rt, "K8S::Test::") {
+		//
+		// K8S::Core::Namespace is excluded for a sharper reason: it is the
+		// discovery parent for every namespaced type, so filtering a
+		// chart-rendered namespace removes everything inside it from discovery —
+		// including objects Helm never applied, and including any
+		// K8S::Helm::Release installed there. Verified against a chart that
+		// templates its own namespace.
+		if rt == helm.ResourceTypeRelease ||
+			rt == "K8S::Core::Namespace" ||
+			strings.HasPrefix(rt, "K8S::Test::") {
 			continue
 		}
 		out = append(out, model.MatchFilter{
