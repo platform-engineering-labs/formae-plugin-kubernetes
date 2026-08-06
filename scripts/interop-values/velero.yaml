@@ -1,0 +1,16 @@
+# Make velero installable without cloud credentials.
+#
+# The chart renders fine bare — the corpus records it `ok` — but installing it
+# creates a BackupStorageLocation CR, and the CRD rejects one with no credential:
+#   BackupStorageLocation.velero.io "default" is invalid: [spec.credential: Invalid...
+#
+# velero is one of only two charts in the corpus with pre-rollback hooks, and the
+# only one that does not also want a license key, so it is worth keeping runnable
+# rather than dropping the trait. Nothing here touches the upgrade-crds hook the
+# pre-rollback cell asserts against.
+credentials:
+  useSecret: false
+snapshotsEnabled: false
+configuration:
+  backupStorageLocation: []
+  volumeSnapshotLocation: []
