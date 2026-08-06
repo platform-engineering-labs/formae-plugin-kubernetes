@@ -179,12 +179,22 @@ func releaseLabels(props *releaseProperties) map[string]string {
 	return labels
 }
 
-// withoutSystemLabels drops Helm's own bookkeeping labels.
+// withoutSystemLabels drops every label that came from bookkeeping rather than
+// from desired state — Helm's own reserved names, and our ownership marker.
 //
-// Needed because the secrets driver only filters them on Get; the list and last
-// paths hand them back verbatim (driver/secrets.go:103,141). Left in place they
-// leak into Read, get copied into an extracted forma, and Helm then rejects the
-// next upgrade with "user supplied labels contains system reserved label name".
+// Helm's are needed because the secrets driver only filters them on Get; the
+// list and last paths hand them back verbatim (driver/secrets.go:103,141). Left
+// in place they leak into Read, get copied into an extracted forma, and Helm
+// then rejects the next upgrade with "user supplied labels contains system
+// reserved label name".
+//
+// The ownership marker is ours and is stamped unconditionally by releaseLabels,
+// so a forma never declares it. Reported back out of Read it would diff against
+// every forma that does declare labels, and whether the schema's
+// hasProviderDefault on labels absorbs that depends on the host diffing the map
+// key-by-key rather than whole. Dropping it here removes the dependency.
+// releaseLabels re-adds it straight after, so the round trip stays lossless
+// where it matters.
 func withoutSystemLabels(in map[string]string) map[string]string {
 	if len(in) == 0 {
 		return nil
@@ -193,6 +203,7 @@ func withoutSystemLabels(in map[string]string) map[string]string {
 	for _, k := range driver.GetSystemLabels() {
 		system[k] = struct{}{}
 	}
+	system[formaeManagedLabel] = struct{}{}
 	out := make(map[string]string, len(in))
 	for k, v := range in {
 		if _, reserved := system[k]; reserved {
