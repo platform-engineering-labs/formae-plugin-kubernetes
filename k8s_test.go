@@ -71,13 +71,20 @@ func TestDiscoveryFilters_OwnedPods(t *testing.T) {
 	assert.Contains(t, f.Conditions[0].PropertyPath, "ownerReferences")
 }
 
-func TestDiscoveryFilters_OwnedEndpoints(t *testing.T) {
+// Endpoints are filtered by the endpoints controller's own label, not by
+// ownerReferences — an Endpoints object never has any, so the ownerReferences
+// filter this test used to assert could never fire. See
+// k8s_discovery_filter_test.go, which evaluates the filters against real object
+// JSON rather than only checking their shape.
+func TestDiscoveryFilters_ControllerManagedEndpoints(t *testing.T) {
 	p := &Plugin{}
 	filters := p.DiscoveryFilters()
 
-	f := findFilter(t, filters, "K8S::Core::Endpoints", "ownerReferences")
+	f := findFilter(t, filters, "K8S::Core::Endpoints", "managed-by")
 	require.Len(t, f.Conditions, 1)
-	assert.Contains(t, f.Conditions[0].PropertyPath, "ownerReferences")
+	assert.Equal(t, "$.metadata.labels['endpoints.kubernetes.io/managed-by']",
+		f.Conditions[0].PropertyPath)
+	assert.Equal(t, "endpoint-controller", f.Conditions[0].PropertyValue)
 }
 
 func TestDiscoveryFilters_ServiceAccountTokenSecrets(t *testing.T) {
