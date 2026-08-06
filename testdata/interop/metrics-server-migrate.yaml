@@ -1,0 +1,6 @@
+# Opts metrics-server into the rest of the chain: formae upgrade, helm
+# rollback, reconcile. Adjacent pair from the repo index, not a guess.
+version: 3.13.1
+
+notes: >-
+  3.13.0 -> 3.13.1.

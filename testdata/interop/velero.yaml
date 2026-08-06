@@ -1,28 +1,18 @@
-# velero — the release as `helm install` first creates it.
-#
-# One of only two charts in a 1000-chart Artifact Hub sample that carry
-# pre-rollback hooks, and the only one of those that does not also want a
-# licence key. Its pre-rollback hook is a CRD-upgrade Job, which is exactly the
-# shape where formae having no rollback verb bites: reverting by values and
-# re-applying fires pre-upgrade, not pre-rollback, so a CRD migration runs on
-# the wrong event.
+# velero — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the pre-rollback trait.
 chart: velero
-repoURL: https://vmware-tanzu.github.io/helm-charts
+repoURL: https://vmware-tanzu.github.io/helm-charts/
 version: 12.0.3
 
 trait: pre-rollback
-traitObject: Job/velero-upgrade-crds
+traitObject: "ServiceAccount/velero-server-upgrade-crds"
 
 # Without these velero installs a BackupStorageLocation whose own CRD rejects it
-# for having no credentials:
-#   BackupStorageLocation.velero.io "default" is invalid: [spec.credential: ...
-# The chart renders fine bare; it is installing that needs them. None of this
-# touches the upgrade-crds hook the trait asserts against.
+# for having no credentials. The chart renders fine bare; installing is what
+# needs them. None of this touches the upgrade-crds hook the trait asserts on.
 #
-# The empty lists here are also load-bearing in a second way: they are what
-# exposed values round-tripping through formae losing explicitly-empty
-# collections. "Set this to []" and "do not mention this" are different
-# instructions to a chart, and the difference was being dropped.
+# The empty lists are load-bearing twice over: they are also what exposed formae
+# dropping explicitly-empty collections from values.
 values:
   credentials:
     useSecret: false
@@ -32,5 +22,6 @@ values:
     volumeSnapshotLocation: []
 
 notes: >-
-  pre-rollback hooks wired to a CRD-upgrade Job; the sharpest available case for
-  formae having no rollback verb.
+  Artifact Hub rank 29. Installed bare, with no values
+  overrides, so a failure here is the chart's prerequisites rather than
+  formae's behaviour.

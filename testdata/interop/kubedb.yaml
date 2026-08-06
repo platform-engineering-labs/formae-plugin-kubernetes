@@ -1,0 +1,13 @@
+# kubedb — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the pre-rollback trait.
+chart: kubedb
+repoURL: https://charts.appscode.com/stable/
+version: v2026.6.19
+
+trait: pre-rollback
+traitObject: "ServiceAccount/kubedb-kubedb-crd-manager"
+
+notes: >-
+  Artifact Hub rank 787. Installed bare, with no values
+  overrides, so a failure here is the chart's prerequisites rather than
+  formae's behaviour.

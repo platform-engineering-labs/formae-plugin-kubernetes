@@ -1,0 +1,6 @@
+# Opts nats into the rest of the chain: formae upgrade, helm
+# rollback, reconcile. Adjacent pair from the repo index, not a guess.
+version: 2.14.2
+
+notes: >-
+  2.14.0 -> 2.14.2.

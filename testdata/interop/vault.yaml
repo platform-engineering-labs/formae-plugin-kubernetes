@@ -1,0 +1,13 @@
+# vault — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: vault
+repoURL: https://helm.releases.hashicorp.com
+version: 0.33.0
+
+trait: test-hook
+traitObject: "Pod/vault-server-test"
+
+notes: >-
+  Artifact Hub rank 11. Installed bare, with no values
+  overrides, so a failure here is the chart's prerequisites rather than
+  formae's behaviour.

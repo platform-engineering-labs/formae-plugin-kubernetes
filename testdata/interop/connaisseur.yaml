@@ -1,0 +1,13 @@
+# connaisseur — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the post-rollback trait.
+chart: connaisseur
+repoURL: https://sse-secure-systems.github.io/connaisseur/charts
+version: 2.11.0
+
+trait: post-rollback
+traitObject: "MutatingWebhookConfiguration/connaisseur-webhook"
+
+notes: >-
+  Artifact Hub rank 572. Installed bare, with no values
+  overrides, so a failure here is the chart's prerequisites rather than
+  formae's behaviour.

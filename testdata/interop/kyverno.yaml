@@ -1,0 +1,13 @@
+# kyverno — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: kyverno
+repoURL: https://kyverno.github.io/kyverno/
+version: 3.8.1
+
+trait: test-hook
+traitObject: "Pod/kyverno-admission-controller-metrics"
+
+notes: >-
+  Artifact Hub rank 35. Installed bare, with no values
+  overrides, so a failure here is the chart's prerequisites rather than
+  formae's behaviour.

@@ -1,0 +1,13 @@
+# vela-core — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the post-rollback trait.
+chart: vela-core
+repoURL: https://kubevela.github.io/charts
+version: 1.10.9
+
+trait: post-rollback
+traitObject: "ServiceAccount/vela-core-admission"
+
+notes: >-
+  Artifact Hub rank 323. Installed bare, with no values
+  overrides, so a failure here is the chart's prerequisites rather than
+  formae's behaviour.

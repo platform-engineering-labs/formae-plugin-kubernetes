@@ -1,0 +1,13 @@
+# cert-manager — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the no-hooks trait.
+chart: cert-manager
+repoURL: https://charts.jetstack.io
+version: v1.21.0
+
+trait: no-hooks
+traitObject: ""
+
+notes: >-
+  Artifact Hub rank 2. Installed bare, with no values
+  overrides, so a failure here is the chart's prerequisites rather than
+  formae's behaviour.

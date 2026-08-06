@@ -1,0 +1,6 @@
+# Opts cert-manager into the rest of the chain: formae upgrade, helm
+# rollback, reconcile. Adjacent pair from the repo index, not a guess.
+version: v1.21.1
+
+notes: >-
+  v1.21.0 -> v1.21.1.

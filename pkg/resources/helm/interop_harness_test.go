@@ -181,6 +181,19 @@ type helmClient interface {
 	Name() string
 }
 
+// interopInstallTimeout caps how long a chart gets to become ready. Sweeping
+// many charts at once, a few will never come up on a given cluster, and at ten
+// minutes each those dominate the run. INTEROP_TIMEOUT=4m keeps a broad sweep
+// finishing; leave it unset for a real single-chart run.
+func interopInstallTimeout() time.Duration {
+	if raw := os.Getenv("INTEROP_TIMEOUT"); raw != "" {
+		if d, err := time.ParseDuration(raw); err == nil {
+			return d
+		}
+	}
+	return 10 * time.Minute
+}
+
 func newHelmDriver(t *testing.T, cfg *config.Config) helmClient {
 	t.Helper()
 	if strings.EqualFold(os.Getenv("INTEROP_HELM"), "cli") {
@@ -225,7 +238,7 @@ func (h *sdkHelm) Install(spec chartSpec, namespace, release string) error {
 	install.CreateNamespace = true
 	install.Version = spec.Version
 	install.Wait = true
-	install.Timeout = 10 * time.Minute
+	install.Timeout = interopInstallTimeout()
 
 	values := spec.Values
 	if values == nil {
@@ -245,7 +258,7 @@ func (h *sdkHelm) Rollback(namespace, release string, revision int) error {
 	rollback := action.NewRollback(conf)
 	rollback.Version = revision
 	rollback.Wait = true
-	rollback.Timeout = 10 * time.Minute
+	rollback.Timeout = interopInstallTimeout()
 	return rollback.Run(release)
 }
 
@@ -308,7 +321,7 @@ func (h *cliHelm) Install(spec chartSpec, namespace, release string) error {
 		"install", release, spec.Chart,
 		"--version", spec.Version,
 		"--namespace", namespace, "--create-namespace",
-		"--wait", "--timeout", "10m",
+		"--wait", "--timeout", interopInstallTimeout().String(),
 	}
 	if spec.RepoURL != "" {
 		args = append(args, "--repo", spec.RepoURL)
@@ -334,7 +347,7 @@ func (h *cliHelm) Install(spec chartSpec, namespace, release string) error {
 
 func (h *cliHelm) Rollback(namespace, release string, revision int) error {
 	_, err := runCmd("helm", "rollback", release, fmt.Sprint(revision),
-		"-n", namespace, "--wait", "--timeout", "10m")
+		"-n", namespace, "--wait", "--timeout", interopInstallTimeout().String())
 	return err
 }
 
