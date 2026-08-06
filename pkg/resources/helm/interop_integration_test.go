@@ -438,26 +438,88 @@ func (c *interopCell) assertTrait(when string) {
 	}
 }
 
-// teardown keeps a failed cell's state, because it is the only evidence of why
-// it failed. INTEROP_KEEP=1 keeps a passing one too.
+// teardown dumps what a failure needs explained, then removes the cell.
+//
+// It deliberately does NOT leave the cluster as it found it on failure. Keeping
+// a failed release alive preserves evidence, but a chart can be an admission
+// controller, and a preserved one keeps enforcing. In a sweep of twenty charts,
+// one failed connaisseur left its webhook live and denied the image pull of
+// every chart that ran after it — fourteen cells reported as "does not install
+// bare" that had nothing wrong with them. Evidence belongs in the test log,
+// where it cannot affect the next cell. INTEROP_KEEP=1 keeps live state for the
+// single-chart case where poking at the cluster is the point.
 func (c *interopCell) teardown() {
-	if c.t.Failed() || os.Getenv("INTEROP_KEEP") != "" {
-		c.t.Logf("state preserved: namespace %s, stack %s, work %s", c.namespace, c.stack, c.work)
-		if c.t.Failed() {
-			if out, _ := runCmd("kubectl", "get", "events", "-n", c.namespace,
-				"--sort-by=.lastTimestamp", "--no-headers"); out != "" {
-				lines := strings.Split(strings.TrimSpace(out), "\n")
-				if len(lines) > 12 {
-					lines = lines[len(lines)-12:]
-				}
-				c.t.Logf("recent events:\n%s", strings.Join(lines, "\n"))
-			}
-		}
+	if c.t.Failed() {
+		c.dumpEvidence()
+	}
+	if os.Getenv("INTEROP_KEEP") != "" {
+		c.t.Logf("INTEROP_KEEP set — leaving namespace %s, stack %s, work %s",
+			c.namespace, c.stack, c.work)
 		return
 	}
 	c.formae.Destroy(c.stack)
 	_ = c.helm.Uninstall(c.namespace, c.release)
 	_, _ = runCmd("kubectl", "delete", "namespace", c.namespace, "--wait=false")
+	c.deleteClusterScoped()
+}
+
+// dumpEvidence writes everything a post-mortem needs into the test log.
+//
+// helm history and the release's values are here because they are what located
+// the values round-trip bug: the forma carried an explicitly empty collection,
+// the revision Helm ended up with did not, and only a revision-by-revision
+// values diff showed it.
+func (c *interopCell) dumpEvidence() {
+	c.t.Logf("--- evidence for %s ---", c.namespace)
+
+	if history, err := c.helm.History(c.namespace, c.release); err == nil {
+		for _, rev := range history {
+			c.t.Logf("  revision %d  %-10s %s", rev.Revision, rev.Status, rev.Version)
+		}
+	}
+	for _, revision := range []string{"1", "2", "3"} {
+		out, err := runCmd("helm", "get", "values", c.release,
+			"-n", c.namespace, "--revision", revision)
+		if err != nil {
+			continue
+		}
+		c.t.Logf("  values @%s: %s", revision, strings.Join(strings.Fields(out), " "))
+	}
+	if res := c.formae.Resource(ResourceTypeRelease, c.nativeID()); res != nil {
+		c.t.Logf("  formae stack=%v properties=%v", res["Stack"], res["Properties"])
+	}
+	if out, _ := runCmd("kubectl", "get", "events", "-n", c.namespace,
+		"--sort-by=.lastTimestamp", "--no-headers"); out != "" {
+		lines := strings.Split(strings.TrimSpace(out), "\n")
+		if len(lines) > 10 {
+			lines = lines[len(lines)-10:]
+		}
+		c.t.Logf("  recent events:\n%s", strings.Join(lines, "\n"))
+	}
+}
+
+// deleteClusterScoped removes the cluster-scoped objects this cell's release
+// created. Helm's uninstall handles them, but only when it runs — a chart that
+// failed mid-install leaves them behind with fixed names, and the next run of
+// the same chart then cannot install at all ("ClusterRole X exists and cannot
+// be imported"). Matched by Helm's own ownership annotation, so nothing outside
+// this cell is ever touched.
+func (c *interopCell) deleteClusterScoped() {
+	kinds := "clusterrole,clusterrolebinding,validatingwebhookconfiguration,mutatingwebhookconfiguration,apiservice"
+	out, err := runCmd("kubectl", "get", kinds, "-o",
+		`jsonpath={range .items[?(@.metadata.annotations.meta\.helm\.sh/release-namespace=="`+c.namespace+`")]}{.kind}/{.metadata.name}{"\n"}{end}`)
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Fields(out) {
+		kind, name, ok := strings.Cut(line, "/")
+		if !ok {
+			continue
+		}
+		if _, err := runCmd("kubectl", "delete", strings.ToLower(kind), name, "--ignore-not-found"); err == nil {
+			c.t.Logf("removed leftover %s", line)
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
