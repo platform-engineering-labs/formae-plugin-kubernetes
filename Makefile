@@ -27,7 +27,7 @@ FORMAE_BINARY ?= $(shell realpath $(firstword $(wildcard $(CURDIR)/../../formae/
 PLUGIN_BASE_DIR := $(HOME)/.pel/formae/plugins
 INSTALL_DIR := $(PLUGIN_BASE_DIR)/$(PLUGIN_NAME)/v$(PLUGIN_VERSION)
 
-.PHONY: all build test test-unit test-integration lint verify-schema clean install help setup-credentials clean-environment conformance-test conformance-test-crud conformance-test-discovery conformance-test-crud-run conformance-test-discovery-run conformance-test-resources conformance-test-charts generate-schema chart-test drift-test helm-drift-test helm-adopt-test
+.PHONY: all build test test-unit test-integration lint verify-schema clean install help setup-credentials clean-environment conformance-test conformance-test-crud conformance-test-discovery conformance-test-crud-run conformance-test-discovery-run conformance-test-resources conformance-test-charts generate-schema chart-test drift-test helm-drift-test helm-adopt-test helm-interop-test helm-interop-list helm-interop-check
 
 all: build
 
@@ -336,6 +336,32 @@ helm-adopt-test:
 ## Requires `make install` and a running agent.
 helm-drift-test:
 	@FORMAE_BINARY="$(FORMAE_BINARY)" ./scripts/run-helm-drift-test.sh
+
+## helm-interop-test: Run real charts from the plugin-factory corpus through the
+## helm-first adoption workflow: helm install, discover, adopt, formae upgrade,
+## helm rollback, reconcile. Charts are selected by trait, so each cell tests the
+## reason its chart was picked.
+##   TRAIT=pre-rollback|post-rollback|crd-install|test-hook|no-hooks
+##   CHART=<name>   one chart by name
+##   LIMIT=<n>      how many cells (default 1)
+##   KEEP=1         never tear down, even on success
+## Requires `make install`, a running agent, and the corpus ($HELM_CORPUS).
+helm-interop-test:
+	@FORMAE_BINARY="$(FORMAE_BINARY)" ./scripts/corpus-interop.py \
+		$(if $(TRAIT),--trait $(TRAIT),) $(if $(CHART),--chart $(CHART),) \
+		--limit $(or $(LIMIT),1) $(if $(KEEP),--keep,)
+
+## helm-interop-list: Show which corpus charts would run, the trait each was
+## selected for, and the assertion that justifies it. No cluster needed.
+## Add VERSIONS=1 to resolve each chart's A->B version pair (needs network).
+helm-interop-list:
+	@./scripts/corpus-interop.py --list --limit $(or $(LIMIT),20) \
+		$(if $(TRAIT),--trait $(TRAIT),) $(if $(VERSIONS),--versions,)
+
+## helm-interop-check: Self-check the harness logic — corpus parsing, trait
+## selection, forma repair, name uniqueness. No cluster, no network.
+helm-interop-check:
+	@./scripts/corpus-interop.py --self-check
 
 ## drift-test: Run drift detection + reconciliation test
 ## Deploys drift-demo.pkl, introduces drift via kubectl, force reconciles,
