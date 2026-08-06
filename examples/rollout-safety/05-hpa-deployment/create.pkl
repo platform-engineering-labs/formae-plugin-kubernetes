@@ -1,0 +1,48 @@
+/// Case 05 — HPA co-existence. CREATE: Deployment with NO spec.replicas.
+///
+///   formae apply examples/rollout-safety/05-hpa-deployment/create.pkl
+///
+/// Then run drift.sh to add an HPA and scale the Deployment externally (that is
+/// the "external drift" — done with kubectl, not formae). Re-reading with
+/// formae:
+///   OLD plugin: the HPA-scaled replica count leaks into live state → perpetual
+///               drift vs this forma (which omits replicas) → formae fights HPA.
+///   NEW plugin: spec.replicas is stripped when formae doesn't own it (checked
+///               via managedFields) → no drift, HPA left alone.
+amends "@formae/forma.pkl"
+
+import "@formae/formae.pkl"
+import "@clusters/local.pkl" as cluster
+import "@k8s/v1.34/apps/Deployment.pkl" as dep
+import "@k8s/v1.34/k8s.pkl" as k8s
+
+local k8sTarget = cluster.target("rollout-hpa")
+
+forma {
+  new formae.Stack { label = "rollout-hpa"; description = "Rollout-safety case 05: HPA co-existence" }
+  k8sTarget
+  new dep.Deployment {
+    target = k8sTarget.res
+    label = "hpa-demo"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "hpa-demo"
+      namespace = "default"
+    }
+    // NOTE: spec.replicas intentionally omitted — the HPA owns it.
+    spec = new dep.DeploymentSpec {
+      selector = new k8s.LabelSelector {
+        matchLabels = new Mapping { ["app"] = "hpa-demo" }
+      }
+      template = new k8s.PodTemplateSpec {
+        metadata = new k8s.PodTemplateMetadata {
+          labels = new Mapping { ["app"] = "hpa-demo" }
+        }
+        spec = new k8s.PodSpec {
+          containers {
+            new k8s.Container { name = "c"; image = "nginx:1.27" }
+          }
+        }
+      }
+    }
+  }
+}

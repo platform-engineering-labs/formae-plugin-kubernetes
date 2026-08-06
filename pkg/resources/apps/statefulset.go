@@ -70,6 +70,7 @@ func (ss *StatefulSet) Create(ctx context.Context, request *resource.CreateReque
 	if err != nil {
 		return nil, fmt.Errorf("failed to get statefulset live state: %w", err)
 	}
+	properties = prov.StripUnownedReplicas(properties, result.ManagedFields)
 
 	return &resource.CreateResult{
 		ProgressResult: &resource.ProgressResult{
@@ -103,6 +104,7 @@ func (ss *StatefulSet) Read(ctx context.Context, request *resource.ReadRequest) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get statefulset live state: %w", err)
 	}
+	properties = prov.StripUnownedReplicas(properties, result.ManagedFields)
 
 	return &resource.ReadResult{
 		ResourceType: request.ResourceType,
@@ -141,6 +143,7 @@ func (ss *StatefulSet) Update(ctx context.Context, request *resource.UpdateReque
 	if err != nil {
 		return nil, fmt.Errorf("failed to get statefulset live state: %w", err)
 	}
+	properties = prov.StripUnownedReplicas(properties, result.ManagedFields)
 
 	return &resource.UpdateResult{
 		ProgressResult: &resource.ProgressResult{
@@ -210,6 +213,7 @@ func (ss *StatefulSet) Status(ctx context.Context, request *resource.StatusReque
 	if err != nil {
 		return nil, fmt.Errorf("failed to get statefulset live state: %w", err)
 	}
+	properties = prov.StripUnownedReplicas(properties, result.ManagedFields)
 
 	return &resource.StatusResult{
 		ProgressResult: &resource.ProgressResult{
@@ -318,7 +322,26 @@ func (ss *StatefulSet) operationStatus(sts *appsv1.StatefulSet) resource.Operati
 	if sts.Spec.Replicas != nil {
 		desired = *sts.Spec.Replicas
 	}
-	if sts.Status.ReadyReplicas < desired || sts.Status.UpdatedReplicas < desired {
+
+	// OnDelete: the controller does not recreate pods to roll a new revision;
+	// updatedReplicas never advances on its own, so gate on readiness only.
+	if sts.Spec.UpdateStrategy.Type == appsv1.OnDeleteStatefulSetStrategyType {
+		if sts.Status.ReadyReplicas < desired {
+			return resource.OperationStatusInProgress
+		}
+		return resource.OperationStatusSuccess
+	}
+
+	// RollingUpdate with a partition only updates pods with ordinal >= partition,
+	// so the reachable updated count is desired - partition (floored at 0).
+	targetUpdated := desired
+	if ru := sts.Spec.UpdateStrategy.RollingUpdate; ru != nil && ru.Partition != nil {
+		targetUpdated = desired - *ru.Partition
+		if targetUpdated < 0 {
+			targetUpdated = 0
+		}
+	}
+	if sts.Status.ReadyReplicas < desired || sts.Status.UpdatedReplicas < targetUpdated {
 		return resource.OperationStatusInProgress
 	}
 	return resource.OperationStatusSuccess

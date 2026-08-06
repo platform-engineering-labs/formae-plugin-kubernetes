@@ -1,0 +1,45 @@
+/// Case 03 — partitioned StatefulSet. CREATE: 3 replicas, partition 2, nginx:1.27.
+///
+///   formae apply examples/rollout-safety/03-partition-statefulset/create.pkl
+amends "@formae/forma.pkl"
+
+import "@formae/formae.pkl"
+import "@clusters/local.pkl" as cluster
+import "@k8s/v1.34/apps/StatefulSet.pkl" as sts
+import "@k8s/v1.34/k8s.pkl" as k8s
+
+local k8sTarget = cluster.target("rollout-partition")
+
+forma {
+  new formae.Stack { label = "rollout-partition"; description = "Rollout-safety case 03: partitioned StatefulSet" }
+  k8sTarget
+  new sts.StatefulSet {
+    target = k8sTarget.res
+    label = "partition-demo"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "partition-demo"
+      namespace = "default"
+    }
+    spec = new sts.StatefulSetSpec {
+      serviceName = "partition-demo"
+      replicas = 3
+      updateStrategy = new sts.StatefulSetUpdateStrategy {
+        type = "RollingUpdate"
+        rollingUpdate = new sts.RollingUpdateStatefulSetStrategy { partition = 2 }
+      }
+      selector = new k8s.LabelSelector {
+        matchLabels = new Mapping { ["app"] = "partition-demo" }
+      }
+      template = new k8s.PodTemplateSpec {
+        metadata = new k8s.PodTemplateMetadata {
+          labels = new Mapping { ["app"] = "partition-demo" }
+        }
+        spec = new k8s.PodSpec {
+          containers {
+            new k8s.Container { name = "c"; image = "nginx:1.27" }
+          }
+        }
+      }
+    }
+  }
+}

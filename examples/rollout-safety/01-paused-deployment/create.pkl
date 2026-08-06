@@ -1,0 +1,43 @@
+/// Case 01 — paused Deployment. CREATE: 3 replicas, nginx:1.27.
+///
+///   formae apply examples/rollout-safety/01-paused-deployment/create.pkl
+///
+/// Then apply update.pkl (pauses + bumps image). Override the kubectl context
+/// with `--prop context=<name>` (default: current-context).
+amends "@formae/forma.pkl"
+
+import "@formae/formae.pkl"
+import "@clusters/local.pkl" as cluster
+import "@k8s/v1.34/apps/Deployment.pkl" as dep
+import "@k8s/v1.34/k8s.pkl" as k8s
+
+local k8sTarget = cluster.target("rollout-paused")
+
+forma {
+  new formae.Stack { label = "rollout-paused"; description = "Rollout-safety case 01: paused Deployment" }
+  k8sTarget
+  new dep.Deployment {
+    target = k8sTarget.res
+    label = "paused-demo"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "paused-demo"
+      namespace = "default"
+    }
+    spec = new dep.DeploymentSpec {
+      replicas = 3
+      selector = new k8s.LabelSelector {
+        matchLabels = new Mapping { ["app"] = "paused-demo" }
+      }
+      template = new k8s.PodTemplateSpec {
+        metadata = new k8s.PodTemplateMetadata {
+          labels = new Mapping { ["app"] = "paused-demo" }
+        }
+        spec = new k8s.PodSpec {
+          containers {
+            new k8s.Container { name = "nginx"; image = "nginx:1.27" }
+          }
+        }
+      }
+    }
+  }
+}

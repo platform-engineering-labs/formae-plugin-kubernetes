@@ -51,19 +51,21 @@ func recoverPanic(r any, op resource.Operation) error {
 	return fmt.Errorf("panic in %s: %v\n%s", op, r, debug.Stack())
 }
 
-// clearStatusMessageUnlessFailure blanks StatusMessage on any non-Failure
-// progress result. Formae renders StatusMessage as a `reason` row under the
-// per-resource line, and that row is only meaningful when the operation has
-// actually failed — for Success / InProgress it just adds noise. Individual
-// provisioners are free to compute and pass through informative messages
-// (e.g. "load balancer hostname: ..."); this wrapper enforces "reason only
-// on failure" uniformly so each provisioner doesn't have to gate the field
-// itself. Failure-state messages from inner provisioners are preserved.
+// clearStatusMessageUnlessFailure blanks StatusMessage only on terminal
+// Success. Formae renders StatusMessage as a `reason` row under the
+// per-resource line: on Failure it carries the failure reason, and on
+// InProgress it carries rollout progress (e.g. "replicas: 2/3 ready") which is
+// useful while an operation is running. Only on Success is a lingering message
+// pure noise, so we blank it there. Individual provisioners are free to compute
+// and pass through informative messages (e.g. "load balancer hostname: ...").
 func clearStatusMessageUnlessFailure(p *resource.ProgressResult) {
 	if p == nil {
 		return
 	}
-	if p.OperationStatus == resource.OperationStatusFailure {
+	// Preserve the message on Failure (the reason) and InProgress (rollout
+	// progress, e.g. "replicas: 2/3 ready"). Blank it only on terminal Success
+	// where a lingering message is just noise.
+	if p.OperationStatus != resource.OperationStatusSuccess {
 		return
 	}
 	p.StatusMessage = ""

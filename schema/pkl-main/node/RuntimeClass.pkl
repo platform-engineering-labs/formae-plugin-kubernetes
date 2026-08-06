@@ -46,12 +46,12 @@ open class RuntimeClass extends k8s.Resource {
   @k8s.FieldHint { required = true; createOnly = true }
   handler: String
 
-  /// `overhead` is immutable on RuntimeClass.
-  @k8s.FieldHint { createOnly = true }
+  /// `overhead` is mutable — the apiserver accepts an in-place update.
+  @k8s.FieldHint {}
   overhead: Overhead?
 
-  /// `scheduling` is immutable on RuntimeClass.
-  @k8s.FieldHint { createOnly = true }
+  /// `scheduling` is mutable — the apiserver accepts an in-place update.
+  @k8s.FieldHint {}
   scheduling: Scheduling?
 }
 
