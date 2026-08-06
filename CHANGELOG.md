@@ -42,9 +42,8 @@ formae agent.
   have taken: `CSIDriver.spec.requiresRepublish`, `CSIDriver.spec.tokenRequests`
   (both mutable since Kubernetes 1.22), `PriorityClass.globalDefault`,
   `RuntimeClass.overhead`, and `RuntimeClass.scheduling`. Each verdict was
-  verified against a live apiserver; the full matrix — including the fields that
-  are genuinely immutable and keep `createOnly` — is in
-  `docs/createonly-audit.md`.
+  verified against a live apiserver. The fields that are genuinely immutable keep
+  `createOnly`, and their per-field docstrings say so.
 
 ### Changed
 

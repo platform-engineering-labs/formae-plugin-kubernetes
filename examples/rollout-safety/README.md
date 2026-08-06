@@ -61,6 +61,6 @@ bash examples/rollout-safety/05-hpa-deployment/drift.sh
 - The plugin behavior each case demonstrates is covered by tests that hit the
   same provisioner code: `pkg/resources/apps/hpa_coexist_integration_test.go`
   against a live cluster (case 5), and the `*_status_test.go` unit tests
-  (cases 1–3). See `docs/createonly-audit.md` for the mutability audit.
+  (cases 1–3).
 - End-to-end `formae apply` was not run here (no agent in this environment); run
   it in yours with the agent up.
