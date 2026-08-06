@@ -1,0 +1,11 @@
+# Where formae moves the release to. The presence of this file is what opts
+# velero into the rest of the chain: formae upgrade, helm rollback, reconcile.
+#
+# Version only, no values: the install's values carry through, so the cell
+# measures one change rather than two.
+version: 12.1.0
+
+notes: >-
+  12.0.3 -> 12.1.0 is a real adjacent pair from the repo index, not a guess.
+  Bumping the version is also what makes repoURL required, since Helm never
+  records which repository a release came from.
