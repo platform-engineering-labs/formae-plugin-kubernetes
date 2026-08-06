@@ -10,7 +10,6 @@ for *external drift* (case 05) and for eyeballing raw K8s state.
 | 1 | `01-paused-deployment` | pause + bump image | `InProgress` forever | `Success` once observed |
 | 2 | `02-ondelete-statefulset` | `updateStrategy: OnDelete` + bump image | `InProgress` forever | `Success` once ready |
 | 3 | `03-partition-statefulset` | `rollingUpdate.partition: 2` + bump image | `InProgress` forever | `Success` at updated = replicas−partition |
-| 4 | `04-wedged-statefulset` | bump to a bad image | `InProgress` forever, no reason | `Failure` with pod reason |
 | 5 | `05-hpa-deployment` | HPA scales; forma omits replicas | perpetual drift vs HPA | no drift (replicas not formae-owned) |
 
 Each folder has `create.pkl` (initial state) and, where a change is involved,
@@ -56,11 +55,12 @@ bash examples/rollout-safety/05-hpa-deployment/drift.sh
 
 ## Validation status
 
-- All `create.pkl`/`update.pkl` are schema-validated (`pkl eval`).
-- The plugin behavior each case demonstrates is covered by integration tests
-  that hit the same provisioner code against a live cluster:
-  `pkg/resources/apps/rollout_failure_integration_test.go` (case 4),
-  `hpa_coexist_integration_test.go` (case 5), and the `*_status_test.go`
-  unit tests (cases 1–3). See `docs/createonly-audit.md` for the Part-A audit.
+- All `create.pkl`/`update.pkl` are schema-validated
+  (`pkl eval --project-dir examples <file>` — the cases share the top-level
+  `examples/PklProject`, so bare `pkl eval` finds no project).
+- The plugin behavior each case demonstrates is covered by tests that hit the
+  same provisioner code: `pkg/resources/apps/hpa_coexist_integration_test.go`
+  against a live cluster (case 5), and the `*_status_test.go` unit tests
+  (cases 1–3). See `docs/createonly-audit.md` for the mutability audit.
 - End-to-end `formae apply` was not run here (no agent in this environment); run
   it in yours with the agent up.

@@ -45,7 +45,7 @@ open class PriorityClass extends k8s.Resource {
   @k8s.FieldHint { required = true }
   metadata: k8s.ObjectMeta
 
-  /// `globalDefault` is immutable on PriorityClass.
+  /// `globalDefault` is mutable — the apiserver accepts an in-place update.
   @k8s.FieldHint {}
   globalDefault: Boolean?
 
