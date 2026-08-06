@@ -424,6 +424,43 @@ var commandIDPattern = regexp.MustCompile(`id:([A-Za-z0-9]+)`)
 // is not the signal.
 func (f *formaeCLI) Apply(mode, forma string) (state string, message string) {
 	f.t.Helper()
+	return f.apply(mode, forma, true)
+}
+
+// ApplyExpectingRefusal submits an apply that SHOULD be turned down, and does
+// not retry.
+//
+// Apply retries a rejection because it is usually a concurrency conflict rather
+// than a verdict. Here it is the verdict — reconcile refusing to overwrite an
+// out-of-band rollback is the behaviour under test — and retrying would keep
+// resubmitting until something let it through, turning the assertion into a
+// race against the drift guard.
+func (f *formaeCLI) ApplyExpectingRefusal(mode, forma string) (state string, message string) {
+	f.t.Helper()
+	return f.apply(mode, forma, false)
+}
+
+func (f *formaeCLI) apply(mode, forma string, retry bool) (state string, message string) {
+	f.t.Helper()
+	for attempt := 1; ; attempt++ {
+		state, message = f.applyOnce(mode, forma)
+		// Rejected means the submit never reached the plugin. Besides real drift,
+		// a background sync landing between the CLI's pre-flight read and its
+		// submit leaves the stack version it carried stale, and that is an
+		// optimistic-concurrency conflict rather than a verdict. Discovery is
+		// sweeping constantly during these cells, so it is common enough that not
+		// retrying reported three charts as hard failures with no diagnostic —
+		// there was none to give, because nothing had run.
+		if !retry || state != "Rejected" || attempt == 4 {
+			return state, message
+		}
+		f.t.Logf("apply --mode %s was rejected (attempt %d); retrying", mode, attempt)
+		time.Sleep(10 * time.Second)
+	}
+}
+
+func (f *formaeCLI) applyOnce(mode, forma string) (state string, message string) {
+	f.t.Helper()
 	out, _ := runCmdCombined(f.binary, "apply", "--mode", mode, "--yes", forma)
 
 	// An apply whose forma already matches reality submits no command at all and
@@ -454,6 +491,8 @@ func (f *formaeCLI) waitCommand(id string) (state string, message string) {
 					ResourceUpdates []struct {
 						ResourceType string
 						ErrorMessage string
+						State        string
+						Operation    string
 					}
 				}
 			}
@@ -462,12 +501,27 @@ func (f *formaeCLI) waitCommand(id string) (state string, message string) {
 				switch cmd.State {
 				case "Success", "Failed", "Rejected", "Canceled":
 					message = cmd.ErrorMessage
+					// The per-resource State is the useful one: a command reports
+					// Failed either way, but the update underneath says whether it
+					// was Rejected before the plugin ran or failed inside it. The
+					// machine output carries no error text for either, so the
+					// state is most of what there is to go on.
+					outcome := cmd.State
 					for _, update := range cmd.ResourceUpdates {
-						if strings.HasSuffix(update.ResourceType, "Release") && update.ErrorMessage != "" {
+						if !strings.HasSuffix(update.ResourceType, "Release") {
+							continue
+						}
+						if update.ErrorMessage != "" {
 							message = update.ErrorMessage
 						}
+						if update.State == "Rejected" {
+							outcome = "Rejected"
+						}
+						if message == "" {
+							message = fmt.Sprintf("resource update %s with no diagnostic", update.State)
+						}
 					}
-					return cmd.State, message
+					return outcome, message
 				}
 			}
 		}

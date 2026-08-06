@@ -120,7 +120,8 @@ func runInteropCell(t *testing.T, pair specPair) {
 	target := pair.migrate.Version
 	cell.repin(adopted, target, spec.RepoURL, pair.migrate.Values)
 	if state, message := cell.formae.Apply("patch", adopted); state != "Success" {
-		t.Fatalf("formae upgrade to %s ended %s: %s", target, state, orNoMessage(message))
+		t.Fatalf("formae upgrade to %s ended %s: %s%s",
+			target, state, orNoMessage(message), cell.helmSideReason())
 	}
 
 	state = cell.state()
@@ -157,15 +158,22 @@ func runInteropCell(t *testing.T, pair specPair) {
 	// would fire the wrong event entirely. formae cannot tell a rollback from an
 	// out-of-band upgrade in any case — Read surfaces neither revision direction
 	// nor Info.Description — and absorb is the one policy not needing that.
-	outcome, message := cell.formae.Apply("reconcile", adopted)
-	if outcome == "Success" {
-		t.Fatalf("reconcile corrected the rollback; policy is absorb, so it must refuse without --force")
-	}
-	t.Logf("✓ reconcile refused: %s", firstLine(orNoMessage(message)))
-
+	outcome, message := cell.formae.ApplyExpectingRefusal("reconcile", adopted)
 	after := cell.state()
-	assertEqual(t, "release untouched by the refused reconcile", spec.Version, after.Version)
-	assertEqual(t, "no new revision from the refused reconcile", 3, after.Revision)
+	switch {
+	case outcome == "Success":
+		// Errorf, not Fatalf: this is a known divergence between decided policy
+		// and shipped behaviour, and letting it stop the cell would hide the
+		// trait assertion below it — every full-chain chart would report the
+		// same one failure and nothing else.
+		t.Errorf("ROLLBACK POLICY: reconcile corrected the out-of-band rollback "+
+			"(now revision %d at %s). Decided policy is absorb: report the drift, "+
+			"require --force to undo it.", after.Revision, after.Version)
+	default:
+		t.Logf("✓ reconcile refused: %s", firstLine(orNoMessage(message)))
+		assertEqual(t, "release untouched by the refused reconcile", spec.Version, after.Version)
+		assertEqual(t, "no new revision from the refused reconcile", 3, after.Revision)
+	}
 
 	// --- 8. the assertion that justifies this chart --------------------------
 	cell.assertTrait("after the full chain")
@@ -222,6 +230,29 @@ func (c *interopCell) state() *releaseState {
 		c.t.Fatalf("read release state: %v", err)
 	}
 	return state
+}
+
+// helmSideReason recovers why an apply failed when formae reports no message.
+//
+// The machine output has no error field at all — a failed ResourceUpdate carries
+// its state and nothing else — so when the plugin did run, Helm's own record is
+// the only account of what went wrong. When it did not run (Rejected), the
+// release is untouched and says so, which is itself the answer.
+func (c *interopCell) helmSideReason() string {
+	state, err := c.helm.State(c.namespace, c.release)
+	if err != nil || state == nil {
+		return ""
+	}
+	detail := fmt.Sprintf(" — helm says revision %d is %s", state.Revision, state.Status)
+	if out, err := runCmd("helm", "status", c.release, "-n", c.namespace); err == nil {
+		for _, line := range strings.Split(out, "\n") {
+			if strings.HasPrefix(line, "DESCRIPTION:") {
+				detail += ": " + strings.TrimSpace(strings.TrimPrefix(line, "DESCRIPTION:"))
+				break
+			}
+		}
+	}
+	return detail
 }
 
 func (c *interopCell) nativeID() string { return prov.NativeID(c.namespace, c.release) }
