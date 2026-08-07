@@ -338,23 +338,23 @@ helm-drift-test:
 	@FORMAE_BINARY="$(FORMAE_BINARY)" ./scripts/run-helm-drift-test.sh
 
 ## helm-interop-test: formae<->Helm interop, helm-first: helm install, discover,
-## adopt, formae upgrade, helm rollback, reconcile. One subtest per chart file
-## in testdata/interop/; a chart with a -migrate.yaml sibling runs the whole
-## chain, one without stops after adoption.
+## adopt, formae upgrade, helm rollback, reconcile. Lives in test/helm-interop/,
+## one subtest per chart file in its charts/ dir; a chart with a -migrate.yaml
+## sibling runs the whole chain, one without stops after adoption.
 ##   CHART=velero      one chart (matches the subtest name)
 ##   INTEROP_HELM=cli  drive Helm through its CLI instead of the SDK
 ##   INTEROP_KEEP=1    keep cluster state even when the cell passes
 ## Requires `make install`, a running agent, and pkl on PATH.
 helm-interop-test:
 	FORMAE_BINARY="$(FORMAE_BINARY)" $(GO) test -tags integration -count=1 -v -timeout 40m \
-		-run 'TestHelmInterop$(if $(CHART),/$(CHART),)' ./pkg/resources/helm/
+		-run 'TestHelmInterop$(if $(CHART),/$(CHART),)' ./test/helm-interop/
 
 ## helm-interop-charts: List the chart specs and which run the migrate path.
 helm-interop-charts:
-	@for f in testdata/interop/*.yaml; do \
+	@for f in test/helm-interop/charts/*.yaml; do \
 		case "$$f" in *-migrate.yaml) continue;; esac; \
 		name=$$(basename "$$f" .yaml); \
-		if [ -f "testdata/interop/$$name-migrate.yaml" ]; then path="full chain"; else path="adopt only"; fi; \
+		if [ -f "test/helm-interop/charts/$$name-migrate.yaml" ]; then path="full chain"; else path="adopt only"; fi; \
 		printf '%-24s %-14s %s\n' "$$name" "$$path" "$$(grep -m1 '^trait:' "$$f" | cut -d' ' -f2-)"; \
 	done
 

@@ -21,7 +21,7 @@
 //	INTEROP_KEEP=1  go test -tags integration -run TestHelmInterop ./...
 //
 // Needs a reachable cluster, `make install`, a running agent, and pkl on PATH.
-package helm
+package interop
 
 import (
 	"fmt"
@@ -31,8 +31,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/prov"
 )
 
 const (
@@ -49,7 +47,7 @@ const (
 )
 
 func TestHelmInterop(t *testing.T) {
-	newTestRelease(t) // skips the whole test when no cluster is reachable
+	requireCluster(t)
 
 	for _, pair := range loadSpecs(t) {
 		t.Run(pair.chart.name, func(t *testing.T) {
@@ -205,9 +203,17 @@ type interopCell struct {
 	work      string
 }
 
+// requireCluster skips the suite rather than failing it when nothing is
+// reachable, so `go test ./...` on a laptop with no cluster stays green.
+func requireCluster(t *testing.T) {
+	t.Helper()
+	if _, err := runCmd("kubectl", "cluster-info"); err != nil {
+		t.Skipf("no reachable cluster: %v", err)
+	}
+}
+
 func newCell(t *testing.T, pair specPair) *interopCell {
 	t.Helper()
-	_, cfg := newTestRelease(t)
 
 	// A run id keeps parallel runs and a cluster shared with other work from
 	// colliding. t.TempDir is cleaned up by the framework.
@@ -222,7 +228,7 @@ func newCell(t *testing.T, pair specPair) *interopCell {
 	return &interopCell{
 		t:         t,
 		spec:      pair.chart,
-		helm:      newHelmDriver(t, cfg),
+		helm:      newHelmDriver(t),
 		formae:    newFormaeCLI(t),
 		namespace: fmt.Sprintf("ci-%s-%s", name, runID),
 		release:   sanitize(pair.chart.name, 45),
@@ -265,10 +271,10 @@ func (c *interopCell) helmSideReason() string {
 	return detail
 }
 
-func (c *interopCell) nativeID() string { return prov.NativeID(c.namespace, c.release) }
+func (c *interopCell) nativeID() string { return nativeID(c.namespace, c.release) }
 
 func (c *interopCell) stackOf() string {
-	res := c.formae.Resource(ResourceTypeRelease, c.nativeID())
+	res := c.formae.Resource(resourceTypeRelease, c.nativeID())
 	if res == nil {
 		return ""
 	}
@@ -341,7 +347,7 @@ func (c *interopCell) awaitReportedVersion(want string) {
 	c.t.Helper()
 	deadline := time.Now().Add(interopDiscoveryTimeout)
 	for time.Now().Before(deadline) {
-		res := c.formae.Resource(ResourceTypeRelease, c.nativeID())
+		res := c.formae.Resource(resourceTypeRelease, c.nativeID())
 		if props, ok := res["Properties"].(map[string]any); ok {
 			if version, _ := props["version"].(string); version == want {
 				return
@@ -359,7 +365,7 @@ func (c *interopCell) adopt() string {
 
 	// Extract labels the resource after its native id and appends a dedup
 	// suffix, so an exact match finds nothing — hence the trailing wildcard.
-	query := fmt.Sprintf("type:%s managed:false label:%s*", ResourceTypeRelease, c.nativeID())
+	query := fmt.Sprintf("type:%s managed:false label:%s*", resourceTypeRelease, c.nativeID())
 	if err := c.formae.Extract(query, adopted); err != nil {
 		c.t.Fatalf("extract: %v", err)
 	}
@@ -434,7 +440,7 @@ func (c *interopCell) repin(path, version, repoURL string, values map[string]any
 func (c *interopCell) writeBootstrap() {
 	c.t.Helper()
 
-	schema, err := filepath.Abs(filepath.Join("..", "..", "..", "schema", "pkl"))
+	schema, err := filepath.Abs(filepath.Join("..", "..", "schema", "pkl"))
 	if err != nil {
 		c.t.Fatal(err)
 	}
@@ -565,7 +571,7 @@ func (c *interopCell) dumpEvidence() {
 		}
 		c.t.Logf("  values @%s: %s", revision, strings.Join(strings.Fields(out), " "))
 	}
-	if res := c.formae.Resource(ResourceTypeRelease, c.nativeID()); res != nil {
+	if res := c.formae.Resource(resourceTypeRelease, c.nativeID()); res != nil {
 		c.t.Logf("  formae stack=%v properties=%v", res["Stack"], res["Properties"])
 	}
 	if out, _ := runCmd("kubectl", "get", "events", "-n", c.namespace,

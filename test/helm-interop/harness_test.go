@@ -5,9 +5,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Support for the formae<->Helm interop test: chart specs, the two Helm drivers,
-// and the formae CLI wrapper. The scenario itself is in
-// interop_integration_test.go.
-package helm
+// and the formae CLI wrapper. The scenario itself is in interop_test.go.
+//
+// This package deliberately depends on nothing from the plugin it exercises. It
+// talks to Helm through the SDK the way any client would, and re-declares the
+// contracts it asserts on — the ownership label, the resource type, the native
+// id format — as literals. Importing those from the plugin would mean a test
+// that follows a change to them instead of catching it, which for a wire-format
+// contract is precisely backwards.
+package interop
 
 import (
 	"encoding/json"
@@ -21,11 +27,32 @@ import (
 	"time"
 
 	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v3/pkg/chart/loader"
+	"helm.sh/helm/v3/pkg/cli"
+	"helm.sh/helm/v3/pkg/registry"
 	"helm.sh/helm/v3/pkg/release"
 	"sigs.k8s.io/yaml"
-
-	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
 )
+
+// Contracts this suite asserts against, restated rather than imported.
+const (
+	// Stamped by the plugin as a Helm release label on every release it
+	// installs or upgrades. Its absence is what makes a foreign release an
+	// adoption candidate rather than something to overwrite.
+	formaeManagedLabel = "formae.dev/managed"
+
+	// Resource type as formae names it.
+	resourceTypeRelease = "K8S::Helm::Release"
+
+	// Helm's storage driver. Releases live in Secrets named
+	// sh.helm.release.v1.<name>.v<revision>.
+	helmStorageDriver = "secret"
+)
+
+// nativeID is how formae identifies a release: "<namespace>/<name>".
+func nativeID(namespace, release string) string {
+	return namespace + "/" + release
+}
 
 // ---------------------------------------------------------------------------
 // Chart specs — a directory of files, one per chart
@@ -40,10 +67,8 @@ import (
 // opts that chart into the rest: formae upgrade, helm rollback, reconcile. A
 // chart with nothing to migrate to simply does not get those steps rather than
 // getting them and skipping.
-// Repo-root testdata, matching chartPath's `../../../testdata/charts/hooked`
-// rather than a package-local testdata dir — the conformance fixtures live
-// there too, so charts stay in one place.
-var specDir = filepath.Join("..", "..", "..", "testdata", "interop")
+// Chart specs sit beside the suite that runs them.
+var specDir = "charts"
 
 const migrateSuffix = "-migrate"
 
@@ -194,25 +219,47 @@ func interopInstallTimeout() time.Duration {
 	return 10 * time.Minute
 }
 
-func newHelmDriver(t *testing.T, cfg *config.Config) helmClient {
+func newHelmDriver(t *testing.T) helmClient {
 	t.Helper()
 	if strings.EqualFold(os.Getenv("INTEROP_HELM"), "cli") {
 		return &cliHelm{t: t}
 	}
-	return &sdkHelm{t: t, cfg: cfg}
+	return &sdkHelm{t: t}
 }
 
 // --- SDK driver -------------------------------------------------------------
 
 type sdkHelm struct {
-	t   *testing.T
-	cfg *config.Config
+	t *testing.T
 }
 
 func (h *sdkHelm) Name() string { return "sdk" }
 
+// config builds a Helm action configuration against the ambient kubeconfig —
+// the same cluster `helm` on PATH would reach, and the same one the plugin's
+// Kubeconfig auth resolves to.
+//
+// Cheap to construct; the underlying clients are lazy. Built per operation
+// rather than cached, because Helm mutates fields on the configuration during
+// an action and a cached one would pin a namespace.
 func (h *sdkHelm) config(namespace string) (*action.Configuration, error) {
-	return newActionConfig(h.cfg, namespace)
+	settings := cli.New()
+	settings.SetNamespace(namespace)
+
+	conf := new(action.Configuration)
+	if err := conf.Init(settings.RESTClientGetter(), namespace, helmStorageDriver,
+		func(string, ...any) {}); err != nil {
+		return nil, fmt.Errorf("init helm action config: %w", err)
+	}
+
+	// Required for oci:// chart references; Helm errors on any OCI pull without
+	// it, and most charts are distributed that way now.
+	rc, err := registry.NewClient(registry.ClientOptEnableCache(true))
+	if err != nil {
+		return nil, fmt.Errorf("init helm registry client: %w", err)
+	}
+	conf.RegistryClient = rc
+	return conf, nil
 }
 
 func (h *sdkHelm) Install(spec chartSpec, namespace, release string) error {
@@ -221,22 +268,26 @@ func (h *sdkHelm) Install(spec chartSpec, namespace, release string) error {
 		return err
 	}
 
-	// loadChart is the provisioner's own, so the chart this test installs is
-	// resolved exactly the way a formae-driven install would resolve it.
-	chart, err := loadChart(conf, &releaseProperties{
-		Chart:   spec.Chart,
-		RepoURL: spec.RepoURL,
-		Version: spec.Version,
-	})
-	if err != nil {
-		return fmt.Errorf("load chart: %w", err)
-	}
-
+	// Built through NewInstall rather than a bare ChartPathOptions because the
+	// constructor copies the registry client into it — without that any oci://
+	// reference fails to resolve.
 	install := action.NewInstall(conf)
 	install.ReleaseName = release
 	install.Namespace = namespace
 	install.CreateNamespace = true
 	install.Version = spec.Version
+	install.ChartPathOptions.RepoURL = spec.RepoURL
+	install.ChartPathOptions.Version = spec.Version
+
+	settings := cli.New()
+	path, err := install.ChartPathOptions.LocateChart(spec.Chart, settings)
+	if err != nil {
+		return fmt.Errorf("locate chart %q: %w", spec.Chart, err)
+	}
+	chart, err := loader.Load(path)
+	if err != nil {
+		return fmt.Errorf("load chart %q: %w", spec.Chart, err)
+	}
 	install.Wait = true
 	install.Timeout = interopInstallTimeout()
 
