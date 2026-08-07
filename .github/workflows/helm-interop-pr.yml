@@ -20,8 +20,10 @@ name: Helm Interop (PR)
 # about a minute) and leave the full sweep to nightly.
 
 on:
+  # No branch filter, unlike conformance-pr.yml. Work on this suite lands on
+  # stacked branches before it reaches main, and a filter of [main] means the
+  # PR that changes the suite is the one PR that never runs it.
   pull_request:
-    branches: [main]
 
 concurrency:
   # A PR that gets pushed twice should not run two of these against two
