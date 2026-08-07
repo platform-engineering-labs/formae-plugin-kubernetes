@@ -1,6 +1,0 @@
-# Opts kubedb into the rest of the chain: formae upgrade, helm
-# rollback, reconcile. Adjacent pair from the repo index, not a guess.
-version: v2026.7.10
-
-notes: >-
-  v2026.6.19 -> v2026.7.10.

@@ -1,6 +1,0 @@
-# Opts keycloak-config-cli into the rest of the chain: formae upgrade, helm
-# rollback, reconcile. Adjacent pair from the repo index, not a guess.
-version: 1.3.7
-
-notes: >-
-  1.3.6 -> 1.3.7.

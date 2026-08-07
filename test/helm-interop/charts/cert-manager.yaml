@@ -4,8 +4,30 @@ chart: cert-manager
 repoURL: https://charts.jetstack.io
 version: v1.21.0
 
-trait: no-hooks
-traitObject: ""
+trait: crd-install
+traitObject: "CustomResourceDefinition/certificates.cert-manager.io"
+
+# Two overrides, both load-bearing.
+#
+# startupapicheck is a post-install hook that waits for cert-manager's webhook
+# to answer. Where it never does, the hook burns the whole timeout and the chart
+# is reported un-installable — which says nothing about formae. Off, the release
+# settles in seconds.
+#
+# crds.enabled installs the CRDs the chart ships. That is why this chart carries
+# the crd-install trait: ambassador, the only chart in the 1000-chart sample
+# declaring a crd-install hook, ships apiextensions.k8s.io/v1beta1 CRDs that
+# Kubernetes removed in 1.22, so it cannot install anywhere modern. cert-manager
+# covers the same ground on a current cluster.
+#
+# crds.keep defaults true, so these carry helm.sh/resource-policy: keep and
+# outlive an uninstall — the residue case, exercised for free. Teardown collects
+# them by Helm's ownership annotation.
+values:
+  startupapicheck:
+    enabled: false
+  crds:
+    enabled: true
 
 notes: >-
   Artifact Hub rank 2. Installed bare, with no values

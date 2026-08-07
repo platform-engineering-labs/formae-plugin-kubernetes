@@ -1,6 +1,0 @@
-# Opts ambassador into the rest of the chain: formae upgrade, helm
-# rollback, reconcile. Adjacent pair from the repo index, not a guess.
-version: 6.9.5
-
-notes: >-
-  6.9.4 -> 6.9.5.
