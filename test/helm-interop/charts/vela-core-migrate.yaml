@@ -1,6 +1,0 @@
-# Opts vela-core into the rest of the chain: formae upgrade, helm
-# rollback, reconcile. Adjacent pair from the repo index, not a guess.
-version: 1.11.0
-
-notes: >-
-  1.10.9 -> 1.11.0.

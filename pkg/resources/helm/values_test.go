@@ -9,6 +9,8 @@ package helm
 import (
 	"encoding/json"
 	"testing"
+
+	"helm.sh/helm/v3/pkg/release"
 )
 
 // An explicitly empty collection in a forma's values must survive into the map
@@ -97,5 +99,68 @@ func TestDecodeProperties_EmptyCollectionsSurviveReMarshal(t *testing.T) {
 	}
 	if got := string(out); got != `{"configuration":{"backupStorageLocation":[]}}` {
 		t.Errorf("values re-marshalled to %s, want the empty list preserved", got)
+	}
+}
+
+// resourceNames must be stable across reads.
+//
+// It is built by ranging a map, and Go randomises map iteration order on every
+// range. Unsorted, the same release reports the same objects in a different
+// order each Read — and resourceNames is reported state, so a reordered slice
+// reads as a change. Every sync then records a modification that never
+// happened, and the guard that refuses to apply over an out-of-band change
+// refuses every apply, for good.
+//
+// The blast radius scales with the chart: one object per kind has nothing to
+// reorder and is fine by luck, which is why small charts worked while vault,
+// cert-manager and a chart shipping two dozen CRDs could not be upgraded at
+// all, and why mid-sized ones flipped between runs.
+func TestResourceNames_AreSortedAndStable(t *testing.T) {
+	manifest := `
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: zeta, namespace: ns}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: alpha, namespace: ns}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: mid, namespace: ns}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: only, namespace: ns}
+`
+	rel := &release.Release{Name: "r", Namespace: "ns", Manifest: manifest}
+
+	first := resourceNames(rel)
+	want := []string{"ns/alpha", "ns/mid", "ns/zeta"}
+	got := first["v1/ConfigMap"]
+	if len(got) != len(want) {
+		t.Fatalf("v1/ConfigMap = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("v1/ConfigMap = %v, want %v (sorted)", got, want)
+		}
+	}
+
+	// Repeat: one sorted result could be luck, since map order is random per
+	// range rather than fixed per process.
+	for attempt := 0; attempt < 50; attempt++ {
+		again := resourceNames(rel)
+		for kind, names := range again {
+			prev := first[kind]
+			if len(names) != len(prev) {
+				t.Fatalf("%s changed length between reads", kind)
+			}
+			for i := range names {
+				if names[i] != prev[i] {
+					t.Fatalf("%s reordered between reads: %v then %v", kind, prev, names)
+				}
+			}
+		}
 	}
 }

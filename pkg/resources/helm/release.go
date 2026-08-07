@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	goerrors "errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -687,6 +688,21 @@ func resourceNames(rel *release.Release) map[string][]string {
 			key = id.APIVersion + "/" + id.Kind
 		}
 		out[key] = append(out[key], id.Namespace+"/"+id.Name)
+	}
+
+	// Sort. inv.objects is a map, and Go randomises map iteration order per
+	// range, so without this every Read returns the same names in a different
+	// order.
+	//
+	// That is not cosmetic. resourceNames is reported state, so a reordered
+	// slice is a change: every sync records a modification that never happened,
+	// and the guard that refuses to apply over an out-of-band change then
+	// refuses every apply, permanently. A release with two objects of one kind
+	// becomes unmanageable, and the bigger the chart the more certain it is —
+	// vault, cert-manager and a chart shipping two dozen CRDs could not be
+	// upgraded at all, while a single-object chart was fine by luck.
+	for _, names := range out {
+		sort.Strings(names)
 	}
 	return out
 }

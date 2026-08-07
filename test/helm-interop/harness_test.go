@@ -577,9 +577,22 @@ func (f *formaeCLI) applyOnce(mode, forma string) (state string, message string)
 	return f.waitCommand(match[1])
 }
 
+// commandTimeout bounds how long a submitted command may take to settle.
+//
+// Three times the readiness cap, because a formae command is strictly larger
+// than the Helm operation inside it: the plugin waits for the chart's objects,
+// and the agent polls, records and persists around that.
+//
+// Two is not enough. vault's upgrade — a StatefulSet with volumes plus an
+// agent-injector — took 12m15s against a 12m cap, and being fifteen seconds
+// short reported as a hang rather than as slowness.
+func commandTimeout() time.Duration {
+	return 3 * interopInstallTimeout()
+}
+
 func (f *formaeCLI) waitCommand(id string) (state string, message string) {
 	f.t.Helper()
-	deadline := time.Now().Add(10 * time.Minute)
+	deadline := time.Now().Add(commandTimeout())
 	for time.Now().Before(deadline) {
 		raw, err := runCmd(f.binary, f.args("status", "command",
 			"--query=id:"+id, "--output-consumer", "machine")...)
@@ -598,6 +611,11 @@ func (f *formaeCLI) waitCommand(id string) (state string, message string) {
 			}
 			if json.Unmarshal([]byte(raw), &payload) == nil && len(payload.Commands) > 0 {
 				cmd := payload.Commands[0]
+				// Recorded on every poll, not just terminal ones, so a timeout can
+				// say what it was waiting on. It previously reported an empty
+				// state for a command that was plainly InProgress, which reads as
+				// "the command vanished" rather than "it was still working".
+				state = cmd.State
 				switch cmd.State {
 				case "Success", "Failed", "Rejected", "Canceled":
 					message = cmd.ErrorMessage
@@ -627,7 +645,7 @@ func (f *formaeCLI) waitCommand(id string) (state string, message string) {
 		}
 		time.Sleep(3 * time.Second)
 	}
-	f.t.Fatalf("command %s never finished", id)
+	f.t.Fatalf("command %s did not settle within %s (last state %q)", id, commandTimeout(), state)
 	return "", ""
 }
 

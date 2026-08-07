@@ -24,8 +24,22 @@ agent {
     // if discovery is off the release never becomes an adoption candidate and
     // step 3 waits out its timeout.
     enabled = true
-    interval = 60.s
+    // 20s, not 60s. A cell installs a release and then waits for it to become
+    // an adoption candidate, so the whole scenario is gated on a discovery
+    // cycle landing. At 60s a chart could wait minutes, and metrics-server
+    // timed out at seven of them while its namespace had still not been
+    // enumerated.
+    interval = 20.s
 
+    // Deliberately short. Every extra type is another List per namespace per
+    // cycle, and a cycle that takes minutes is what made discovery the slowest
+    // step in the suite.
+    //
+    // The chart-rendered kinds — Deployment, StatefulSet, Service, ConfigMap,
+    // Secret, ServiceAccount — used to be here so that a release collapsing its
+    // own objects out of discovery would be observable. Nothing asserts that
+    // yet, so they were paying a per-cycle cost for coverage the suite does not
+    // have. Put them back alongside an assertion, not before one.
     resourceTypesToDiscover = new Listing {
       // Both Helm types declare parent = K8S::Core::Namespace, and discovery
       // only queues List for parentless types — leave Namespace out and nothing
@@ -33,17 +47,6 @@ agent {
       "K8S::Core::Namespace"
       "K8S::Helm::Release"
       "K8S::Helm::Chart"
-
-      // Chart-rendered kinds. Present so that a release collapsing its own
-      // objects out of discovery is observable: without these the objects were
-      // never candidates, and their absence from the inventory would prove
-      // nothing about the filter.
-      "K8S::Apps::Deployment"
-      "K8S::Apps::StatefulSet"
-      "K8S::Core::Service"
-      "K8S::Core::ConfigMap"
-      "K8S::Core::Secret"
-      "K8S::Core::ServiceAccount"
     }
   }
 
@@ -52,4 +55,12 @@ agent {
     fileLogLevel = "debug"
     consoleLogLevel = "info"
   }
+}
+
+// No telemetry from a test run. The suite installs and tears down dozens of
+// releases per sweep, and none of that is signal anybody wants reported —
+// least of all from CI, where it would be attributed to whoever's credentials
+// the runner happens to hold.
+cli {
+  disableUsageReporting = true
 }

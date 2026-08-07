@@ -535,6 +535,23 @@ func (c *interopCell) assertTrait(when string) {
 // where it cannot affect the next cell. INTEROP_KEEP=1 keeps live state for the
 // single-chart case where poking at the cluster is the point.
 func (c *interopCell) teardown() {
+	// Emit a verdict per cell, as the cell ends.
+	//
+	// go test buffers a subtest's output until the parent finishes, so a sweep
+	// that is interrupted — Ctrl-C, a CI timeout, a killed background job —
+	// reports nothing at all, including for the cells that already completed.
+	// Twenty charts of work went that way once. This line is written as it
+	// happens, so a partial log is still worth reading:
+	//   grep '^INTEROP-RESULT' sweep.log
+	status := "PASS"
+	switch {
+	case c.t.Failed():
+		status = "FAIL"
+	case c.t.Skipped():
+		status = "SKIP"
+	}
+	fmt.Printf("INTEROP-RESULT %s %s trait=%s\n", status, c.spec.name, c.spec.Trait)
+
 	if c.t.Failed() {
 		c.dumpEvidence()
 	}
