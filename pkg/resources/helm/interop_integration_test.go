@@ -274,6 +274,45 @@ func (c *interopCell) preflight() {
 	if out, _ := runCmd("kubectl", "get", "namespace", c.namespace, "-o", "name"); strings.TrimSpace(out) != "" {
 		c.t.Fatalf("namespace %s already exists", c.namespace)
 	}
+	c.warnForeignClusterScoped()
+}
+
+// warnForeignClusterScoped reports cluster-scoped objects named after this
+// chart that belong to somebody else.
+//
+// Helm refuses to adopt an object it does not own, so the install fails partway
+// with "X exists and cannot be imported into the current release" — which reads
+// like the chart being broken. ingress-nginx skipped a whole sweep on a
+// ClusterRoleBinding carrying no Helm ownership annotations at all, so it was
+// not from any run of this harness and teardown could never have collected it.
+//
+// Reported, never deleted: an unannotated cluster-scoped object may well be a
+// real installation on this cluster, and removing it is not the test's business.
+func (c *interopCell) warnForeignClusterScoped() {
+	kinds := "clusterrole,clusterrolebinding,customresourcedefinition"
+	out, err := runCmd("kubectl", "get", kinds, "-o",
+		`jsonpath={range .items[*]}{.kind}/{.metadata.name}/`+
+			`{.metadata.annotations.meta\.helm\.sh/release-namespace}{"\n"}{end}`)
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Fields(out) {
+		parts := strings.Split(line, "/")
+		if len(parts) < 2 || !strings.HasPrefix(parts[1], c.release) {
+			continue
+		}
+		owner := ""
+		if len(parts) > 2 {
+			owner = parts[2]
+		}
+		if owner == "" {
+			c.t.Logf("heads-up: %s/%s exists with no Helm ownership annotation — "+
+				"if this chart claims that name the install will fail as un-importable, "+
+				"and it is not this harness's to remove", parts[0], parts[1])
+		} else if !strings.HasPrefix(owner, "ci-") {
+			c.t.Logf("heads-up: %s/%s belongs to release namespace %q", parts[0], parts[1], owner)
+		}
+	}
 }
 
 func (c *interopCell) awaitUnmanaged() {
@@ -535,8 +574,15 @@ func (c *interopCell) dumpEvidence() {
 // the same chart then cannot install at all ("ClusterRole X exists and cannot
 // be imported"). Matched by Helm's own ownership annotation, so nothing outside
 // this cell is ever touched.
+//
+// CRDs are included. They were left out at first as too destructive to remove
+// automatically, which cost kyverno a whole sweep: a CRD from an earlier failed
+// run blocked every later install of that chart. Annotation-matching makes the
+// scope identical to the ClusterRoles already removed here — only objects this
+// cell's own release created.
 func (c *interopCell) deleteClusterScoped() {
-	kinds := "clusterrole,clusterrolebinding,validatingwebhookconfiguration,mutatingwebhookconfiguration,apiservice"
+	kinds := "clusterrole,clusterrolebinding,validatingwebhookconfiguration," +
+		"mutatingwebhookconfiguration,apiservice,customresourcedefinition"
 	out, err := runCmd("kubectl", "get", kinds, "-o",
 		`jsonpath={range .items[?(@.metadata.annotations.meta\.helm\.sh/release-namespace=="`+c.namespace+`")]}{.kind}/{.metadata.name}{"\n"}{end}`)
 	if err != nil {
