@@ -27,7 +27,7 @@ FORMAE_BINARY ?= $(shell realpath $(firstword $(wildcard $(CURDIR)/../../formae/
 PLUGIN_BASE_DIR := $(HOME)/.pel/formae/plugins
 INSTALL_DIR := $(PLUGIN_BASE_DIR)/$(PLUGIN_NAME)/v$(PLUGIN_VERSION)
 
-.PHONY: all build test test-unit test-integration lint verify-schema clean install help setup-credentials clean-environment conformance-test conformance-test-crud conformance-test-discovery conformance-test-crud-run conformance-test-discovery-run conformance-test-resources conformance-test-charts generate-schema chart-test drift-test helm-drift-test helm-adopt-test helm-interop-test helm-interop-charts
+.PHONY: all build test test-unit test-integration lint verify-schema clean install help setup-credentials clean-environment conformance-test conformance-test-crud conformance-test-discovery conformance-test-crud-run conformance-test-discovery-run conformance-test-resources conformance-test-charts generate-schema chart-test drift-test helm-drift-test helm-adopt-test helm-interop-test helm-interop-charts helm-interop-clean
 
 all: build
 
@@ -351,6 +351,14 @@ helm-drift-test:
 ##   INTEROP_KEEP=1      keep cluster state even when a cell passes
 helm-interop-test:
 	@FORMAE_BINARY="$(FORMAE_BINARY)" ./scripts/run-helm-interop-test.sh $(CHART)
+
+## helm-interop-clean: Remove what a killed interop run left behind — ci-*
+## namespaces and the cluster-scoped objects owned by them. Teardown handles
+## this when a run finishes; t.Cleanup does not survive a Ctrl-C or a CI
+## timeout, and what survives blocks the next run of the same chart.
+## Shows what it would remove; pass YES=1 to apply.
+helm-interop-clean:
+	@FORMAE_BINARY="$(FORMAE_BINARY)" ./scripts/clean-helm-interop.sh $(if $(YES),--yes,)
 
 ## helm-interop-charts: List the chart specs and which run the migrate path.
 helm-interop-charts:

@@ -482,6 +482,22 @@ func (f *formaeCLI) args(rest ...string) []string {
 
 var commandIDPattern = regexp.MustCompile(`id:([A-Za-z0-9]+)`)
 
+// applyAttempts bounds the retries for a rejected apply. Six with quadratic
+// backoff spans about four minutes, which covers a sync of the largest chart in
+// the set; four with a flat 10s did not.
+const applyAttempts = 6
+
+// firstMeaningfulLine picks the first non-blank line, for CLI output whose
+// first line is often empty.
+func firstMeaningfulLine(out string) string {
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) != "" {
+			return line
+		}
+	}
+	return out
+}
+
 // Apply submits a forma and waits for it to settle. Returns the first
 // release-scoped error message, which is empty on success.
 //
@@ -517,11 +533,19 @@ func (f *formaeCLI) apply(mode, forma string, retry bool) (state string, message
 		// sweeping constantly during these cells, so it is common enough that not
 		// retrying reported three charts as hard failures with no diagnostic —
 		// there was none to give, because nothing had run.
-		if !retry || state != "Rejected" || attempt == 4 {
+		if !retry || state != "Rejected" || attempt == applyAttempts {
 			return state, message
 		}
-		f.t.Logf("apply --mode %s was rejected (attempt %d); retrying", mode, attempt)
-		time.Sleep(10 * time.Second)
+		// Backoff, not a fixed pause. The guard fires when a background sync
+		// lands between the CLI's read and its submit, so the odds depend on how
+		// long a sync of this resource takes — and that scales with the chart.
+		// A fixed 10s and four tries was enough for a small chart and not for
+		// external-secrets, which ships two dozen CRDs: same race, longer window,
+		// and it exhausted every attempt.
+		backoff := time.Duration(attempt*attempt) * 5 * time.Second
+		f.t.Logf("apply --mode %s was rejected (attempt %d/%d); retrying in %s",
+			mode, attempt, applyAttempts, backoff)
+		time.Sleep(backoff)
 	}
 }
 
@@ -534,6 +558,16 @@ func (f *formaeCLI) applyOnce(mode, forma string) (state string, message string)
 	// case for the bootstrap, whose target is shared across runs.
 	if strings.Contains(out, "No changes needed") {
 		return "Success", ""
+	}
+
+	// A refusal can also happen before anything is submitted. The drift guard
+	// turns down a reconcile against a stack that changed since the last one,
+	// and the CLI reports that instead of a command id. Treating a missing id
+	// as a harness error made the guard doing its job look like the test
+	// falling over — which is how "the guard never fires on reconcile" got
+	// believed for a while. It fires; nothing was listening.
+	if strings.Contains(out, "rejected because") || strings.Contains(out, "modified since the last reconcile") {
+		return "Rejected", strings.TrimSpace(firstMeaningfulLine(out))
 	}
 
 	match := commandIDPattern.FindStringSubmatch(out)
