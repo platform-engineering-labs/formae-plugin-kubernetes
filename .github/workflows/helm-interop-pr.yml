@@ -1,0 +1,95 @@
+# © 2026 Platform Engineering Labs Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Helm Interop (PR)
+
+# formae <-> Helm interop, helm-first: a release installed by Helm is
+# discovered, adopted, upgraded by formae, rolled back with Helm, and
+# reconciled. Distinct from the conformance suites, which drive charts formae
+# installed itself — none of them exercise adopting a release formae did not
+# create, which is the whole adoption story.
+#
+# Self-contained rather than reusing nightly's job: nightly tests against a
+# formae binary built from a chosen branch and shared across matrix jobs, this
+# builds from main the way conformance-version.yml does.
+#
+# This is a slow job. The suite walks every chart in test/helm-interop/charts/
+# serially against one cluster, which is minutes per chart. If PR latency
+# matters more than coverage, set CHART to a single fast chart (podinfo runs in
+# about a minute) and leave the full sweep to nightly.
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  # A PR that gets pushed twice should not run two of these against two
+  # clusters; the later push is the one anybody cares about.
+  group: helm-interop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  helm-interop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+
+      - uses: ./.github/actions/setup-pkl-cached
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: formae-helm-interop
+          node_image: "kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
+
+      - name: Build formae
+        # From main rather than a release: the suite drives extract, adopt and
+        # discovery, and leans on fixes that land there before they ship. The
+        # version stamped in resolves the plugin's PKL formae dep against
+        # package://...formae@<X.Y.Z>, so it has to match a published schema —
+        # hence the canonical version stripped from the latest tag.
+        run: |
+          git clone --branch main --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          cd /tmp/formae
+          git fetch --tags
+          LATEST_TAG=$(git tag -l "[0-9]*" --sort=-version:refname | head -1)
+          VERSION=$(echo "$LATEST_TAG" | cut -d'-' -f1)
+          echo "Building formae ${VERSION} (from tag ${LATEST_TAG})"
+          make build VERSION="${VERSION}"
+          sudo mkdir -p /opt/pel/bin
+          sudo install -m 0755 /tmp/formae/formae /opt/pel/bin/formae
+          /opt/pel/bin/formae --version
+
+      - name: Inject formae replace directives
+        run: |
+          for pkg in pkg/auth pkg/model pkg/plugin pkg/plugin-conformance-tests; do
+            if grep -q "formae/$pkg" go.mod 2>/dev/null; then
+              go mod edit -replace "github.com/platform-engineering-labs/formae/$pkg=/tmp/formae/$pkg"
+            fi
+          done
+          go mod tidy
+
+      - name: Install plugin
+        run: make install
+
+      - name: Run Helm interop suite
+        env:
+          FORMAE_BINARY: /opt/pel/bin/formae
+          # A chart that cannot become ready inside the cap is reported as a
+          # skip, not a failure — its own prerequisites are not formae's
+          # behaviour. Kept tight so one unhealthy chart cannot eat the job.
+          INTEROP_TIMEOUT: 6m
+          # Matches the kind image above; the generated bootstrap forma imports
+          # the schema subtree for this minor.
+          INTEROP_KUBE_VERSION: "1.36"
+        run: make helm-interop-test
+
+      - name: Agent log on failure
+        if: failure()
+        run: tail -200 ~/.pel/formae/log/helm-interop-ci.log || true
