@@ -290,7 +290,7 @@ jobs:
 
   # Notify when nightly is fixed (was red, now green)
   notify-fixed:
-    needs: [conformance-tests, chart-conformance-tests]
+    needs: [conformance-tests, chart-conformance-tests, helm-interop-tests]
     runs-on: ubuntu-latest
     if: success()
     permissions:
@@ -351,9 +351,84 @@ jobs:
               ]
             }
 
+  # formae <-> Helm interop, helm-first: a release installed by Helm is
+  # discovered, adopted, upgraded by formae, rolled back with Helm, and
+  # reconciled. Separate from the chart conformance job, which drives charts
+  # formae installed itself — nothing there exercises adopting a release formae
+  # did not create.
+  #
+  # Not sharded across a matrix. The suite owns its agent and the charts share
+  # one cluster, and several install cluster-scoped objects under fixed names
+  # (ClusterRoles, CRDs, webhooks) that collide if two run at once.
+  helm-interop-tests:
+    needs: build-formae
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+
+      - name: Set up Pkl
+        uses: pkl-community/setup-pkl@v0
+        with:
+          pkl-version: 0.30.0
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: formae-helm-interop
+          node_image: "kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
+
+      - name: Download formae binary
+        uses: actions/download-artifact@v8
+        with:
+          name: formae-binary
+          path: /tmp/formae-artifact
+
+      - name: Clone formae source for replace directives
+        run: |
+          BRANCH="${{ inputs.formae_branch || 'main' }}"
+          git clone --branch "${BRANCH}" --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          cp /tmp/formae-artifact/formae /tmp/formae/formae
+          chmod +x /tmp/formae/formae
+
+      - name: Inject formae replace directives
+        run: |
+          FORMAE_SRC=/tmp/formae
+          for pkg in pkg/auth pkg/model pkg/plugin pkg/plugin-conformance-tests; do
+            if grep -q "formae/$pkg" go.mod 2>/dev/null; then
+              go mod edit -replace "github.com/platform-engineering-labs/formae/$pkg=$FORMAE_SRC/$pkg"
+            fi
+          done
+          go mod tidy
+
+      - name: Install plugin
+        run: make install
+
+      - name: Run Helm interop suite
+        env:
+          FORMAE_BINARY: /tmp/formae/formae
+          # Charts that cannot become ready inside the cap are reported as
+          # skips, not failures — a chart's own prerequisites are not formae's
+          # behaviour. Kept tight so one unhealthy chart cannot eat the job.
+          INTEROP_TIMEOUT: 6m
+          # kind image above is v1.36; the generated forma imports the matching
+          # schema subtree.
+          INTEROP_KUBE_VERSION: "1.36"
+        run: make helm-interop-test
+
+      - name: Agent log on failure
+        if: failure()
+        run: tail -200 ~/.pel/formae/log/helm-interop-ci.log || true
+
   # Notify on failure
   notify-failure:
-    needs: [conformance-tests, chart-conformance-tests]
+    needs: [conformance-tests, chart-conformance-tests, helm-interop-tests]
     runs-on: ubuntu-latest
     if: failure()
     steps:

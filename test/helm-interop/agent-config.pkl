@@ -1,0 +1,55 @@
+/// Agent configuration for the Helm interop suite.
+///
+/// Installed as a named profile by scripts/run-helm-interop-test.sh, so it never
+/// touches ~/.config/formae/formae.conf.pkl or any profile a human is using.
+///
+/// Its own SQLite file: the suite adopts releases and asserts on inventory
+/// contents, and sharing a datastore with other work makes both flaky.
+amends "formae:/Config.pkl"
+
+agent {
+  datastore {
+    sqlite { filePath = "~/.pel/formae/data/helm-interop-ci.db" }
+  }
+
+  synchronization {
+    enabled = true
+    // The suite waits for formae to notice an out-of-band `helm rollback`, so
+    // sync has to run faster than the test's patience.
+    interval = 30.s
+  }
+
+  discovery {
+    // Load-bearing. Adoption starts from a release formae did not install, so
+    // if discovery is off the release never becomes an adoption candidate and
+    // step 3 waits out its timeout.
+    enabled = true
+    interval = 60.s
+
+    resourceTypesToDiscover = new Listing {
+      // Both Helm types declare parent = K8S::Core::Namespace, and discovery
+      // only queues List for parentless types — leave Namespace out and nothing
+      // is ever listed at all.
+      "K8S::Core::Namespace"
+      "K8S::Helm::Release"
+      "K8S::Helm::Chart"
+
+      // Chart-rendered kinds. Present so that a release collapsing its own
+      // objects out of discovery is observable: without these the objects were
+      // never candidates, and their absence from the inventory would prove
+      // nothing about the filter.
+      "K8S::Apps::Deployment"
+      "K8S::Apps::StatefulSet"
+      "K8S::Core::Service"
+      "K8S::Core::ConfigMap"
+      "K8S::Core::Secret"
+      "K8S::Core::ServiceAccount"
+    }
+  }
+
+  logging {
+    filePath = "~/.pel/formae/log/helm-interop-ci.log"
+    fileLogLevel = "debug"
+    consoleLogLevel = "info"
+  }
+}

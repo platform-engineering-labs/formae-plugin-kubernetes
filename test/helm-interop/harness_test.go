@@ -450,6 +450,12 @@ func (h *cliHelm) Uninstall(namespace, release string) error {
 type formaeCLI struct {
 	t      *testing.T
 	binary string
+	// profile, when set, is prepended to every invocation. The suite needs an
+	// agent with discovery enabled, which run-helm-interop-test.sh starts under
+	// its own profile; without routing the CLI to the same one, commands would
+	// go to whatever agent happens to be the default and the run would assert
+	// against a different datastore entirely.
+	profile string
 }
 
 func newFormaeCLI(t *testing.T) *formaeCLI {
@@ -462,7 +468,16 @@ func newFormaeCLI(t *testing.T) *formaeCLI {
 		}
 		binary = found
 	}
-	return &formaeCLI{t: t, binary: binary}
+	return &formaeCLI{t: t, binary: binary, profile: os.Getenv("INTEROP_FORMAE_PROFILE")}
+}
+
+// args prefixes the profile flag when one is configured. It goes before the
+// subcommand: `formae --profile X apply ...`.
+func (f *formaeCLI) args(rest ...string) []string {
+	if f.profile == "" {
+		return rest
+	}
+	return append([]string{"--profile", f.profile}, rest...)
 }
 
 var commandIDPattern = regexp.MustCompile(`id:([A-Za-z0-9]+)`)
@@ -512,7 +527,7 @@ func (f *formaeCLI) apply(mode, forma string, retry bool) (state string, message
 
 func (f *formaeCLI) applyOnce(mode, forma string) (state string, message string) {
 	f.t.Helper()
-	out, _ := runCmdCombined(f.binary, "apply", "--mode", mode, "--yes", forma)
+	out, _ := runCmdCombined(f.binary, f.args("apply", "--mode", mode, "--yes", forma)...)
 
 	// An apply whose forma already matches reality submits no command at all and
 	// says so. That is a success, not a missing command — and it is the normal
@@ -532,8 +547,8 @@ func (f *formaeCLI) waitCommand(id string) (state string, message string) {
 	f.t.Helper()
 	deadline := time.Now().Add(10 * time.Minute)
 	for time.Now().Before(deadline) {
-		raw, err := runCmd(f.binary, "status", "command",
-			"--query=id:"+id, "--output-consumer", "machine")
+		raw, err := runCmd(f.binary, f.args("status", "command",
+			"--query=id:"+id, "--output-consumer", "machine")...)
 		if err == nil {
 			var payload struct {
 				Commands []struct {
@@ -584,8 +599,8 @@ func (f *formaeCLI) waitCommand(id string) (state string, message string) {
 
 // Extract writes a forma describing resources matching query.
 func (f *formaeCLI) Extract(query, path string) error {
-	_, err := runCmd(f.binary, "extract", "--query", query,
-		"--schema-location", "local", "--yes", path)
+	_, err := runCmd(f.binary, f.args("extract", "--query", query,
+		"--schema-location", "local", "--yes", path)...)
 	return err
 }
 
@@ -595,8 +610,8 @@ func (f *formaeCLI) Extract(query, path string) error {
 // against whatever cluster is configured, which may hold releases belonging to
 // other work.
 func (f *formaeCLI) Resource(resourceType, nativeID string) map[string]any {
-	raw, err := runCmd(f.binary, "inventory", "resources",
-		"--query", "type:"+resourceType, "--output-consumer", "machine")
+	raw, err := runCmd(f.binary, f.args("inventory", "resources",
+		"--query", "type:"+resourceType, "--output-consumer", "machine")...)
 	if err != nil {
 		return nil
 	}
@@ -616,7 +631,7 @@ func (f *formaeCLI) Resource(resourceType, nativeID string) map[string]any {
 }
 
 func (f *formaeCLI) Destroy(stack string) {
-	_, _ = runCmdCombined(f.binary, "destroy", "--yes", "--query", "stack:"+stack)
+	_, _ = runCmdCombined(f.binary, f.args("destroy", "--yes", "--query", "stack:"+stack)...)
 }
 
 // ---------------------------------------------------------------------------

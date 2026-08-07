@@ -341,13 +341,16 @@ helm-drift-test:
 ## adopt, formae upgrade, helm rollback, reconcile. Lives in test/helm-interop/,
 ## one subtest per chart file in its charts/ dir; a chart with a -migrate.yaml
 ## sibling runs the whole chain, one without stops after adoption.
-##   CHART=velero      one chart (matches the subtest name)
-##   INTEROP_HELM=cli  drive Helm through its CLI instead of the SDK
-##   INTEROP_KEEP=1    keep cluster state even when the cell passes
-## Requires `make install`, a running agent, and pkl on PATH.
+##
+## Owns its agent: starts one under its own profile with discovery enabled (no
+## default config has it, and without it adoption never gets a candidate) and
+## stops it afterwards. Needs a reachable cluster and `make install`.
+##   CHART=velero        one chart, by subtest name
+##   INTEROP_TIMEOUT=4m  per-chart readiness cap (default 10m)
+##   INTEROP_HELM=cli    drive Helm through its CLI instead of the SDK
+##   INTEROP_KEEP=1      keep cluster state even when a cell passes
 helm-interop-test:
-	FORMAE_BINARY="$(FORMAE_BINARY)" $(GO) test -tags integration -count=1 -v -timeout 40m \
-		-run 'TestHelmInterop$(if $(CHART),/$(CHART),)' ./test/helm-interop/
+	@FORMAE_BINARY="$(FORMAE_BINARY)" ./scripts/run-helm-interop-test.sh $(CHART)
 
 ## helm-interop-charts: List the chart specs and which run the migrate path.
 helm-interop-charts:
