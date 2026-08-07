@@ -1,0 +1,13 @@
+# autocert — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: autocert
+repoURL: https://smallstep.github.io/helm-charts/
+version: 1.20.6
+
+trait: test-hook
+traitObject: "Pod/autocert-step-certificates-test-connection"
+
+notes: >-
+  Artifact Hub rank 400. Installed bare. A failure before
+  formae is involved is the chart's prerequisites, not formae's behaviour,
+  and is reported as a skip.

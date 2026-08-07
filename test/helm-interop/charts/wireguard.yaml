@@ -1,0 +1,13 @@
+# wireguard — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: wireguard
+repoURL: https://bryopsida.github.io/wireguard-chart
+version: 0.31.2
+
+trait: test-hook
+traitObject: "Job/wireguard-client-test"
+
+notes: >-
+  Artifact Hub rank 440. Installed bare. A failure before
+  formae is involved is the chart's prerequisites, not formae's behaviour,
+  and is reported as a skip.

@@ -1,0 +1,13 @@
+# stackgres-operator — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: stackgres-operator
+repoURL: https://stackgres.io/downloads/stackgres-k8s/stackgres/helm/
+version: 1.18.8
+
+trait: test-hook
+traitObject: "Pod/stackgres-operator-test-connection"
+
+notes: >-
+  Artifact Hub rank 261. Installed bare. A failure before
+  formae is involved is the chart's prerequisites, not formae's behaviour,
+  and is reported as a skip.

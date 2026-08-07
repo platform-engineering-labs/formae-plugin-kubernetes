@@ -1,0 +1,13 @@
+# k8tz — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: k8tz
+repoURL: https://k8tz.github.io/k8tz/
+version: 0.19.0
+
+trait: test-hook
+traitObject: "Pod/k8tz-health-test"
+
+notes: >-
+  Artifact Hub rank 328. Installed bare. A failure before
+  formae is involved is the chart's prerequisites, not formae's behaviour,
+  and is reported as a skip.

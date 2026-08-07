@@ -1,0 +1,13 @@
+# trino — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: trino
+repoURL: https://trinodb.github.io/charts/
+version: 1.42.1
+
+trait: test-hook
+traitObject: "Pod/trino-test-connection"
+
+notes: >-
+  Artifact Hub rank 142. Installed bare. A failure before
+  formae is involved is the chart's prerequisites, not formae's behaviour,
+  and is reported as a skip.

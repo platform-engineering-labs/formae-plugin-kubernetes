@@ -1,0 +1,13 @@
+# jira — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: jira
+repoURL: https://atlassian.github.io/data-center-helm-charts
+version: 2.0.13
+
+trait: test-hook
+traitObject: "Pod/jira-application-status-test"
+
+notes: >-
+  Artifact Hub rank 125. Installed bare. A failure before
+  formae is involved is the chart's prerequisites, not formae's behaviour,
+  and is reported as a skip.

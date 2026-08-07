@@ -1,0 +1,13 @@
+# terraform — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: terraform
+repoURL: https://helm.releases.hashicorp.com
+version: 1.1.1
+
+trait: test-hook
+traitObject: "ConfigMap/terraform-terraform-test"
+
+notes: >-
+  Artifact Hub rank 132. Installed bare. A failure before
+  formae is involved is the chart's prerequisites, not formae's behaviour,
+  and is reported as a skip.

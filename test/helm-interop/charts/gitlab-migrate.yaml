@@ -1,0 +1,6 @@
+# Opts gitlab into upgrade, rollback and reconcile.
+# Adjacent pair from the repo index, not a guess.
+version: 10.2.1
+
+notes: >-
+  10.2.0 -> 10.2.1.

@@ -1,0 +1,6 @@
+# Opts spire into upgrade, rollback and reconcile.
+# Adjacent pair from the repo index, not a guess.
+version: 0.29.0
+
+notes: >-
+  0.28.4 -> 0.29.0.

@@ -1,0 +1,13 @@
+# connect — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: connect
+repoURL: https://1password.github.io/connect-helm-charts
+version: 2.4.0
+
+trait: test-hook
+traitObject: "Pod/connect-health-check"
+
+notes: >-
+  Artifact Hub rank 154. Installed bare. A failure before
+  formae is involved is the chart's prerequisites, not formae's behaviour,
+  and is reported as a skip.

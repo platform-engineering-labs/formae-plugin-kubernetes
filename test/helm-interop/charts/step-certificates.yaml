@@ -1,0 +1,13 @@
+# step-certificates — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: step-certificates
+repoURL: https://smallstep.github.io/helm-charts/
+version: 1.30.0
+
+trait: test-hook
+traitObject: "Pod/step-certificates-test-connection"
+
+notes: >-
+  Artifact Hub rank 155. Installed bare. A failure before
+  formae is involved is the chart's prerequisites, not formae's behaviour,
+  and is reported as a skip.

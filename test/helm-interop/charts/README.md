@@ -38,6 +38,13 @@ velero, the other, carries that trait now.
 post-install hook waits for one. With no Keycloak to talk to the hook burns the
 timeout every time. vela-core carries `post-rollback` instead.
 
+**vela-core** — installs a validating webhook served by the release being
+upgraded, so it denies its own upgrade:
+`validating.core.oam-dev.v1beta1.componentdefinitions denied the request:
+builtin package "vela/helm" undefined`. The same upgrade fails under plain helm.
+Disabling the webhook made it pass, but a chart that only works with its own
+admission control switched off is not testing much.
+
 **connaisseur** — an image-signature admission controller whose default policy is
 `static deny *:*`. It installs, then denies the image pull of everything after
 it, including its own upgrade. It cost a whole sweep once: it failed, its state

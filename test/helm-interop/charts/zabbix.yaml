@@ -1,0 +1,13 @@
+# zabbix — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: zabbix
+repoURL: https://zabbix-community.github.io/helm-zabbix/
+version: 7.0.12
+
+trait: test-hook
+traitObject: "Job/zabbix-test-server-connection"
+
+notes: >-
+  Artifact Hub rank 149. Installed bare. A failure before
+  formae is involved is the chart's prerequisites, not formae's behaviour,
+  and is reported as a skip.

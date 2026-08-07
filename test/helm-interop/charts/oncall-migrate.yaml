@@ -1,0 +1,6 @@
+# Opts oncall into upgrade, rollback and reconcile.
+# Adjacent pair from the repo index, not a guess.
+version: 1.16.5
+
+notes: >-
+  1.16.4 -> 1.16.5.

@@ -1,0 +1,13 @@
+# helm-dashboard — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: helm-dashboard
+repoURL: https://helm-charts.komodor.io
+version: 2.0.5
+
+trait: test-hook
+traitObject: "Pod/helm-dashboard-test-connection"
+
+notes: >-
+  Artifact Hub rank 425. Installed bare. A failure before
+  formae is involved is the chart's prerequisites, not formae's behaviour,
+  and is reported as a skip.

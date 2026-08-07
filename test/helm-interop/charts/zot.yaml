@@ -1,0 +1,13 @@
+# zot — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: zot
+repoURL: https://zotregistry.dev/helm-charts/
+version: 0.1.121
+
+trait: test-hook
+traitObject: "Pod/zot-test-connection-fails"
+
+notes: >-
+  Artifact Hub rank 349. Installed bare. A failure before
+  formae is involved is the chart's prerequisites, not formae's behaviour,
+  and is reported as a skip.

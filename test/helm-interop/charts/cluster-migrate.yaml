@@ -1,0 +1,6 @@
+# Opts cluster into upgrade, rollback and reconcile.
+# Adjacent pair from the repo index, not a guess.
+version: 0.8.1
+
+notes: >-
+  0.8.0 -> 0.8.1.

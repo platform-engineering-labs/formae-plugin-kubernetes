@@ -1,0 +1,6 @@
+# Opts netbox into upgrade, rollback and reconcile.
+# Adjacent pair from the repo index, not a guess.
+version: 8.3.45
+
+notes: >-
+  8.3.44 -> 8.3.45.

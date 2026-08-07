@@ -1,0 +1,13 @@
+# portainer — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: portainer
+repoURL: https://portainer.github.io/k8s/
+version: 239.4.0
+
+trait: test-hook
+traitObject: "Pod/portainer-test-connection"
+
+notes: >-
+  Artifact Hub rank 205. Installed bare. A failure before
+  formae is involved is the chart's prerequisites, not formae's behaviour,
+  and is reported as a skip.

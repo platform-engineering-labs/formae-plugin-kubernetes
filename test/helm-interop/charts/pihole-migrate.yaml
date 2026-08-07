@@ -1,0 +1,6 @@
+# Opts pihole into upgrade, rollback and reconcile.
+# Adjacent pair from the repo index, not a guess.
+version: 2.38.0
+
+notes: >-
+  2.37.0 -> 2.38.0.

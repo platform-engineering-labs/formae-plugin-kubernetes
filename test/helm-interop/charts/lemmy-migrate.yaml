@@ -1,0 +1,6 @@
+# Opts lemmy into upgrade, rollback and reconcile.
+# Adjacent pair from the repo index, not a guess.
+version: 0.6.15
+
+notes: >-
+  0.6.14 -> 0.6.15.

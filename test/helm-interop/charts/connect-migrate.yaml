@@ -1,0 +1,6 @@
+# Opts connect into upgrade, rollback and reconcile.
+# Adjacent pair from the repo index, not a guess.
+version: 2.4.1
+
+notes: >-
+  2.4.0 -> 2.4.1.

@@ -1,0 +1,13 @@
+# oncall — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: oncall
+repoURL: https://grafana.github.io/helm-charts
+version: 1.16.4
+
+trait: test-hook
+traitObject: "ServiceAccount/oncall-grafana-test"
+
+notes: >-
+  Artifact Hub rank 347. Installed bare. A failure before
+  formae is involved is the chart's prerequisites, not formae's behaviour,
+  and is reported as a skip.

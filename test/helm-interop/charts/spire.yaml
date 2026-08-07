@@ -1,0 +1,13 @@
+# spire — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: spire
+repoURL: https://spiffe.github.io/helm-charts-hardened/
+version: 0.28.4
+
+trait: test-hook
+traitObject: "Pod/spire-spiffe-oidc-discovery-provider-test-connection"
+
+notes: >-
+  Artifact Hub rank 439. Installed bare. A failure before
+  formae is involved is the chart's prerequisites, not formae's behaviour,
+  and is reported as a skip.

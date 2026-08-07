@@ -1,0 +1,6 @@
+# Opts k8tz into upgrade, rollback and reconcile.
+# Adjacent pair from the repo index, not a guess.
+version: 0.20.0
+
+notes: >-
+  0.19.0 -> 0.20.0.

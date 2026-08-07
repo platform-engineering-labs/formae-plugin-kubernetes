@@ -1,0 +1,13 @@
+# openmetadata — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: openmetadata
+repoURL: https://helm.open-metadata.org
+version: 1.13.2
+
+trait: test-hook
+traitObject: "Pod/openmetadata-test-connection"
+
+notes: >-
+  Artifact Hub rank 169. Installed bare. A failure before
+  formae is involved is the chart's prerequisites, not formae's behaviour,
+  and is reported as a skip.

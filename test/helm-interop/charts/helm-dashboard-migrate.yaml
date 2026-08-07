@@ -1,0 +1,6 @@
+# Opts helm-dashboard into upgrade, rollback and reconcile.
+# Adjacent pair from the repo index, not a guess.
+version: 2.0.6
+
+notes: >-
+  2.0.5 -> 2.0.6.

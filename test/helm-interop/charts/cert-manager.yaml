@@ -20,14 +20,21 @@ traitObject: "CustomResourceDefinition/certificates.cert-manager.io"
 # Kubernetes removed in 1.22, so it cannot install anywhere modern. cert-manager
 # covers the same ground on a current cluster.
 #
-# crds.keep defaults true, so these carry helm.sh/resource-policy: keep and
-# outlive an uninstall — the residue case, exercised for free. Teardown collects
-# them by Helm's ownership annotation.
+# crds.keep is forced off, and that is not a detail. It defaults true, which
+# sounds like free coverage of the residue case and is actually a trap: Helm
+# strips its ownership annotations from a kept resource when the release goes
+# away, so the CRDs outlive the run carrying nothing but
+# helm.sh/resource-policy: keep. Nothing can then adopt them — Helm refuses to
+# import an object it does not own, and teardown will not delete an unannotated
+# cluster-scoped object because one may belong to a real installation. The
+# result is a chart that installs exactly once per cluster and blocks itself
+# forever after. Off, an uninstall takes them with it.
 values:
   startupapicheck:
     enabled: false
   crds:
     enabled: true
+    keep: false
 
 notes: >-
   Artifact Hub rank 2. Installed bare, with no values

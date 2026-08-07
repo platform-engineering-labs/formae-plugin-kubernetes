@@ -1,0 +1,6 @@
+# Opts opentelemetry-operator into upgrade, rollback and reconcile.
+# Adjacent pair from the repo index, not a guess.
+version: 0.120.0
+
+notes: >-
+  0.119.0 -> 0.120.0.

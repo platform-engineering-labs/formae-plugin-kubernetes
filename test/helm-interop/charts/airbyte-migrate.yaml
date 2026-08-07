@@ -1,0 +1,6 @@
+# Opts airbyte into upgrade, rollback and reconcile.
+# Adjacent pair from the repo index, not a guess.
+version: 1.9.2
+
+notes: >-
+  1.9.1 -> 1.9.2.

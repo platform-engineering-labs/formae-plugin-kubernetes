@@ -1,0 +1,6 @@
+# Opts mimir-distributed into upgrade, rollback and reconcile.
+# Adjacent pair from the repo index, not a guess.
+version: 6.1.0
+
+notes: >-
+  6.0.6 -> 6.1.0.

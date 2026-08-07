@@ -1,0 +1,13 @@
+# airbyte — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: airbyte
+repoURL: https://airbytehq.github.io/helm-charts
+version: 1.9.1
+
+trait: test-hook
+traitObject: "Pod/airbyte-test-connection"
+
+notes: >-
+  Artifact Hub rank 116. Installed bare. A failure before
+  formae is involved is the chart's prerequisites, not formae's behaviour,
+  and is reported as a skip.

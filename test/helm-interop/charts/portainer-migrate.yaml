@@ -1,0 +1,6 @@
+# Opts portainer into upgrade, rollback and reconcile.
+# Adjacent pair from the repo index, not a guess.
+version: 239.5.0
+
+notes: >-
+  239.4.0 -> 239.5.0.
