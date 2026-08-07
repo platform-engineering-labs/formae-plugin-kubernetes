@@ -147,32 +147,42 @@ func runInteropCell(t *testing.T, pair specPair) {
 	// surprising enough that a change here should not be silent.
 	t.Logf("✓ rolled back; marker on the new revision: %q", state.Labels[formaeManagedLabel])
 
-	// --- 7. reconcile absorbs, it does not correct ---------------------------
+	// --- 7. the rollback lands as drift, and reconcile converges -------------
 	cell.awaitReportedVersion(spec.Version)
 	t.Log("✓ formae sees the rollback as drift")
 
-	//nolint:lll // the decision is the point
-	// ABSORB, by decision: the rollback is reported and left alone, and undoing
-	// it takes --force. Snapping back would re-run pre-upgrade hooks to reverse
-	// an operator's deliberate rollback, and for a chart with pre-rollback hooks
-	// would fire the wrong event entirely. formae cannot tell a rollback from an
-	// out-of-band upgrade in any case — Read surfaces neither revision direction
-	// nor Info.Description — and absorb is the one policy not needing that.
+	// An explicit `apply --mode reconcile` converging on the forma is reconcile
+	// working, not a policy problem. formae is the system of record: a change
+	// made outside it is drift, detecting that drift is the job, and an operator
+	// who then runs the converge command has asked for exactly this.
+	//
+	// An earlier version of this test asserted the opposite — that reconcile
+	// should refuse and require --force — and reported six charts as a policy
+	// violation. That was wrong twice over. It mislabelled correct behaviour,
+	// and the scenario it described (a background loop silently undoing an
+	// operator's rollback) is not what this step exercises: this is a
+	// human-invoked apply. Whether the background reconcile loop would do the
+	// same is a separate question this harness does not currently test.
+	//
+	// What is worth pinning is that the drift was visible first, and that the
+	// convergence actually happened rather than being reported and skipped.
 	outcome, message := cell.formae.ApplyExpectingRefusal("reconcile", adopted)
 	after := cell.state()
-	switch {
-	case outcome == "Success":
-		// Errorf, not Fatalf: this is a known divergence between decided policy
-		// and shipped behaviour, and letting it stop the cell would hide the
-		// trait assertion below it — every full-chain chart would report the
-		// same one failure and nothing else.
-		t.Errorf("ROLLBACK POLICY: reconcile corrected the out-of-band rollback "+
-			"(now revision %d at %s). Decided policy is absorb: report the drift, "+
-			"require --force to undo it.", after.Revision, after.Version)
+	switch outcome {
+	case "Success":
+		assertEqual(t, "reconcile converged the release back to the forma", target, after.Version)
+		assertEqual(t, "convergence produced a new revision", 4, after.Revision)
+		t.Log("✓ reconcile converged the out-of-band rollback back to the forma")
 	default:
-		t.Logf("✓ reconcile refused: %s", firstLine(orNoMessage(message)))
-		assertEqual(t, "release untouched by the refused reconcile", spec.Version, after.Version)
-		assertEqual(t, "no new revision from the refused reconcile", 3, after.Revision)
+		// A refusal is legitimate too — the guard that makes an operator
+		// acknowledge an out-of-band change before overwriting it. What must not
+		// happen is reporting one thing and doing another, which traefik was
+		// observed doing: non-Success reported, release moved anyway.
+		t.Logf("reconcile did not converge (%s): %s", outcome, firstLine(orNoMessage(message)))
+		assertEqual(t, "a reconcile that did not succeed must not have moved the release",
+			spec.Version, after.Version)
+		assertEqual(t, "a reconcile that did not succeed must not have added a revision",
+			3, after.Revision)
 	}
 
 	// --- 8. the assertion that justifies this chart --------------------------

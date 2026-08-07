@@ -7,19 +7,34 @@ version: 12.0.3
 trait: pre-rollback
 traitObject: "ServiceAccount/velero-server-upgrade-crds"
 
-# Without these velero installs a BackupStorageLocation whose own CRD rejects it
-# for having no credentials. The chart renders fine bare; installing is what
-# needs them. None of this touches the upgrade-crds hook the trait asserts on.
+# velero will not install bare: it creates a BackupStorageLocation that its own
+# CRD rejects for having no credentials.
 #
-# The empty lists are load-bearing twice over: they are also what exposed formae
-# dropping explicitly-empty collections from values.
+# The obvious override is `configuration.backupStorageLocation: []` — tell the
+# chart to create none. That installs, and then the upgrade fails with
+# `spec.provider: Required value`, because an explicitly-empty collection does
+# not survive formae's values round-trip: the forma carries it, `pkl eval` emits
+# it, and the release Helm ends up with does not, so the chart falls back to its
+# default BSL. pkg/resources/helm/values_test.go pins the plugin's half of that
+# boundary: decodeProperties keeps the empty lists and re-marshalling keeps them,
+# so the drop happens before the plugin is called.
+#
+# So this declares a BSL that is well-formed instead of declaring none. Nothing
+# here is reachable — the bucket does not exist and no credentials are supplied
+# — but it satisfies the CRD, and it depends on no empty collection, so both the
+# install and the upgrade survive the round-trip. That is what lets this chart
+# reach the pre-rollback hook it was selected for.
 values:
   credentials:
     useSecret: false
   snapshotsEnabled: false
   configuration:
-    backupStorageLocation: []
-    volumeSnapshotLocation: []
+    backupStorageLocation:
+      - name: default
+        provider: aws
+        bucket: interop-not-a-real-bucket
+        config:
+          region: us-east-1
 
 notes: >-
   Artifact Hub rank 29. Installed bare, with no values
