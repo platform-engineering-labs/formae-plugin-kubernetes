@@ -89,7 +89,43 @@ func TestSecretCRUDLifecycle(t *testing.T) {
 		ExpectedCreateStatus: resource.OperationStatusSuccess,
 		ExpectedFinalStatus:  resource.OperationStatusSuccess,
 		StatusTimeout:        10 * time.Second,
+		// Read must enrich the base64-decoded payload into a `decodedData` field
+		// so secret.res.secretValue.at("key") can resolve it. `data` stays
+		// stripped from the live state (server-side stringData transform).
+		VerifyRead: func(t *testing.T, result *resource.ReadResult) {
+			t.Helper()
+			decoded := secretDecodedData(t, result.Properties)
+			if decoded["key1"] != "secret-value" {
+				t.Errorf("Read: decodedData.key1 = %q, want secret-value", decoded["key1"])
+			}
+			if strings.Contains(result.Properties, `"data"`) {
+				t.Errorf("Read: raw base64 `data` must be stripped from live state, got %s", result.Properties)
+			}
+		},
+		VerifyUpdate: func(t *testing.T, result *resource.UpdateResult) {
+			t.Helper()
+			decoded := secretDecodedData(t, string(result.ProgressResult.ResourceProperties))
+			if decoded["key1"] != "updated-secret" {
+				t.Errorf("Update: decodedData.key1 = %q, want updated-secret", decoded["key1"])
+			}
+		},
 	})
+}
+
+// secretDecodedData extracts the enriched decodedData map from a Secret's
+// live-state properties JSON.
+func secretDecodedData(t *testing.T, properties string) map[string]string {
+	t.Helper()
+	var props struct {
+		DecodedData map[string]string `json:"decodedData"`
+	}
+	if err := json.Unmarshal([]byte(properties), &props); err != nil {
+		t.Fatalf("unmarshal secret properties: %v", err)
+	}
+	if props.DecodedData == nil {
+		t.Fatalf("decodedData missing from secret live state: %s", properties)
+	}
+	return props.DecodedData
 }
 
 func TestServiceAccountCRUDLifecycle(t *testing.T) {
