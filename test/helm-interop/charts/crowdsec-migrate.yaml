@@ -1,6 +1,0 @@
-# Opts crowdsec into upgrade, rollback and reconcile.
-# Adjacent pair from the repo index, not a guess.
-version: 0.24.0
-
-notes: >-
-  0.23.0 -> 0.24.0.

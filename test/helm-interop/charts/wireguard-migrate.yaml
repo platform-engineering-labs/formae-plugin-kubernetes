@@ -1,6 +1,0 @@
-# Opts wireguard into upgrade, rollback and reconcile.
-# Adjacent pair from the repo index, not a guess.
-version: 0.32.0
-
-notes: >-
-  0.31.2 -> 0.32.0.

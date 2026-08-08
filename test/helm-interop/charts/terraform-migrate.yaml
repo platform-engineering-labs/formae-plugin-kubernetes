@@ -1,6 +1,0 @@
-# Opts terraform into upgrade, rollback and reconcile.
-# Adjacent pair from the repo index, not a guess.
-version: 1.1.2
-
-notes: >-
-  1.1.1 -> 1.1.2.

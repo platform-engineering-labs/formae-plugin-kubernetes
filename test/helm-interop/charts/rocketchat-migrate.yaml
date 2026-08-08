@@ -1,6 +1,0 @@
-# Opts rocketchat into upgrade, rollback and reconcile.
-# Adjacent pair from the repo index, not a guess.
-version: 7.0.2
-
-notes: >-
-  7.0.1 -> 7.0.2.

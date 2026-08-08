@@ -1,6 +1,0 @@
-# Opts vpa into upgrade, rollback and reconcile.
-# Adjacent pair from the repo index, not a guess.
-version: 4.12.4
-
-notes: >-
-  4.12.3 -> 4.12.4.

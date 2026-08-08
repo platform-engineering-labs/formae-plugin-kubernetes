@@ -1,6 +1,0 @@
-# Opts mongo-express into upgrade, rollback and reconcile.
-# Adjacent pair from the repo index, not a guess.
-version: 7.0.0
-
-notes: >-
-  6.5.2 -> 7.0.0.

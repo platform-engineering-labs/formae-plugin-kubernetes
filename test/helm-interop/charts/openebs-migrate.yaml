@@ -1,6 +1,0 @@
-# Opts openebs into upgrade, rollback and reconcile.
-# Adjacent pair from the repo index, not a guess.
-version: 4.5.1
-
-notes: >-
-  4.5.0 -> 4.5.1.

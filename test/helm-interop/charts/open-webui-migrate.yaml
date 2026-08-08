@@ -1,6 +1,0 @@
-# Opts open-webui into upgrade, rollback and reconcile.
-# Adjacent pair from the repo index, not a guess.
-version: 16.0.0
-
-notes: >-
-  15.2.1 -> 16.0.0.

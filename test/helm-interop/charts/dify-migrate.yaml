@@ -1,6 +1,0 @@
-# Opts dify into upgrade, rollback and reconcile.
-# Adjacent pair from the repo index, not a guess.
-version: 0.10.0
-
-notes: >-
-  0.9.1 -> 0.10.0.

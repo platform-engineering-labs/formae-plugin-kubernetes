@@ -1,6 +1,0 @@
-# Opts mailu into upgrade, rollback and reconcile.
-# Adjacent pair from the repo index, not a guess.
-version: 2.7.3
-
-notes: >-
-  2.7.2 -> 2.7.3.

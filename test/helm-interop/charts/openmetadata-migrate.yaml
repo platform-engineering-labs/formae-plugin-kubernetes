@@ -1,6 +1,0 @@
-# Opts openmetadata into upgrade, rollback and reconcile.
-# Adjacent pair from the repo index, not a guess.
-version: 1.13.3
-
-notes: >-
-  1.13.2 -> 1.13.3.

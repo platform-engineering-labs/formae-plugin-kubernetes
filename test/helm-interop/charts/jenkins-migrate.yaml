@@ -1,6 +1,0 @@
-# Opts jenkins into upgrade, rollback and reconcile.
-# Adjacent pair from the repo index, not a guess.
-version: 5.9.45
-
-notes: >-
-  5.9.44 -> 5.9.45.

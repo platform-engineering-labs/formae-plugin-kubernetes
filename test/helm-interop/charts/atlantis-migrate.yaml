@@ -1,6 +1,0 @@
-# Opts atlantis into upgrade, rollback and reconcile.
-# Adjacent pair from the repo index, not a guess.
-version: 6.10.0
-
-notes: >-
-  6.9.3 -> 6.10.0.

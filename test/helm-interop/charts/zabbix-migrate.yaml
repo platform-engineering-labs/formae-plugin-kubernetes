@@ -1,6 +1,0 @@
-# Opts zabbix into upgrade, rollback and reconcile.
-# Adjacent pair from the repo index, not a guess.
-version: 7.1.0
-
-notes: >-
-  7.0.12 -> 7.1.0.

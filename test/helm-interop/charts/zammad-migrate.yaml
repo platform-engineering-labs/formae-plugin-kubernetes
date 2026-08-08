@@ -1,6 +1,0 @@
-# Opts zammad into upgrade, rollback and reconcile.
-# Adjacent pair from the repo index, not a guess.
-version: 16.4.7
-
-notes: >-
-  16.4.6 -> 16.4.7.
