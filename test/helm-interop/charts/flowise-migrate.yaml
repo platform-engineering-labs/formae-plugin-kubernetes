@@ -1,6 +1,0 @@
-# Opts flowise into upgrade, rollback and reconcile.
-# Adjacent pair from the repo index, not a guess.
-version: 6.0.0
-
-notes: >-
-  5.1.1 -> 6.0.0.

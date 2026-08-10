@@ -363,7 +363,10 @@ jobs:
   helm-interop-tests:
     needs: build-formae
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # The full set, serially: charts collide on cluster-scoped names so this
+    # cannot shard, and 24 charts took ninety minutes when CI cancelled the PR
+    # job. PRs run a subset; this is where everything gets exercised.
+    timeout-minutes: 150
     steps:
       - name: Checkout plugin
         uses: actions/checkout@v7

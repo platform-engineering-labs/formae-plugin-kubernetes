@@ -14,10 +14,11 @@ name: Helm Interop (PR)
 # formae binary built from a chosen branch and shared across matrix jobs, this
 # builds from main the way conformance-version.yml does.
 #
-# This is a slow job. The suite walks every chart in test/helm-interop/charts/
-# serially against one cluster, which is minutes per chart. If PR latency
-# matters more than coverage, set CHART to a single fast chart (podinfo runs in
-# about a minute) and leave the full sweep to nightly.
+# Runs a subset, not the whole set. The suite walks charts serially — they
+# collide on cluster-scoped names, so it cannot shard — and a full sweep spent
+# ninety minutes to get through 24 of 30 before CI cancelled it. The full set
+# runs nightly; a PR gets one chart per trait plus a couple of shapes that have
+# actually caught things.
 
 on:
   # No branch filter, unlike conformance-pr.yml. Work on this suite lands on
@@ -34,7 +35,7 @@ concurrency:
 jobs:
   helm-interop:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
 
@@ -83,14 +84,18 @@ jobs:
       - name: Run Helm interop suite
         env:
           FORMAE_BINARY: /opt/pel/bin/formae
-          # A chart that cannot become ready inside the cap is reported as a
+          # A chart that cannot  ready inside the cap is reported as a
           # skip, not a failure — its own prerequisites are not formae's
           # behaviour. Kept tight so one unhealthy chart cannot eat the job.
           INTEROP_TIMEOUT: 6m
           # Matches the kind image above; the generated bootstrap forma imports
           # the schema subtree for this minor.
           INTEROP_KUBE_VERSION: "1.36"
-        run: make helm-interop-test
+        # One per trait, plus two that earned a slot: external-secrets ships two
+        # dozen CRDs and was the chart that exposed reordered resourceNames
+        # manufacturing permanent drift, and velero's pre-rollback hook is a
+        # CRD-migration Job — the case where having no rollback verb would bite.
+        run: make helm-interop-test CHART='(podinfo|velero|cert-manager|external-secrets|nats|external-dns)'
 
       - name: Agent log on failure
         if: failure()

@@ -1,6 +1,0 @@
-# Opts openbao into upgrade, rollback and reconcile.
-# Adjacent pair from the repo index, not a guess.
-version: 0.28.6
-
-notes: >-
-  0.28.5 -> 0.28.6.

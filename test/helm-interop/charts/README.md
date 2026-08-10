@@ -38,6 +38,21 @@ velero, the other, carries that trait now.
 post-install hook waits for one. With no Keycloak to talk to the hook burns the
 timeout every time. vela-core carries `post-rollback` instead.
 
+**flowise**, **helm-dashboard** — their version pairs cross an immutable
+field. flowise 5.1.1 -> 6.0.0 changes the Deployment's `spec.selector`, and
+helm-dashboard's rollback cannot revert a PersistentVolumeClaim
+(`spec is immutable after creation`). Kubernetes forbids both, under plain helm
+as much as under formae, so the cell measures the chart's version history rather
+than anything about adoption.
+
+**openbao**, **portainer** — too slow to be worth a slot: openbao never settled
+in eighteen minutes, portainer's rollback timed out. A chart earns its place by
+exercising the release lifecycle, not by making the suite wait.
+
+**stackgres-operator** — declares `kubeVersion: 1.18.0-0 - 1.35.x`, and CI runs
+Kubernetes 1.36. It installs locally on 1.33 and cannot install on the version
+that gates the branch, which is the version that matters.
+
 **vela-core** — installs a validating webhook served by the release being
 upgraded, so it denies its own upgrade:
 `validating.core.oam-dev.v1beta1.componentdefinitions denied the request:
