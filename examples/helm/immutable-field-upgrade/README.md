@@ -10,8 +10,10 @@ and looks like formae's fault.
 make helm-immutable-test
 ```
 
-Needs a reachable cluster, `make install` done, a running agent, and `helm` and
-`kubectl` on PATH. About three minutes.
+Needs a reachable cluster, `make install` done, and `helm` and `kubectl` on PATH.
+About three minutes. The agent is started and stopped for you, under its own
+profile (`helm-immutable`) and its own datastore, so the run cannot end up
+talking to an agent serving other work — and reports no usage.
 
 ## What it does
 

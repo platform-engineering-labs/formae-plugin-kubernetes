@@ -377,7 +377,7 @@ helm-interop-charts:
 ## that changes an immutable field (flowise 5.1.1 -> 6.0.0 renames its Deployment
 ## selector) is refused by formae, by plain `helm upgrade`, and by
 ## `helm upgrade --force-replace` alike.
-## Requires `make install` and a running agent.
+## Requires `make install`. Owns its own agent, under its own profile.
 helm-immutable-test:
 	@FORMAE_BINARY="$(FORMAE_BINARY)" ./scripts/run-helm-immutable-test.sh
 

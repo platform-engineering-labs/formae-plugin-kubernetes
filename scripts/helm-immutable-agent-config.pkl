@@ -1,0 +1,39 @@
+/// Agent configuration for the immutable-field upgrade demo.
+///
+/// Installed as a named profile by scripts/run-helm-immutable-test.sh, so it
+/// never touches ~/.config/formae/formae.conf.pkl or any profile a human is
+/// using. Without it the demo talked to whichever agent held the port, which is
+/// how three readings in this suite's history turned out to be false.
+amends "formae:/Config.pkl"
+
+agent {
+  datastore {
+    sqlite { filePath = "~/.pel/formae/data/helm-immutable.db" }
+  }
+
+  synchronization {
+    // Off. The demo deliberately leaves a release with a failed newest revision
+    // and asserts the old one is still serving; a sync pass writing its own view
+    // of that release in the background turns those assertions into a race.
+    enabled = false
+  }
+
+  discovery {
+    // Off. Nothing here asserts on discovery, and every cycle is another read
+    // path through a release that is broken on purpose.
+    enabled = false
+  }
+
+  logging {
+    filePath = "~/.pel/formae/log/helm-immutable.log"
+    fileLogLevel = "debug"
+    consoleLogLevel = "info"
+  }
+}
+
+// No telemetry from a test run. The demo's whole job is to fail an upgrade, and
+// none of that is signal anybody wants reported — least of all from CI, where it
+// would be attributed to whoever's credentials the runner happens to hold.
+cli {
+  disableUsageReporting = true
+}

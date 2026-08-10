@@ -16,7 +16,12 @@
 #   5. helm --force-replace         -> identical error again
 #
 # Usage: ./scripts/run-helm-immutable-test.sh
-# Requires a reachable cluster, `make install`, a running agent, helm and kubectl.
+# Requires a reachable cluster, `make install`, helm and kubectl.
+#
+# The agent is owned here, under its own profile and its own SQLite file, so the
+# demo cannot end up talking to whichever agent happens to hold the port — and so
+# a run that installs and fails a release a dozen times reports no usage.
+# Set IMMUTABLE_PROFILE to change the profile name.
 
 set -euo pipefail
 
@@ -31,6 +36,9 @@ if [[ -z "${FORMAE}" ]] || [[ ! -x "${FORMAE}" ]]; then
     echo "Error: formae binary not found; set FORMAE_BINARY" >&2
     exit 1
 fi
+
+PROFILE="${IMMUTABLE_PROFILE:-helm-immutable}"
+PROFILE_DIR="${HOME}/.config/formae/profiles"
 
 NS="formae-helm-immutable"
 RELEASE="flowise"
@@ -78,12 +86,17 @@ except Exception: sys.exit(0)
 if revs: print(revs[-1].get("status",""))'
 }
 
+fm() { "${FORMAE}" --profile "${PROFILE}" "$@"; }
+
 cleanup() {
     echo ""
     echo "Cleaning up..."
-    "${FORMAE}" destroy --yes --query "stack:${STACK}" >/dev/null 2>&1 || true
+    fm destroy --yes --query "stack:${STACK}" >/dev/null 2>&1 || true
     helm uninstall "${RELEASE}" -n "${NS}" >/dev/null 2>&1 || true
     kubectl delete namespace "${NS}" --wait=false >/dev/null 2>&1 || true
+    # Best-effort: a run that never got the agent up must not fail in cleanup and
+    # mask why it could not start.
+    fm agent stop >/dev/null 2>&1 || true
     rm -rf "${WORK_DIR}"
 }
 trap cleanup EXIT
@@ -91,6 +104,18 @@ trap cleanup EXIT
 echo "Resolving Pkl dependencies..."
 pkl project resolve "${PROJECT_ROOT}/schema/pkl" >/dev/null
 pkl project resolve "${DEMO_DIR}" >/dev/null
+
+echo "Starting agent under profile ${PROFILE}..."
+mkdir -p "${PROFILE_DIR}"
+cp "${SCRIPT_DIR}/helm-immutable-agent-config.pkl" "${PROFILE_DIR}/${PROFILE}.pkl"
+fm agent stop >/dev/null 2>&1 || true
+fm agent start >/dev/null 2>&1 &
+for _ in $(seq 1 30); do
+    fm status agent >/dev/null 2>&1 && break
+    sleep 2
+done
+fm status agent >/dev/null 2>&1 \
+    || fail "agent did not come up under profile ${PROFILE}"
 
 # A namespace left Terminating by a previous run is not the same as one that is
 # gone. formae creates it, Helm then installs into it, and the install fails with
@@ -109,7 +134,7 @@ fi
 
 echo ""
 echo "1) formae apply — install at ${VERSION_A}"
-"${FORMAE}" apply --mode reconcile --yes "${FORMA}" >/dev/null 2>&1 || true
+fm apply --mode reconcile --yes "${FORMA}" >/dev/null 2>&1 || true
 for _ in $(seq 1 60); do
     [[ "$(helm_version)" == "${VERSION_A}" ]] && break
     sleep 5
@@ -120,7 +145,7 @@ done
 # Applying again while the first is still settling is turned down for being
 # concurrent — which looks like the refusal this demo is about, and is not it.
 for _ in $(seq 1 60); do
-    "${FORMAE}" status command --query 'status:InProgress' --output-consumer machine 2>/dev/null \
+    fm status command --query 'status:InProgress' --output-consumer machine 2>/dev/null \
         | grep -q '"CommandId"' || break
     sleep 5
 done
@@ -141,7 +166,7 @@ sed "${sed_i[@]}" "s#import(\"../../../schema/pkl/PklProject\")#import(\"${PROJE
     "${WORK_DIR}/PklProject"
 pkl project resolve "${WORK_DIR}" >/dev/null
 
-out="$("${FORMAE}" apply --mode reconcile --yes "${WORK_DIR}/flowise.pkl" 2>&1)" || true
+out="$(fm apply --mode reconcile --yes "${WORK_DIR}/flowise.pkl" 2>&1)" || true
 echo "${out}" | sed 's/^/     /' | tail -3
 # A concurrency rejection would leave the release unchanged too, and step 3
 # would pass without this demo having shown anything.
