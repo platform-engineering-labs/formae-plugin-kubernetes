@@ -80,11 +80,31 @@ fi
 
 echo ""
 echo "Running ${RUN_PATTERN}..."
-# -count=1 defeats Go's test cache: an integration result cached from a previous
-# cluster state is worse than no result.
+
+# Output is teed rather than streamed straight through, so the run can be
+# checked for having actually run something. A -run pattern that matches no
+# chart exits zero and prints "no tests to run", and go test reports the parent
+# as PASS — a green result for a suite that did nothing. That is a live risk now
+# the patterns are generated per CI group rather than typed: one renamed chart
+# and a whole group silently stops testing.
+OUTPUT="$(mktemp)"
+trap 'stop_agent; rm -f "${OUTPUT}"' EXIT
+
+set +e
 FORMAE_BINARY="${FORMAE}" \
 INTEROP_FORMAE_PROFILE="${PROFILE}" \
     go test -tags integration -count=1 -v \
         -timeout "${GO_TEST_TIMEOUT:-90m}" \
         -run "${RUN_PATTERN}" \
-        "${SUITE_DIR}/..."
+        "${SUITE_DIR}/..." 2>&1 | tee "${OUTPUT}"
+STATUS="${PIPESTATUS[0]}"
+set -e
+
+if grep -q "no tests to run" "${OUTPUT}"; then
+    echo ""
+    echo "Error: ${RUN_PATTERN} matched no chart. Nothing ran." >&2
+    echo "Charts available: $(ls "${SUITE_DIR}/charts"/*.yaml | grep -v migrate | xargs -n1 basename | sed 's/.yaml//' | tr '\n' ' ')" >&2
+    exit 1
+fi
+
+exit "${STATUS}"

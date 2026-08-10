@@ -350,7 +350,11 @@ helm-drift-test:
 ##   INTEROP_HELM=cli    drive Helm through its CLI instead of the SDK
 ##   INTEROP_KEEP=1      keep cluster state even when a cell passes
 helm-interop-test:
-	@FORMAE_BINARY="$(FORMAE_BINARY)" ./scripts/run-helm-interop-test.sh $(CHART)
+	@# CHART is quoted: it is a -run regex, so a group filter like
+	@# '(podinfo|velero)' reaches /bin/sh as bare parens otherwise and dies with
+	@# 'Syntax error: "(" unexpected'. Local runs passed a single chart name and
+	@# never showed it; CI passes a group and did.
+	@FORMAE_BINARY="$(FORMAE_BINARY)" ./scripts/run-helm-interop-test.sh "$(CHART)"
 
 ## helm-interop-clean: Remove what a killed interop run left behind — ci-*
 ## namespaces and the cluster-scoped objects owned by them. Teardown handles
