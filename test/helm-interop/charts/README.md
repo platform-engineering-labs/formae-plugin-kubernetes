@@ -21,6 +21,47 @@ Hub sample, exactly two charts declare `pre-rollback` hooks (velero, kubedb) and
 one declares `crd-install` (ambassador). The traits that matter most to formae's
 rollback and CRD story are the least represented in the wild.
 
+## What the traits actually assert
+
+Selecting a chart for a trait is not the same as testing that trait, and right
+now only one of them is checked in a way that can fail.
+
+| trait | charts | assertion |
+|---|---|---|
+| `test-hook` | 18 | **real** — fails if the hook object was ever applied |
+| `pre-rollback` | 1 (velero) | logs whether the object is present; cannot fail |
+| `crd-install` | 1 (cert-manager) | logs; cannot fail |
+| `no-hooks` | 5 | nothing to assert — the control |
+| `post-rollback` | **0** | no chart at all |
+
+Every chart still runs the whole chain — install, discover, adopt, upgrade,
+rollback, drift, converge — and those steps are asserted properly. What the table
+above is about is the extra, trait-specific assertion at the end.
+
+### post-rollback has no chart, and the corpus cannot supply one
+
+`stackgres-operator` was the last candidate in a thousand charts and it declares
+`kubeVersion: 1.18.0-0 - 1.35.x` while CI runs Kubernetes 1.36 — it cannot
+install on the version that gates the branch. The others were removed for their
+own reasons (see below).
+
+Filling this needs a **local fixture chart** rather than a corpus one: two
+versions, a post-rollback hook Job, nothing else. `testdata/charts/hooked`,
+which the Go integration tests use, is the pattern. It would run in seconds
+instead of minutes and could carry `pre-rollback` too.
+
+### The assertion worth writing first
+
+`examples/helm/README.md` records that `Release` has **no `helm rollback` verb**:
+reverting values and re-applying fires `pre-upgrade` hooks, not `pre-rollback`
+ones. That is a claim in a README and nothing checks it.
+
+velero is already in the set and already carries `pre-rollback` — its hook is a
+CRD-migration Job, which is exactly the case where firing the wrong event
+matters. Making that assertion real needs no new chart, and it closes the more
+important half of this gap. A post-rollback fixture is worth adding after it,
+not before.
+
 ## Charts deliberately not here
 
 **ambassador** — was the only chart in the sample declaring a `crd-install`

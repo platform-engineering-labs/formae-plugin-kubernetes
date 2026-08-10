@@ -59,6 +59,15 @@ anything real — several of its findings are not obvious and cost real time.
   Helm does not detect it either — hence `helm diff`.
 - **No `helm rollback` verb.** Revert the values in your forma and re-apply. Note
   that fires `pre-upgrade` hooks, not `pre-rollback` hooks.
+
+  **Not covered by a test.** The interop suite in `test/helm-interop/` runs 25
+  real charts through install, discovery, adoption, upgrade, `helm rollback`,
+  drift detection and reconcile — but the hook *events* a rollback fires are the
+  one thing it does not check. No chart in the set carries a `post-rollback`
+  hook, and the `pre-rollback` assertion only logs what it finds rather than
+  failing on it. So the sentence above is reasoning about Helm's behaviour, not a
+  measured result. See `test/helm-interop/charts/README.md` for what would close
+  it.
 - **No `helm test`.** A CI verb, not desired state.
 - **Uninstall leaves residue.** Objects from the chart's `crds/` directory and
   anything annotated `helm.sh/resource-policy: keep` outlive a delete, and
