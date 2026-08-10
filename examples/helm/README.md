@@ -45,6 +45,7 @@ Each is a self-contained directory with its own `PklProject`, a script, and a
 | Directory | Command | Scenario |
 |---|---|---|
 | `drift-helm-upgrade/` | `make helm-drift-test` | Deploy version A with formae, `helm upgrade` to B behind its back, watch formae detect the drift and reconcile it back. Shows a release is **not** opaque to drift detection, and that a plain reconcile refuses to clobber an out-of-band change. |
+| `immutable-field-upgrade/` | `make helm-immutable-test` | A chart version that changes an immutable field. The upgrade is refused — and so is plain `helm upgrade`, and so is `--force-replace`. Shows the limitation is Kubernetes', not formae's. |
 | `adopt-and-rollback/` | `make helm-adopt-test` | `helm install` a release formae knows nothing about, watch the apply get **refused**, then discover → `formae extract` → adopt → upgrade with formae → `helm rollback`. Shows the ownership guard and the whole adoption path. |
 
 Both need `make install` and a running agent. Each has its own README covering

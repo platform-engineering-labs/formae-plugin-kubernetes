@@ -27,7 +27,7 @@ FORMAE_BINARY ?= $(shell realpath $(firstword $(wildcard $(CURDIR)/../../formae/
 PLUGIN_BASE_DIR := $(HOME)/.pel/formae/plugins
 INSTALL_DIR := $(PLUGIN_BASE_DIR)/$(PLUGIN_NAME)/v$(PLUGIN_VERSION)
 
-.PHONY: all build test test-unit test-integration lint verify-schema clean install help setup-credentials clean-environment conformance-test conformance-test-crud conformance-test-discovery conformance-test-crud-run conformance-test-discovery-run conformance-test-resources conformance-test-charts generate-schema chart-test drift-test helm-drift-test helm-adopt-test helm-interop-test helm-interop-charts helm-interop-clean
+.PHONY: all build test test-unit test-integration lint verify-schema clean install help setup-credentials clean-environment conformance-test conformance-test-crud conformance-test-discovery conformance-test-crud-run conformance-test-discovery-run conformance-test-resources conformance-test-charts generate-schema chart-test drift-test helm-drift-test helm-adopt-test helm-immutable-test helm-interop-test helm-interop-charts helm-interop-clean
 
 all: build
 
@@ -368,6 +368,14 @@ helm-interop-charts:
 		if [ -f "test/helm-interop/charts/$$name-migrate.yaml" ]; then path="full chain"; else path="adopt only"; fi; \
 		printf '%-24s %-14s %s\n' "$$name" "$$path" "$$(grep -m1 '^trait:' "$$f" | cut -d' ' -f2-)"; \
 	done
+
+## helm-immutable-test: Show an upgrade that no tool can perform. A chart version
+## that changes an immutable field (flowise 5.1.1 -> 6.0.0 renames its Deployment
+## selector) is refused by formae, by plain `helm upgrade`, and by
+## `helm upgrade --force-replace` alike.
+## Requires `make install` and a running agent.
+helm-immutable-test:
+	@FORMAE_BINARY="$(FORMAE_BINARY)" ./scripts/run-helm-immutable-test.sh
 
 ## drift-test: Run drift detection + reconciliation test
 ## Deploys drift-demo.pkl, introduces drift via kubectl, force reconciles,

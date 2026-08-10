@@ -1,0 +1,69 @@
+/// A chart whose next version changes an immutable field.
+///
+/// flowise 6.0.0 renames the label selector on its Deployment. Kubernetes
+/// freezes `Deployment.spec.selector` after creation, and Helm upgrades by
+/// patching, so the apiserver refuses:
+///
+///   Deployment.apps "flowise" is invalid: spec.selector: Invalid value:
+///     v1.LabelSelector{...}: field is immutable
+///
+/// The point of this example is what it is NOT. It is not formae failing where
+/// Helm would succeed, and it is not something a flag fixes. `helm upgrade`
+/// alone fails identically, and so does `helm upgrade --force-replace
+/// --server-side=false` — a replace is still not a delete-and-recreate, and only
+/// deleting the Deployment would let the new selector take.
+///
+/// Apply this forma, then repin `chartVersion` to 6.0.0 and apply again. The
+/// second apply fails, and the release stays where it was.
+///
+/// Run it with the script, which asserts each step and proves the same failure
+/// under plain Helm:
+///   make helm-immutable-test
+///
+/// See README.md in this directory.
+amends "@formae/forma.pkl"
+
+import "@formae/formae.pkl"
+import "@k8s/v1.33/k8s.pkl" as k8s
+import "@k8s/v1.33/core/Namespace.pkl" as ns
+import "@k8s/v1.33/helm/Release.pkl" as helm
+
+/// The version that installs cleanly. Repin to "6.0.0" to reproduce the refusal.
+local chartVersion = "5.1.1"
+
+forma {
+  new formae.Stack {
+    label = "helm-immutable"
+    description = "A chart version that changes an immutable field"
+  }
+
+  new formae.Target {
+    label = "k8s-local"
+    config = new k8s.Config {
+      kubernetesVersion = "1.33"
+      auth = new k8s.KubeconfigAuth {}
+    }
+  }
+
+  local appNs = new ns.Namespace {
+    label = "immutable-namespace"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-helm-immutable"
+    }
+  }
+  appNs
+
+  new helm.Release {
+    label = "flowise"
+    metadata {
+      name = "flowise"
+      namespace = appNs.res.name
+    }
+
+    chart = "flowise"
+    repoURL = "https://cowboysysop.github.io/charts/"
+    version = chartVersion
+
+    timeoutSeconds = 600
+  }
+}
