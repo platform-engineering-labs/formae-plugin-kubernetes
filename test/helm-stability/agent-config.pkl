@@ -24,10 +24,25 @@ agent {
   }
 
   discovery {
-    // Off, for the same reason and one more: discovery lists releases, which
-    // builds the inventory, which takes the plugin's read path through a
-    // release that is pending on purpose. Nothing here asserts on discovery.
-    enabled = false
+    // On, because off is a configuration nobody runs. Discovery lists releases,
+    // which builds the release inventory, which takes the plugin's read path
+    // through a release that is pending or wedged on purpose — exactly the
+    // combination a crash produces in the field. A suite that switched it off
+    // would be proving recovery works in a setup the customer does not have.
+    enabled = true
+
+    // Long relative to a scenario. Nothing here waits on a discovery pass, so
+    // the interval only has to be short enough that some pass overlaps the
+    // wedged states, not short enough to gate the tests.
+    interval = 30.s
+
+    // Namespace is load-bearing, not decoration: both Helm types declare
+    // parent = K8S::Core::Namespace, and discovery only queues List for
+    // parentless types — leave it out and nothing is ever listed at all.
+    resourceTypesToDiscover = new Listing {
+      "K8S::Core::Namespace"
+      "K8S::Helm::Release"
+    }
   }
 
   logging {

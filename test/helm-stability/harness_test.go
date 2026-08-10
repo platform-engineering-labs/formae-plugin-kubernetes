@@ -710,8 +710,63 @@ func (s *scenario) assertNotStuck() {
 	s.t.Logf("release settled at %q revision %d — not stuck", rel.Status, rel.Revision)
 }
 
+// assertNoLeftovers reports objects the scenario left behind that no release
+// accounts for.
+//
+// A crash mid-install leaves whatever Helm had managed to create, and recovery
+// then either adopts it (recorded `deployed`) or upgrades over it (three-way
+// merged). Either way the namespace should end up holding exactly what the chart
+// renders — plus Helm's own release Secrets and whatever Kubernetes puts in
+// every namespace.
+//
+// Hook residue is reported, not failed, because it is Helm's own behaviour and
+// not something this plugin could fix without overriding it. In hooks.go,
+// deletion happens only inside execHook and only on an outcome:
+//
+//	 61  deleteHookByPolicy(h, HookBeforeHookCreation)  before creating
+//	103  deleteHookByPolicy(h, HookFailed)              on failure
+//	127  deleteHookByPolicy(h, HookSucceeded)           on success
+//
+// Kill the process mid-hook and execHook reaches none of them, so the Job stays.
+// An interrupted `helm install` from the CLI leaves exactly the same thing, and
+// Helm's design assumes it: line 58 defaults every hook to
+// `before-hook-creation`, i.e. stale hooks are cleaned when that hook is next
+// created rather than reaped eagerly.
+//
+// The catch worth knowing is that "next created" means the same hook. Recovery
+// here is an upgrade, which runs `pre-upgrade` hooks — so a `pre-install`-only
+// hook like this chart's is never re-created and its Job persists until someone
+// installs the release fresh. A chart declaring `pre-install,pre-upgrade` (as
+// kratos does for its migration) is cleaned by the recovery upgrade itself.
+func (s *scenario) assertNoLeftovers() {
+	for _, kind := range []string{"job", "pod"} {
+		out, err := run("kubectl", "get", kind, "-n", s.namespace,
+			"-o", "jsonpath={range .items[*]}{.metadata.name}{\"\\n\"}{end}")
+		if err != nil {
+			continue
+		}
+		for _, name := range strings.Fields(out) {
+			if strings.Contains(name, "-preinstall") {
+				s.t.Logf("hook %s %q survived in %s — expected: Helm reaps hooks on "+
+					"outcome, and an interrupted hook has none. Cleaned when that hook "+
+					"is next created, which for a pre-install-only hook is a fresh install",
+					kind, name, s.namespace)
+			}
+		}
+	}
+
+	// Everything else, logged. Anything unexpected here is a lead, not a verdict.
+	out, err := run("kubectl", "get", "configmap,secret,deployment,statefulset,service,serviceaccount",
+		"-n", s.namespace, "--no-headers",
+		"-o", "custom-columns=KIND:.kind,NAME:.metadata.name")
+	if err == nil && strings.TrimSpace(out) != "" {
+		s.t.Logf("objects remaining in %s:\n%s", s.namespace, strings.TrimSpace(out))
+	}
+}
+
 func (s *scenario) teardown() {
 	s.assertNotStuck()
+	s.assertNoLeftovers()
 
 	if os.Getenv("STABILITY_KEEP") != "" {
 		s.t.Logf("STABILITY_KEEP set; leaving namespace %s", s.namespace)

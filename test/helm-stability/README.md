@@ -99,6 +99,39 @@ holding a Helm lock** — no test can pass while leaving one wedged.
 - **Someone else's release is never touched.** A stuck release this plugin did
   not install is reported with the recovery command in the message, and left
   alone.
+- **An interrupted hook leaves its Job behind.** See below — this is Helm's
+  behaviour, not the plugin's, and an interrupted `helm install` from the CLI does
+  the same.
+
+### Hook residue after a crash
+
+Helm deletes a hook only on an outcome. From `pkg/action/hooks.go`, all three
+deletions live inside `execHook`:
+
+```
+ 61  deleteHookByPolicy(h, HookBeforeHookCreation)   before creating the hook
+103  deleteHookByPolicy(h, HookFailed)               the hook failed
+127  deleteHookByPolicy(h, HookSucceeded)            the hook succeeded
+```
+
+Kill the process while a hook is running and `execHook` reaches none of them, so
+the Job and its Pod survive. Helm's design assumes this: line 58 defaults every
+hook to `before-hook-creation`, meaning stale hooks are cleaned when that hook is
+next *created* rather than reaped eagerly.
+
+The catch is that "next created" means the **same** hook. Recovery here is an
+upgrade, which runs `pre-upgrade` hooks — so:
+
+| Chart's hook | After a crash |
+|---|---|
+| `pre-install` only | The Job persists. The recovery upgrade never re-creates it, so it is cleaned only by a fresh install of that release |
+| `pre-install,pre-upgrade` (e.g. kratos' migration) | The recovery upgrade deletes the stale Job via `before-hook-creation` and re-runs it |
+
+The suite logs surviving hook objects rather than failing on them, because
+matching Helm here is correct and overriding it would mean deleting evidence — a
+half-run migration Job holds the logs someone may need. Worth knowing if you run
+charts with `pre-install`-only hooks: a crash can leave a completed-or-partial
+hook Job with nothing owning it.
 
 ## Two limitations, and why they exist
 
@@ -170,9 +203,14 @@ This suite sends signals, so isolation is load-bearing rather than tidy.
 - **Namespaces prefixed `formae-helm-stability-`**, and cleanup matches only that
   prefix. Stacks likewise, one per scenario, so an interrupted command in one
   cannot block another's apply.
-- **Sync and discovery are off.** Every scenario asserts on a release that is
-  deliberately mid-operation or deliberately wedged, and a background pass
-  writing its own view turns each assertion into a race.
+- **Discovery is on**, because off is a configuration nobody runs. Discovery
+  lists releases, which builds the release inventory, which takes the plugin's
+  read path through a release that is pending or wedged on purpose — exactly the
+  combination a crash produces in the field. A suite that switched it off would
+  be proving recovery works in a setup the customer does not have.
+- **Sync is off.** Unlike discovery it is not a read path through the release: it
+  writes its own view, which turns every assertion about a deliberately
+  mid-operation release into a race.
 - **The profile is global CLI state** in formae (`formae profile use`, not a
   flag), so this suite cannot run alongside other formae work. The runner script
   restores the previous profile on exit.
