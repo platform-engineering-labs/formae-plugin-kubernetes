@@ -58,15 +58,40 @@ pkl project resolve "${PROJECT_ROOT}/schema/pkl" >/dev/null
 mkdir -p "${PROFILE_DIR}"
 cp "${SUITE_DIR}/agent-config.pkl" "${PROFILE_DIR}/${PROFILE}.pkl"
 
+# The profile's own datastore, read out of the config so the two cannot drift.
+DB="$(sed -n 's#.*filePath = "\(.*\.db\)".*#\1#p' "${SUITE_DIR}/agent-config.pkl" | head -1)"
+DB="${DB/#\~/${HOME}}"
+
 echo "Starting agent..."
 stop_agent
 "${FORMAE}" --profile "${PROFILE}" agent start >/dev/null 2>&1 &
 trap stop_agent EXIT
 
+# Wait for the agent to prove it is *this* profile's agent, not merely that some
+# agent answers.
+#
+# `agent start` refuses with "agent is already running (PID n)" when any agent
+# holds the port, whatever profile it belongs to, and still exits 0. `status
+# agent` then answers happily - from that other agent, against its datastore. So
+# agent_running() alone passes while the whole sweep runs somewhere else, which is
+# how three separate readings in this suite's history turned out to be false. The
+# datastore file appearing is the cheapest thing that can only be true if the
+# intended agent is the one running.
 for _ in $(seq 1 30); do
-    if agent_running; then break; fi
+    if [[ -f "${DB}" ]] && agent_running; then break; fi
     sleep 2
 done
+if [[ ! -f "${DB}" ]]; then
+    echo "Error: no agent came up under profile ${PROFILE} (${DB} was never created)." >&2
+    echo "       Something else holds the agent port, so every formae call in this run" >&2
+    echo "       would go to its datastore instead. Stop it and re-run: formae agent stop" >&2
+    # `|| running=` matters: pipefail plus head closing the pipe makes this
+    # substitution fail, and under set -e that kills the script before it can
+    # print any of this. A diagnostic that exits silently is worse than none.
+    running="$("${FORMAE}" status agent 2>&1 | head -3 | tr '\n' ' ')" || running="(no answer)"
+    echo "       Currently answering: ${running}" >&2
+    exit 1
+fi
 if ! agent_running; then
     echo "Error: agent did not come up under profile ${PROFILE}" >&2
     exit 1

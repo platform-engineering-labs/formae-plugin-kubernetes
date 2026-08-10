@@ -107,15 +107,41 @@ pkl project resolve "${DEMO_DIR}" >/dev/null
 
 echo "Starting agent under profile ${PROFILE}..."
 mkdir -p "${PROFILE_DIR}"
-cp "${SCRIPT_DIR}/helm-immutable-agent-config.pkl" "${PROFILE_DIR}/${PROFILE}.pkl"
+CONFIG="${SCRIPT_DIR}/helm-immutable-agent-config.pkl"
+cp "${CONFIG}" "${PROFILE_DIR}/${PROFILE}.pkl"
+
+# The profile's own datastore, read out of the config so the two cannot drift.
+# Waiting for this file rather than for `status agent` is deliberate - see below.
+DB="$(sed -n 's#.*filePath = "\(.*\.db\)".*#\1#p' "${CONFIG}" | head -1)"
+DB="${DB/#\~/${HOME}}"
+
 fm agent stop >/dev/null 2>&1 || true
 fm agent start >/dev/null 2>&1 &
+
+# Wait for the agent to prove it is *this* profile's agent, not merely that some
+# agent answers.
+#
+# `agent start` refuses with "agent is already running (PID n)" when any agent
+# holds the port, whatever profile it belongs to, and still exits 0. `status
+# agent` then answers happily - from that other agent, against its datastore.
+# A readiness check built on `status agent` therefore passes while the whole run
+# goes somewhere else, which is how three separate readings in this repo's
+# history turned out to be false. The datastore file appearing is the cheapest
+# thing that can only be true if the intended agent is the one running.
 for _ in $(seq 1 30); do
-    fm status agent >/dev/null 2>&1 && break
+    [[ -f "${DB}" ]] && break
     sleep 2
 done
-fm status agent >/dev/null 2>&1 \
-    || fail "agent did not come up under profile ${PROFILE}"
+if [[ ! -f "${DB}" ]]; then
+    # `|| running=` matters: pipefail plus head closing the pipe makes this
+    # substitution fail, and under set -e that kills the script before it can say
+    # any of what follows. A diagnostic that exits silently is worse than none.
+    running="$("${FORMAE}" status agent 2>&1 | head -3 | tr '\n' ' ')" || running="(no answer)"
+    fail "no agent came up under profile ${PROFILE} (${DB} was never created).
+       Something else holds the agent port, so every formae call here would go to
+       its datastore instead. Stop it and re-run: formae agent stop
+       Currently answering: ${running}"
+fi
 
 # A namespace left Terminating by a previous run is not the same as one that is
 # gone. formae creates it, Helm then installs into it, and the install fails with
