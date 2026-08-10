@@ -1331,6 +1331,30 @@ func manifestComplete(
 	client *transport.Client,
 	rel *release.Release,
 ) (bool, string, error) {
+	// A chart with post-deploy hooks cannot be judged from its objects at all.
+	// Helm runs them BEFORE the record write:
+	//
+	//	execHook(HookPreInstall) -> create objects
+	//	  -> execHook(HookPostInstall)   install.go:483
+	//	  -> SetStatus(StatusDeployed)   install.go:489
+	//
+	// So a process that died between object creation and that write leaves every
+	// object present while the post-install hook may never have run. Concluding
+	// `deployed` there would record a release as complete whose post-deploy work
+	// silently did not happen — and because there is no drift detection inside a
+	// release, nothing would ever notice.
+	//
+	// Reported as incomplete instead, which sends it through an upgrade that runs
+	// the post-upgrade hooks. Not identical to the post-install hooks it missed,
+	// but charts that declare one almost always declare both, and running the
+	// wrong-but-adjacent hook beats recording work as done that was never done.
+	if hooks := postDeployHooks(rel); len(hooks) > 0 {
+		return false, fmt.Sprintf(
+			"cannot confirm completion: the chart declares post-deploy hooks (%s) that run "+
+				"before Helm records the release, so their having run is unprovable from the objects",
+			strings.Join(hooks, ", ")), nil
+	}
+
 	resources, err := conf.KubeClient.Build(strings.NewReader(rel.Manifest), false)
 	if err != nil {
 		return false, fmt.Sprintf("building release manifest: %v", err), nil
@@ -1344,6 +1368,21 @@ func manifestComplete(
 	}
 
 	return manifestReady(ctx, conf, client, rel)
+}
+
+// postDeployHooks names the release's hooks that run after its objects are
+// applied but before Helm records the result.
+func postDeployHooks(rel *release.Release) []string {
+	var names []string
+	for _, hook := range rel.Hooks {
+		for _, event := range hook.Events {
+			if event == release.HookPostInstall || event == release.HookPostUpgrade {
+				names = append(names, hook.Name)
+				break
+			}
+		}
+	}
+	return names
 }
 
 // manifestReady checks every object the release rendered for readiness, reusing

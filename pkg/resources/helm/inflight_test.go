@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
+	"helm.sh/helm/v3/pkg/release"
 )
 
 // clearFlights drops all entries without cancelling. Production code removes
@@ -276,5 +277,32 @@ func TestFingerprint_StableAcrossMapOrdering(t *testing.T) {
 		if got := fingerprint(&releaseProperties{Values: values()}); got != first {
 			t.Fatalf("fingerprint varied across runs: %s != %s", got, first)
 		}
+	}
+}
+
+// A chart with post-deploy hooks cannot be judged complete from its objects:
+// Helm runs those hooks before it records the release, so every object being
+// present proves nothing about whether they ran.
+func TestPostDeployHooks(t *testing.T) {
+	cases := map[string]struct {
+		events []release.HookEvent
+		want   bool
+	}{
+		"post-install":          {[]release.HookEvent{release.HookPostInstall}, true},
+		"post-upgrade":          {[]release.HookEvent{release.HookPostUpgrade}, true},
+		"pre-install only":      {[]release.HookEvent{release.HookPreInstall}, false},
+		"test hook only":        {[]release.HookEvent{release.HookTest}, false},
+		"pre- and post-install": {[]release.HookEvent{release.HookPreInstall, release.HookPostInstall}, true},
+	}
+
+	for name, tc := range cases {
+		rel := &release.Release{Hooks: []*release.Hook{{Name: "h", Events: tc.events}}}
+		if got := len(postDeployHooks(rel)) > 0; got != tc.want {
+			t.Errorf("%s: post-deploy hooks detected = %v, want %v", name, got, tc.want)
+		}
+	}
+
+	if len(postDeployHooks(&release.Release{})) != 0 {
+		t.Error("a release with no hooks reported post-deploy hooks")
 	}
 }
