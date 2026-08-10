@@ -131,6 +131,19 @@ formae agent.
   Objects created *downstream* of the chart by controllers (the Pods behind a
   Deployment) are not in any manifest and are still discovered individually.
 
+  `resourceNames` is reported **sorted**, and that is load-bearing rather than
+  cosmetic. It is reported state, so an order that varies between reads is an
+  out-of-band change on every sync, and formae's guard then refuses every apply
+  — permanently, with the empty diagnostic of a transient conflict. Any release
+  with two objects of one kind is affected, so this is the difference between a
+  release being upgradable through formae and not.
+
+- **The ownership marker is not reported as a user label.** `Read` filters
+  `formae.dev/managed` out of `labels` the same way it filters Helm's reserved
+  names. It is stamped on every mutation by the plugin, so reporting it back
+  reads as a label the forma never declared — permanent drift on any host that
+  diffs `labels` key-by-key rather than whole-map.
+
 ## [0.1.8]
 
 Requires formae >= 0.86.0.
