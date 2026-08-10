@@ -64,6 +64,37 @@ anything real — several of its findings are not obvious and cost real time.
   correctly reappear as unmanaged.
 - **Controller-created objects still surface.** The Pods behind a chart's
   Deployment are in no manifest, so discovery lists them individually.
+- **A chart that changes an immutable field between versions cannot be
+  upgraded.** Not by formae, and not by anything else. Kubernetes freezes some
+  fields after creation — `Deployment.spec.selector`, most of
+  `PersistentVolumeClaim.spec`, `Service.spec.clusterIP` — and Helm upgrades by
+  patching, so the apiserver rejects the change:
+
+  ```
+  Deployment.apps "flowise" is invalid: spec.selector: Invalid value:
+    v1.LabelSelector{...}: field is immutable
+  ```
+
+  This is not formae inheriting a limitation it could route around. Plain
+  `helm upgrade` fails identically, and so does Helm's own escape hatch:
+  `--force-replace` issues a *replace*, not a delete-and-recreate, and a replace
+  cannot change an immutable field either. (In Helm v4 that flag is
+  `--force-replace`, renamed from `--force`, and it refuses to run alongside
+  server-side apply — which is the default.) The only way through is deleting
+  the object and letting the chart recreate it, which no `helm upgrade` will do
+  for you.
+
+  It bites on rollback too, and there it is easier to hit by accident: rolling
+  back to an older revision means applying an older manifest, and if the field
+  changed in the meantime the rollback is refused for the same reason.
+
+  Seen upgrading `flowise` 5.1.1 -> 6.0.0, which renames its selector labels,
+  and rolling `helm-dashboard` back over a PersistentVolumeClaim.
+
+  Whether the `HelmChart.pkl` path escapes this is **untested**. In principle
+  formae owns each rendered object there and could mark the field `createOnly`
+  and replace that one object — but that depends on formae issuing a genuine
+  destroy-then-create rather than a replace, and nobody has checked.
 
 ---
 
