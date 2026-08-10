@@ -1,0 +1,43 @@
+/// Agent configuration for the helm-stability suite.
+///
+/// Installed as a named profile by scripts/run-helm-stability-test.sh, so it
+/// never touches ~/.config/formae/formae.conf.pkl or any profile a human is
+/// using.
+///
+/// Its own SQLite file, and that is load-bearing here rather than merely tidy:
+/// this suite restarts the agent mid-command on purpose, and the whole point is
+/// to watch what ReRunIncompleteCommands does with the rows left behind. Sharing
+/// a datastore with other work would mean re-driving somebody else's commands
+/// too.
+amends "formae:/Config.pkl"
+
+agent {
+  datastore {
+    sqlite { filePath = "~/.pel/formae/data/helm-stability-ci.db" }
+  }
+
+  synchronization {
+    // Off. Every scenario here asserts on a release that is deliberately mid-
+    // operation or deliberately wedged, and a sync pass writing its own view of
+    // that release in the background turns each assertion into a race.
+    enabled = false
+  }
+
+  discovery {
+    // Off, for the same reason and one more: discovery lists releases, which
+    // builds the inventory, which takes the plugin's read path through a
+    // release that is pending on purpose. Nothing here asserts on discovery.
+    enabled = false
+  }
+
+  logging {
+    filePath = "~/.pel/formae/log/helm-stability-ci.log"
+    fileLogLevel = "debug"
+    consoleLogLevel = "info"
+  }
+}
+
+// No telemetry from a test run whose entire job is to kill processes.
+cli {
+  disableUsageReporting = true
+}

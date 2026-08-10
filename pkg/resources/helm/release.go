@@ -5,6 +5,7 @@
 package helm
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	goerrors "errors"
@@ -165,18 +166,65 @@ func parseRequestID(id string) (namespace, name string, revision int, op opKind,
 // `helm rollback` — it identifies the release lineage, not a single revision.
 const formaeManagedLabel = "formae.dev/managed"
 
-// releaseLabels stamps the ownership marker onto the user's release labels.
+// formaeLabelPrefix covers this plugin's own bookkeeping labels. They are
+// written onto the release record and must never be reported back as part of
+// the resource: they are not in the user's forma, so surfacing them makes every
+// later plain apply look like drift and `formae extract` writes them into the
+// generated file.
+const formaeLabelPrefix = "formae.dev/"
+
+// formaeTimeoutLabel records the operation's timeout on the release itself.
+//
+// Stored in the cluster rather than in this process because that is the only
+// place that survives a restart, and Status has no access to the forma: it is
+// handed a RequestID and nothing else. Without it stalled() has to guess with
+// the package default, and a release given a longer timeoutSeconds is declared
+// dead while its own install is still running.
+const formaeTimeoutLabel = "formae.dev/timeout-seconds"
+
+// releaseLabels stamps the plugin's bookkeeping onto the user's release labels.
 // Helm rejects its own reserved names (name, owner, status, version, createdAt,
-// modifiedAt), which this key is not.
+// modifiedAt), which these keys are not.
 func releaseLabels(props *releaseProperties) map[string]string {
-	labels := make(map[string]string, len(props.Metadata.Labels)+1)
+	labels := make(map[string]string, len(props.Metadata.Labels)+2)
 	// Defensive: a forma extracted by an older build may still carry Helm's
 	// reserved names, and Helm rejects the whole operation if it sees one.
 	for k, v := range withoutSystemLabels(props.Metadata.Labels) {
 		labels[k] = v
 	}
 	labels[formaeManagedLabel] = "true"
+	labels[formaeTimeoutLabel] = strconv.Itoa(int(props.timeout().Seconds()))
 	return labels
+}
+
+// withoutFormaeLabels drops the plugin's own bookkeeping. Returns nil rather
+// than an empty map, so a release carrying nothing else reports no labels at
+// all instead of a value that reads as a change against a forma with none.
+func withoutFormaeLabels(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		if strings.HasPrefix(k, formaeLabelPrefix) {
+			continue
+		}
+		out[k] = v
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// releaseTimeout recovers the timeout the operation was started with.
+//
+// Falls back to the package default for a release installed before the label
+// existed, for a foreign release, and for a value that will not parse — never
+// into an unbounded window, because the whole point of the timeout is to bound
+// how long a wedged release goes unreported.
+func releaseTimeout(rel *release.Release) time.Duration {
+	if secs, err := strconv.Atoi(rel.Labels[formaeTimeoutLabel]); err == nil && secs > 0 {
+		return time.Duration(secs) * time.Second
+	}
+	return defaultTimeoutSeconds * time.Second
 }
 
 // withoutSystemLabels drops Helm's own bookkeeping labels.
@@ -226,12 +274,22 @@ const (
 	actionUpgrade
 	// actionRetry — another Helm operation holds the lock. Come back later.
 	actionRetry
-	// actionBlocked — the lock is held by an operation nothing is going to
-	// finish. Retrying cannot clear it.
+	// actionRecover — this plugin owns the release and is running no operation
+	// for it, so the pending record is a lock nothing will ever release.
+	// Rewriting it is the only way anything else can happen.
+	actionRecover
+	// actionBlocked — the same wedge on a release this plugin did not install.
+	// Reported, never rewritten: another tool's record is not ours to edit.
 	actionBlocked
 	// actionForeign — a release under this name exists and this plugin did not
 	// install it. Taking it over would rewrite someone else's release.
 	actionForeign
+	// actionRejoin — the pending release is an operation THIS process started
+	// with this exact desired state, and it is still running. Report progress
+	// against it instead of refusing the call.
+	actionRejoin
+	// actionSettled — the desired state is already deployed. Nothing to do.
+	actionSettled
 )
 
 // planSubmit decides the operation and the revision it should produce.
@@ -246,20 +304,146 @@ const (
 // release is fully deployed, so formae also retries as Create after a failed
 // first install. The ownership marker separates "our own abandoned attempt",
 // which we may take over, from a genuinely foreign release, which we may not.
-func planSubmit(current *release.Release, isCreate bool) (action submitAction, targetRevision int) {
+//
+// flight is this process's record of an operation already running for the
+// release, or nil. want is the desired state the caller is submitting, or nil
+// when the caller has none to compare (only the tests). Both may be absent and
+// the decision then degrades to the cluster-only one.
+func planSubmit(
+	current *release.Release,
+	isCreate bool,
+	flight *inflight,
+	want *releaseProperties,
+) (action submitAction, targetRevision int) {
 	if current == nil {
 		return actionInstall, 1
 	}
 	if releaseIsPending(current) {
-		if stalled(current) {
+		if rejoinable(current, flight, want) {
+			return actionRejoin, current.Version
+		}
+		if abandoned(current, flight) {
+			return actionRecover, current.Version
+		}
+		// Not ours, and stuck long past any plausible hook runtime. Reported
+		// rather than rewritten: another tool's release record is not ours to
+		// edit, however dead its operation looks.
+		if stalled(current, flight) {
 			return actionBlocked, current.Version
 		}
 		return actionRetry, current.Version
+	}
+	if settled(current, want) {
+		return actionSettled, current.Version
 	}
 	if isCreate && !formaeOwns(current) {
 		return actionForeign, current.Version
 	}
 	return actionUpgrade, current.Version + 1
+}
+
+// rejoinable reports whether the pending release is this process's own
+// in-flight operation for exactly this desired state.
+//
+// This is the narrow reading of the rule above the actionRetry branch in
+// submit, not a repeal of it. That rule is right that handing back InProgress
+// for an in-flight revision reports success for work that never ran — but only
+// when the in-flight work is a DIFFERENT change. When the fingerprints match,
+// the work in flight is the work being asked for, and rejoining is the honest
+// answer. Every other case still takes the conservative path.
+//
+// It matters because the agent re-drives rather than resumes: on restart it
+// resets an InProgress resource update to NotStarted and calls Create again
+// (formae metastructure.go:1262), while this process's goroutine carries on.
+func rejoinable(current *release.Release, flight *inflight, want *releaseProperties) bool {
+	if flight == nil || want == nil {
+		return false
+	}
+	// Past its deadline the goroutine's context is cancelled; it is unwinding,
+	// not working.
+	if !flight.deadline.IsZero() && time.Now().After(flight.deadline) {
+		return false
+	}
+	if flight.revision != current.Version {
+		return false
+	}
+	asked := fingerprint(want)
+	return asked != "" && asked == flight.fingerprint
+}
+
+// abandoned reports whether a pending release has no operation behind it, so
+// its record can be rewritten rather than waited on.
+//
+// For a release this plugin installed, that is a fact rather than an inference.
+// Helm operations for formae run in exactly one place — this process — so an
+// empty in-flight registry means nothing is driving this release. No clock is
+// needed and none is used: recovery is immediate on the next call.
+//
+// The one case that clock still has to cover is a release we do NOT own. There
+// the Helm CLI, another tool or a second agent may legitimately be mid-operation
+// and we have no way to see it, so the wide window stands — better to leave
+// somebody else's release wedged than to rewrite the record of a live install.
+//
+// A caveat worth stating rather than burying: two formae agents driving the same
+// cluster would each read the other's in-flight install of a shared release as
+// abandoned. Formae's own command locking keeps that from arising within one
+// agent; across agents it is a genuine multi-writer setup and out of scope here.
+func abandoned(current *release.Release, flight *inflight) bool {
+	// This process is running something for the release. Even when it is a
+	// different desired state than the one being asked for, the operation is
+	// live and its record is not ours to rewrite.
+	if flight != nil {
+		return false
+	}
+	return formaeOwns(current)
+}
+
+// settled reports whether the desired state is already live, making the
+// operation a no-op.
+//
+// Needed because a crash is not the only way formae asks for work that is
+// already done: after an agent restart the re-driven Create arrives against a
+// release that finished while the agent was down. Without this it plans an
+// upgrade, bumping the revision for nothing and re-running the chart's
+// pre-upgrade and post-upgrade hooks — a second database migration, on a chart
+// like kratos.
+//
+// Deliberately strict, because concluding "settled" wrongly drops a change
+// silently. Under these conditions that cannot happen: if the pinned version
+// and the values both already match what is deployed, there is no change to
+// drop. The residual is a chart whose content moved under a fixed version tag,
+// which storedChartUsable already assumes away.
+func settled(current *release.Release, want *releaseProperties) bool {
+	if want == nil || !formaeOwns(current) {
+		return false
+	}
+	if current.Info == nil || current.Info.Status != release.StatusDeployed {
+		return false
+	}
+	// Carries the "explicit version, matching chart name" guard, including the
+	// refusal to conclude anything about an unpinned version.
+	if !storedChartUsable(current, want) {
+		return false
+	}
+	return valuesEqual(current.Config, want.Values)
+}
+
+// valuesEqual compares two value trees as canonical JSON.
+//
+// Not reflect.DeepEqual: the release record and the request reach us through
+// different decoders, so the same number can be an int on one side and a
+// float64 on the other. Marshalling normalises that, and encoding/json sorts
+// map keys, so nested ordering cannot produce a spurious difference either.
+func valuesEqual(a, b map[string]any) bool {
+	if len(a) == 0 && len(b) == 0 {
+		return true
+	}
+	encodedA, errA := json.Marshal(a)
+	encodedB, errB := json.Marshal(b)
+	if errA != nil || errB != nil {
+		return false
+	}
+	return bytes.Equal(encodedA, encodedB)
 }
 
 // storedChartUsable reports whether the chart already in the release record
@@ -364,9 +548,65 @@ func (r *Release) submit(
 		return nil, err
 	}
 
-	action, target := planSubmit(current, isCreate)
+	flight := lookupFlight(r.Config, ns, name)
+	action, target := planSubmit(current, isCreate, flight, props)
+
+	if action == actionRecover {
+		// Clear the abandoned lock, then decide again from the record we just
+		// wrote. Re-planning rather than branching gets every case right for
+		// free: a recovered-as-deployed release whose desired state matches is
+		// settled, one whose desired state has since moved is an upgrade, and a
+		// recovered-as-failed release is an upgrade too.
+		if _, err := recoverAbandoned(ctx, conf, r.Client, current); err != nil {
+			return nil, err
+		}
+		if current, err = lastRelease(conf, name); err != nil {
+			return nil, err
+		}
+		if current == nil {
+			return nil, fmt.Errorf("release %s/%s vanished while being recovered", ns, name)
+		}
+		action, target = planSubmit(current, isCreate, flight, props)
+	}
 
 	switch action {
+	case actionRejoin:
+		// Our own operation, still running in this process, for this exact
+		// desired state. requestID is a pure function of these inputs, so the
+		// ID handed back here is the one the interrupted call already returned,
+		// and Status carries on polling the operation that never stopped.
+		return &resource.ProgressResult{
+			OperationStatus: resource.OperationStatusInProgress,
+			NativeID:        nativeIDUnless(isCreate, ns, name),
+			RequestID:       requestID(ns, name, target, flight.op),
+			StatusMessage: fmt.Sprintf(
+				"rejoined the %s of %s/%s already running in this plugin (started %s ago)",
+				flight.op, ns, name, time.Since(flight.started).Truncate(time.Second)),
+		}, nil
+
+	case actionSettled:
+		// Already deployed at the desired version and values, so run no Helm
+		// operation — but do not claim success outright either. The objects are
+		// only known to have been accepted by the apiserver; whether they are
+		// ready is exactly what Status already knows how to answer, and it will
+		// report Success with the properties once they are.
+		//
+		// The op only decides whether Status withholds the NativeID until the
+		// objects are ready, which is what a Create wants and an Update does
+		// not — the same split nativeIDUnless makes.
+		settledOp := opUpgrade
+		if isCreate {
+			settledOp = opInstall
+		}
+		return &resource.ProgressResult{
+			OperationStatus: resource.OperationStatusInProgress,
+			NativeID:        nativeIDUnless(isCreate, ns, name),
+			RequestID:       requestID(ns, name, target, settledOp),
+			StatusMessage: fmt.Sprintf(
+				"release %s/%s is already at the desired state (revision %d); checking readiness",
+				ns, name, current.Version),
+		}, nil
+
 	case actionRetry:
 		// Helm's pending status is a pessimistic lock — both
 		// Install.availableName and Upgrade.prepareUpgrade refuse to proceed —
@@ -404,11 +644,9 @@ func (r *Release) submit(
 				"or choose a different metadata.name",
 			ns, name, current.Version, ResourceTypeRelease)
 
-	case actionBlocked:
-		// Pending long past any plausible hook runtime: no Helm process is
-		// coming back to finish it, so retrying cannot help. A Go error for the
-		// same reason as actionForeign — the recovery instructions have to reach
-		// whoever is going to act on them.
+	case actionRecover:
+		// Unreachable: recovery happens before the switch and re-plans. Kept so
+		// adding an action cannot silently fall through to an install.
 		return nil, goerrors.New(stalledMessage(current, ns, name))
 	}
 
@@ -432,9 +670,20 @@ func (r *Release) submit(
 		op = opUpgrade
 	}
 
+	// Registered before the goroutine starts, so a re-driven call cannot slip
+	// between the two and miss the operation it should be rejoining. The cancel
+	// func is what lets a graceful stop turn `pending-install` into `failed`.
+	registerFlight(r.Config, ns, name, inflight{
+		op:          op,
+		revision:    target,
+		fingerprint: fingerprint(props),
+		deadline:    time.Now().Add(props.timeout()),
+	}, cancel)
+
 	done := make(chan error, 1)
 	go func() {
 		defer cancel()
+		defer removeFlight(r.Config, ns, name)
 		defer invalidateInventory(r.Config)
 		if op == opInstall {
 			done <- runInstall(runCtx, conf, props, chrt)
@@ -626,7 +875,7 @@ func propertiesFromRelease(rel *release.Release) *releaseProperties {
 		Metadata: releaseMetadata{
 			Name:      rel.Name,
 			Namespace: rel.Namespace,
-			Labels:    withoutSystemLabels(rel.Labels),
+			Labels:    withoutFormaeLabels(withoutSystemLabels(rel.Labels)),
 		},
 		Values:        rel.Config,
 		Revision:      rel.Version,
@@ -769,10 +1018,16 @@ func (r *Release) Status(ctx context.Context, request *resource.StatusRequest) (
 		return nil, err
 	}
 
+	// Scoped to this target: the same namespace/name on another cluster is a
+	// different release, and its operation says nothing about this one.
+	flight := lookupFlight(r.Config, ns, name)
+
 	if op == opDelete {
-		return &resource.StatusResult{ProgressResult: deleteStatus(rel, ns, name, request.RequestID)}, nil
+		return &resource.StatusResult{
+			ProgressResult: deleteStatus(rel, flight, ns, name, request.RequestID),
+		}, nil
 	}
-	return r.installStatus(ctx, conf, rel, ns, name, wantRevision, op, request.RequestID)
+	return r.installStatus(ctx, conf, rel, flight, ns, name, wantRevision, op, request.RequestID)
 }
 
 // deleteStatus reports on an uninstall in flight.
@@ -780,7 +1035,7 @@ func (r *Release) Status(ctx context.Context, request *resource.StatusRequest) (
 // The release record's absence is the completion signal: Helm purges it only
 // after WaitForDelete and the post-delete hooks are done, so by then the objects
 // are gone too.
-func deleteStatus(rel *release.Release, ns, name string, reqID string) *resource.ProgressResult {
+func deleteStatus(rel *release.Release, flight *inflight, ns, name string, reqID string) *resource.ProgressResult {
 	nativeID := prov.NativeID(ns, name)
 
 	// Purged, or KeepHistory left an uninstalled record behind — either way the
@@ -792,10 +1047,27 @@ func deleteStatus(rel *release.Release, ns, name string, reqID string) *resource
 		}
 	}
 
-	// Nothing is coming back to finish it. Reported rather than healed: the
-	// remaining objects are whatever Helm managed to delete before it died, and
-	// working that out is an operator's job.
-	if stalled(rel) {
+	// The mirror of the install case: the record's absence is completion, so a
+	// record still present with no operation behind it means the uninstall was
+	// abandoned. Reported with a recoverable code so the agent re-drives Delete
+	// rather than handing it to an operator — uninstall is idempotent, and Helm
+	// picks up from whatever the dead attempt managed to remove.
+	if abandoned(rel, flight) {
+		return &resource.ProgressResult{
+			Operation:       resource.OperationCheckStatus,
+			OperationStatus: resource.OperationStatusFailure,
+			ErrorCode:       resource.OperationErrorCodeResourceConflict,
+			NativeID:        nativeID,
+			StatusMessage: fmt.Sprintf(
+				"uninstall of %s/%s was abandoned mid-flight (release still %s); retrying it",
+				ns, name, rel.Info.Status),
+		}
+	}
+
+	// Not ours, and long stale. Reported rather than re-driven: the remaining
+	// objects are whatever Helm managed to delete before it died, and working
+	// that out is an operator's job.
+	if stalled(rel, flight) {
 		return &resource.ProgressResult{
 			Operation:       resource.OperationCheckStatus,
 			OperationStatus: resource.OperationStatusFailure,
@@ -821,6 +1093,7 @@ func (r *Release) installStatus(
 	ctx context.Context,
 	conf *action.Configuration,
 	rel *release.Release,
+	flight *inflight,
 	ns, name string,
 	wantRevision int,
 	op opKind,
@@ -859,10 +1132,45 @@ func (r *Release) installStatus(
 
 	switch {
 	case releaseIsPending(rel):
-		if stalled(rel) {
-			return failure(pendingID, resource.OperationErrorCodeGeneralServiceException, stalledMessage(rel, ns, name)), nil
+		// Only an operation running in this process justifies reporting
+		// progress. Anything else must reach a verdict now.
+		if flight != nil {
+			return inProgress(pendingID, reqID, nil, fmt.Sprintf("release is %s", rel.Info.Status)), nil
 		}
-		return inProgress(pendingID, reqID, nil, fmt.Sprintf("release is %s", rel.Info.Status)), nil
+
+		// Nothing here is driving it, and holding reqID is proof formae started
+		// it — the host only ever issues a RequestID for an operation it
+		// submitted. That is stronger evidence than the ownership label, and it
+		// does not depend on when Helm stamps the record.
+		//
+		// Whatever happens below, this must not return InProgress again. A
+		// pending release with no operation behind it is stuck: Helm refuses
+		// install and upgrade alike, so polling would report progress forever on
+		// work that will never finish, and the command would never surface to
+		// anyone. Recover it, or fail it with the recovery instructions.
+		recovered, err := recoverAbandoned(ctx, conf, r.Client, rel)
+		if err != nil {
+			return failure(pendingID, resource.OperationErrorCodeGeneralServiceException,
+				fmt.Sprintf("%s (recovery also failed: %v)", stalledMessage(rel, ns, name), err)), nil
+		}
+
+		if recovered == release.StatusDeployed {
+			// The install had in fact finished; only the record was lost. Decide
+			// again from the record just written, which is no longer pending, so
+			// this recurses exactly once and lands in the deployed branch.
+			fresh, err := lastRelease(conf, name)
+			if err != nil {
+				return nil, err
+			}
+			return r.installStatus(ctx, conf, fresh, flight, ns, name, wantRevision, op, reqID)
+		}
+		// Marked failed, which an upgrade is allowed to run over. Reported with
+		// a recoverable code so the agent re-drives the operation rather than
+		// handing the release to an operator: that re-drive plans an upgrade
+		// and finishes what was interrupted.
+		return failure(pendingID, resource.OperationErrorCodeResourceConflict,
+			fmt.Sprintf("release %s/%s was abandoned mid-%s and has been marked failed; "+
+				"retrying will upgrade over it", ns, name, rel.Info.Status)), nil
 
 	case rel.Info.Status == release.StatusFailed:
 		return failure(pendingID, resource.OperationErrorCodeGeneralServiceException,
@@ -898,13 +1206,26 @@ func (r *Release) installStatus(
 // stalled reports whether a pending release has been pending long enough that no
 // Helm process can still be working on it.
 //
-// This is a heuristic and it cannot be otherwise: Helm's pending status IS the
-// lock, so nothing distinguishes "process died" from "a slow pre-install hook is
-// still running". The window is therefore deliberately wide — healing early
-// would mean acting against a live install.
-func stalled(rel *release.Release) bool {
+// From the cluster alone this is a heuristic and it cannot be otherwise: Helm's
+// pending status IS the lock, so nothing there distinguishes "process died" from
+// "a slow pre-install hook is still running". The window is therefore
+// deliberately wide — healing early would mean acting against a live install.
+//
+// The in-flight registry sharpens it in one direction only. A hit proves this
+// process is still running the operation, so the verdict is suppressed. A miss
+// proves nothing: the Helm CLI and a second agent are both allowed to exist, so
+// it must never be read as evidence that the release is abandoned.
+//
+// flight is passed in rather than looked up here, because the lookup needs the
+// target and a release record does not name one. Callers hold the config.
+func stalled(rel *release.Release, flight *inflight) bool {
 	if rel.Info == nil {
 		return false
+	}
+	if flight != nil {
+		if flight.deadline.IsZero() || time.Now().Before(flight.deadline) {
+			return false
+		}
 	}
 	started := rel.Info.LastDeployed.Time
 	if started.IsZero() {
@@ -913,7 +1234,65 @@ func stalled(rel *release.Release) bool {
 	if started.IsZero() {
 		return false
 	}
-	return time.Since(started) > 2*defaultTimeoutSeconds*time.Second
+	return time.Since(started) > 2*releaseTimeout(rel)
+}
+
+// recoverAbandoned rewrites the record of a pending release that nothing is
+// coming back to finish, and reports the status it settled on.
+//
+// Helm's pending status is a lock with no owner and no lease. Once the process
+// holding it is gone — and `formae agent stop` SIGKILLs this plugin, so that is
+// the ordinary case rather than the exotic one — Helm refuses both install and
+// upgrade on that release forever. Nothing in Helm clears it; `helm uninstall`
+// is the documented way out, and it destroys the objects and re-runs
+// pre-install hooks to get back to where it already was.
+//
+// So the plugin clears it, doing exactly what Helm's own failRelease does when
+// it observes a failure: set the status, write the record back. What makes that
+// safe rather than reckless is the caller's guard — the release is one this
+// plugin installed, and it has been pending for twice its own timeout.
+//
+// Which status it settles on is decided by the cluster, because a stuck
+// pending-install has two completely different realities underneath it. Helm
+// writes `deployed` LAST (install.go:489), after the hooks have run and every
+// object has been created:
+//
+//	Releases.Create(pending-install) -> hooks -> create objects -> SetStatus(deployed)
+//
+// Dying anywhere in that middle stretch leaves an identical record behind,
+// whether the work finished or never started. Calling it `failed` when the
+// objects are all present and ready would send a completed install through an
+// upgrade, re-running pre-upgrade hooks — a second database migration, on a
+// chart like kratos — to reach the state it was already in.
+func recoverAbandoned(
+	ctx context.Context,
+	conf *action.Configuration,
+	client *transport.Client,
+	rel *release.Release,
+) (release.Status, error) {
+	ready, detail, err := manifestComplete(ctx, conf, client, rel)
+	if err != nil {
+		return "", err
+	}
+
+	status := release.StatusFailed
+	message := fmt.Sprintf(
+		"formae: recovered a release abandoned in %s; its objects are incomplete (%s), "+
+			"so it is marked failed and the next apply upgrades over it",
+		rel.Info.Status, detail)
+	if ready {
+		status = release.StatusDeployed
+		message = fmt.Sprintf(
+			"formae: recovered a release abandoned in %s; every object it renders is present "+
+				"and ready, so the install did complete and only the record was lost",
+			rel.Info.Status)
+	}
+
+	rel.SetStatus(status, message)
+	if err := conf.Releases.Update(rel); err != nil {
+		return "", fmt.Errorf("recovering abandoned release %s/%s: %w", rel.Namespace, rel.Name, err)
+	}
+	return status, nil
 }
 
 func stalledMessage(rel *release.Release, ns, name string) string {
@@ -931,6 +1310,40 @@ func stalledMessage(rel *release.Release, ns, name string) string {
 	return fmt.Sprintf(
 		"release %s/%s stuck in %s since %s. Recover with `helm rollback %s -n %s`",
 		ns, name, rel.Info.Status, rel.Info.LastDeployed, name, ns)
+}
+
+// manifestComplete reports whether every object the release renders actually
+// exists and is ready.
+//
+// Stricter than manifestReady, and deliberately so, because it answers a
+// different question. manifestReady asks "is the release up yet", which is a
+// question about workloads, and Helm's ReadyChecker returns true for every kind
+// it has no readiness notion for — a ConfigMap is "ready" whether or not it was
+// ever created. That is right for polling an install this process is watching,
+// and wrong for deciding whether an abandoned install finished: a release
+// missing objects would be recorded as deployed and then never reconciled,
+// because there is no drift detection inside a release.
+//
+// So existence is checked first, against the cluster, one object at a time.
+func manifestComplete(
+	ctx context.Context,
+	conf *action.Configuration,
+	client *transport.Client,
+	rel *release.Release,
+) (bool, string, error) {
+	resources, err := conf.KubeClient.Build(strings.NewReader(rel.Manifest), false)
+	if err != nil {
+		return false, fmt.Sprintf("building release manifest: %v", err), nil
+	}
+
+	for _, res := range resources {
+		if err := res.Get(); err != nil {
+			return false, fmt.Sprintf("%s/%s is absent: %v",
+				res.Mapping.GroupVersionKind.Kind, res.Name, err), nil
+		}
+	}
+
+	return manifestReady(ctx, conf, client, rel)
 }
 
 // manifestReady checks every object the release rendered for readiness, reusing

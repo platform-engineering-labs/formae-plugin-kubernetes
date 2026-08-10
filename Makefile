@@ -27,7 +27,7 @@ FORMAE_BINARY ?= $(shell realpath $(firstword $(wildcard $(CURDIR)/../../formae/
 PLUGIN_BASE_DIR := $(HOME)/.pel/formae/plugins
 INSTALL_DIR := $(PLUGIN_BASE_DIR)/$(PLUGIN_NAME)/v$(PLUGIN_VERSION)
 
-.PHONY: all build test test-unit test-integration lint verify-schema clean install help setup-credentials clean-environment conformance-test conformance-test-crud conformance-test-discovery conformance-test-crud-run conformance-test-discovery-run conformance-test-resources conformance-test-charts generate-schema chart-test drift-test helm-drift-test helm-adopt-test
+.PHONY: all build test test-unit test-integration lint verify-schema clean install help setup-credentials clean-environment conformance-test conformance-test-crud conformance-test-discovery conformance-test-crud-run conformance-test-discovery-run conformance-test-resources conformance-test-charts generate-schema chart-test drift-test helm-drift-test helm-adopt-test helm-stability-test
 
 all: build
 
@@ -336,6 +336,21 @@ helm-adopt-test:
 ## Requires `make install` and a running agent.
 helm-drift-test:
 	@FORMAE_BINARY="$(FORMAE_BINARY)" ./scripts/run-helm-drift-test.sh
+
+## helm-stability-test: Kill the agent and the plugin mid-install and check what
+## the release is left in. Lives in test/helm-stability/, owns its own agent
+## under its own profile. Requires `make install`.
+##   make helm-stability-test
+##   make helm-stability-test TEST=TestPluginSigtermMidInstall
+##   make helm-stability-test SAMPLES=10   # measure the drain's win rate
+## Depends on install: the suite drives the plugin the agent spawns from
+## ~/.pel/formae/plugins, not the source tree, so without this it happily tests
+## whatever binary was installed last — which is exactly how two runs were spent
+## debugging behaviour that had already been fixed.
+helm-stability-test: install
+	@FORMAE_BINARY="$(FORMAE_BINARY)" \
+		STABILITY_DRAIN_SAMPLES="$(SAMPLES)" \
+		./scripts/run-helm-stability-test.sh $(TEST)
 
 ## drift-test: Run drift detection + reconciliation test
 ## Deploys drift-demo.pkl, introduces drift via kubectl, force reconciles,

@@ -6,7 +6,6 @@
 
 package helm
 
-
 import (
 	"strings"
 	"testing"
@@ -200,7 +199,7 @@ func foreignRelAt(status release.Status, revision int) *release.Release {
 }
 
 func TestPlanSubmit_NoReleaseInstallsRevisionOne(t *testing.T) {
-	action, target := planSubmit(nil, true)
+	action, target := planSubmit(nil, true, nil, nil)
 	if action != actionInstall || target != 1 {
 		t.Fatalf("got action=%d target=%d, want install/1", action, target)
 	}
@@ -214,7 +213,7 @@ func TestPlanSubmit_SettledReleaseUpgradesToNextRevision(t *testing.T) {
 		release.StatusFailed,
 		release.StatusSuperseded,
 	} {
-		action, target := planSubmit(relAt(status, 4, time.Minute), false)
+		action, target := planSubmit(relAt(status, 4, time.Minute), false, nil, nil)
 		if action != actionUpgrade || target != 5 {
 			t.Errorf("status %s: got action=%d target=%d, want upgrade/5", status, action, target)
 		}
@@ -227,13 +226,22 @@ func TestPlanSubmit_SettledReleaseUpgradesToNextRevision(t *testing.T) {
 // against the in-flight revision: once that revision settled, Status saw the
 // release deployed at the expected revision and reported Success for work that
 // never ran, so the requested change was dropped while formae recorded success.
+// A live operation is now proven by the registry rather than guessed from a
+// clock: this process is the only place Helm operations for formae run.
 func TestPlanSubmit_LivePendingReleaseRetriesRatherThanClaimingProgress(t *testing.T) {
+	// Something else in this process is mid-flight for the release, carrying a
+	// different desired state than the one being asked for.
+	other := liveFlight(opInstall, 2, wantProps())
+
 	for _, status := range []release.Status{
 		release.StatusPendingInstall,
 		release.StatusPendingUpgrade,
 		release.StatusPendingRollback,
 	} {
-		action, target := planSubmit(relAt(status, 2, 5*time.Second), false)
+		asked := wantProps()
+		asked.Values = map[string]any{"replicaCount": 9.0}
+
+		action, target := planSubmit(relAt(status, 2, 5*time.Second), false, other, asked)
 		if action != actionRetry {
 			t.Errorf("status %s: got action=%d, want actionRetry", status, action)
 		}
@@ -241,15 +249,46 @@ func TestPlanSubmit_LivePendingReleaseRetriesRatherThanClaimingProgress(t *testi
 		if action == actionUpgrade && target == 2 {
 			t.Errorf("status %s: planned an upgrade to the in-flight revision", status)
 		}
+		// And must never rewrite the record of an operation that is running.
+		if action == actionRecover {
+			t.Errorf("status %s: planned to recover a release this process is installing", status)
+		}
 	}
 }
 
-func TestPlanSubmit_AbandonedPendingReleaseIsBlockedNotRetried(t *testing.T) {
+func TestPlanSubmit_AbandonedPendingReleaseIsRecoveredNotRetried(t *testing.T) {
 	// Nothing is coming back to finish it, so retrying just burns the attempt
-	// budget before failing with a less useful message.
-	action, _ := planSubmit(relAt(release.StatusPendingInstall, 1, 3*defaultTimeoutSeconds*time.Second), true)
+	// budget. The lock has to be rewritten before anything can proceed.
+	action, _ := planSubmit(relAt(release.StatusPendingInstall, 1, 3*defaultTimeoutSeconds*time.Second), true, nil, nil)
+	if action != actionRecover {
+		t.Fatalf("got action=%d, want actionRecover", action)
+	}
+}
+
+// Rewriting a release record is a serious thing to do to somebody else's
+// release. An abandoned pending release this plugin did not install is reported,
+// never recovered — the Helm CLI and other tools are entitled to their own locks.
+func TestPlanSubmit_AbandonedForeignReleaseIsNotRecovered(t *testing.T) {
+	foreign := foreignRelAt(release.StatusPendingInstall, 1)
+	foreign.Info.LastDeployed = helmtime.Time{Time: time.Now().Add(-3 * defaultTimeoutSeconds * time.Second)}
+
+	action, _ := planSubmit(foreign, true, nil, nil)
+	if action == actionRecover {
+		t.Fatal("planned to rewrite the record of a release formae did not install")
+	}
+	// Reported instead, once it is stale enough that saying something is more
+	// use than saying nothing.
 	if action != actionBlocked {
 		t.Fatalf("got action=%d, want actionBlocked", action)
+	}
+}
+
+// A foreign release that has only just gone pending belongs to an operation that
+// is very likely still running somewhere this plugin cannot see.
+func TestPlanSubmit_RecentForeignPendingReleaseIsRetried(t *testing.T) {
+	action, _ := planSubmit(foreignRelAt(release.StatusPendingInstall, 1), true, nil, nil)
+	if action != actionRetry {
+		t.Fatalf("got action=%d, want actionRetry", action)
 	}
 }
 
@@ -263,14 +302,128 @@ func TestStalled_OnlyAfterTwiceTheOperationTimeout(t *testing.T) {
 
 	// A slow pre-install hook is indistinguishable from a dead process, so the
 	// window has to be wide enough that healing never races a live install.
-	if stalled(pendingSince(time.Minute)) {
+	if stalled(pendingSince(time.Minute), nil) {
 		t.Error("a one-minute-old pending release was called stalled")
 	}
-	if !stalled(pendingSince(3 * defaultTimeoutSeconds * time.Second)) {
+	if !stalled(pendingSince(3*defaultTimeoutSeconds*time.Second), nil) {
 		t.Error("a long-abandoned pending release was not called stalled")
 	}
-	if stalled(&release.Release{Info: &release.Info{Status: release.StatusPendingInstall}}) {
+	if stalled(&release.Release{Info: &release.Info{Status: release.StatusPendingInstall}}, nil) {
 		t.Error("a release with no timestamp was called stalled")
+	}
+}
+
+// The window has to come from the operation's own timeout, not the package
+// default. A chart given timeoutSeconds=1800 was previously declared dead at
+// 1200s — while its own install was still legitimately running — and the
+// operator was told to `helm uninstall` a healthy release.
+func TestStalled_HonoursTheTimeoutRecordedOnTheRelease(t *testing.T) {
+	pendingSince := func(d time.Duration, labels map[string]string) *release.Release {
+		return &release.Release{
+			Labels: labels,
+			Info: &release.Info{
+				Status:       release.StatusPendingInstall,
+				LastDeployed: helmtime.Time{Time: time.Now().Add(-d)},
+			},
+		}
+	}
+
+	longTimeout := map[string]string{formaeTimeoutLabel: "1800"}
+	if stalled(pendingSince(50*time.Minute, longTimeout), nil) {
+		t.Error("a release inside twice its own 1800s timeout was called stalled")
+	}
+	if !stalled(pendingSince(61*time.Minute, longTimeout), nil) {
+		t.Error("a release past twice its own 1800s timeout was not called stalled")
+	}
+
+	// No label: releases installed before this existed, and every foreign
+	// release. The package default still applies.
+	if !stalled(pendingSince(3*defaultTimeoutSeconds*time.Second, nil), nil) {
+		t.Error("an unlabelled long-abandoned release was not called stalled")
+	}
+	// A label we cannot parse must not be trusted into an unbounded window.
+	if !stalled(pendingSince(3*defaultTimeoutSeconds*time.Second, map[string]string{formaeTimeoutLabel: "soon"}), nil) {
+		t.Error("an unparseable timeout label suppressed the default window")
+	}
+}
+
+// The registry may only ever suppress a stall verdict. A live flight proves
+// this process is still working on the release, whatever Helm's record says.
+func TestStalled_NotStalledWhileThisProcessIsRunningIt(t *testing.T) {
+	rel := &release.Release{
+		Name:      "app",
+		Namespace: "ns",
+		Info: &release.Info{
+			Status:       release.StatusPendingInstall,
+			LastDeployed: helmtime.Time{Time: time.Now().Add(-3 * defaultTimeoutSeconds * time.Second)},
+		},
+	}
+
+	// With no flight this is long past the window. A miss proves only that this
+	// process is not running it — the Helm CLI and a second agent both exist —
+	// so the conservative verdict has to stand.
+	if !stalled(rel, nil) {
+		t.Fatal("precondition: the release should read as stalled with no flight")
+	}
+
+	if stalled(rel, &inflight{deadline: time.Now().Add(time.Hour)}) {
+		t.Error("a release this process is actively installing was called stalled")
+	}
+
+	// A flight past its own deadline is unwinding, not working, so it must stop
+	// suppressing the verdict.
+	if !stalled(rel, &inflight{deadline: time.Now().Add(-time.Second)}) {
+		t.Error("an expired flight still suppressed the stall verdict")
+	}
+}
+
+func TestReleaseLabels_CarriesTheOperationTimeout(t *testing.T) {
+	labels := releaseLabels(&releaseProperties{TimeoutSeconds: 900})
+	if got := labels[formaeTimeoutLabel]; got != "900" {
+		t.Errorf("timeout label = %q, want 900", got)
+	}
+	// Unset means the default, and Status has to be able to read it back rather
+	// than guess.
+	labels = releaseLabels(&releaseProperties{})
+	if got := labels[formaeTimeoutLabel]; got != "600" {
+		t.Errorf("default timeout label = %q, want 600", got)
+	}
+	if labels[formaeManagedLabel] != "true" {
+		t.Error("the ownership marker was lost")
+	}
+}
+
+// The plugin's own bookkeeping labels must not reach the resource shape. They
+// are not in the user's forma, so reporting them makes every later plain apply
+// look like drift, and `formae extract` writes them into the generated file.
+func TestPropertiesFromRelease_HidesFormaeBookkeepingLabels(t *testing.T) {
+	rel := relWithChart("podinfo", "6.7.1")
+	rel.Labels = map[string]string{
+		formaeManagedLabel: "true",
+		formaeTimeoutLabel: "900",
+		"team":             "platform",
+	}
+
+	got := propertiesFromRelease(rel).Metadata.Labels
+	if _, ok := got[formaeManagedLabel]; ok {
+		t.Error("the ownership marker leaked into the reported labels")
+	}
+	if _, ok := got[formaeTimeoutLabel]; ok {
+		t.Error("the timeout label leaked into the reported labels")
+	}
+	if got["team"] != "platform" {
+		t.Errorf("user labels = %v, want team=platform preserved", got)
+	}
+}
+
+// A release carrying nothing but our bookkeeping must report no labels at all,
+// not an empty map that reads as a change against a forma with none.
+func TestPropertiesFromRelease_OmitsLabelsWhenOnlyBookkeepingRemains(t *testing.T) {
+	rel := relWithChart("podinfo", "6.7.1")
+	rel.Labels = map[string]string{formaeManagedLabel: "true", formaeTimeoutLabel: "600"}
+
+	if got := propertiesFromRelease(rel).Metadata.Labels; got != nil {
+		t.Errorf("labels = %v, want nil", got)
 	}
 }
 
@@ -279,7 +432,7 @@ func TestStalled_OnlyAfterTwiceTheOperationTimeout(t *testing.T) {
 // would rewrite that release's history and make `helm rollback` roll back to
 // revisions this forma never described.
 func TestPlanSubmit_ForeignReleaseIsRefusedOnCreate(t *testing.T) {
-	action, _ := planSubmit(foreignRelAt(release.StatusDeployed, 7), true)
+	action, _ := planSubmit(foreignRelAt(release.StatusDeployed, 7), true, nil, nil)
 	if action != actionForeign {
 		t.Fatalf("got action=%d, want actionForeign", action)
 	}
@@ -288,7 +441,7 @@ func TestPlanSubmit_ForeignReleaseIsRefusedOnCreate(t *testing.T) {
 // Once adopted, formae holds a NativeID, so the operation arrives as Update and
 // the guard must stand aside — otherwise adoption could never complete.
 func TestPlanSubmit_ForeignReleaseIsUpgradableOnUpdate(t *testing.T) {
-	action, target := planSubmit(foreignRelAt(release.StatusDeployed, 7), false)
+	action, target := planSubmit(foreignRelAt(release.StatusDeployed, 7), false, nil, nil)
 	if action != actionUpgrade || target != 8 {
 		t.Fatalf("got action=%d target=%d, want upgrade/8", action, target)
 	}
@@ -298,9 +451,205 @@ func TestPlanSubmit_ForeignReleaseIsUpgradableOnUpdate(t *testing.T) {
 // install is retried as a Create. Our own marker is what lets that retry through
 // instead of being mistaken for a foreign release.
 func TestPlanSubmit_OwnFailedInstallIsRetakenOnCreate(t *testing.T) {
-	action, target := planSubmit(relAt(release.StatusFailed, 1, time.Minute), true)
+	action, target := planSubmit(relAt(release.StatusFailed, 1, time.Minute), true, nil, nil)
 	if action != actionUpgrade || target != 2 {
 		t.Fatalf("got action=%d target=%d, want upgrade/2", action, target)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Surviving a restart
+// ---------------------------------------------------------------------------
+
+func wantProps() *releaseProperties {
+	return &releaseProperties{
+		Metadata: releaseMetadata{Name: "app", Namespace: "ns"},
+		Chart:    "podinfo",
+		Version:  "6.7.1",
+		Values:   map[string]any{"replicaCount": 2.0},
+	}
+}
+
+func liveFlight(op opKind, revision int, want *releaseProperties) *inflight {
+	return &inflight{
+		op:          op,
+		revision:    revision,
+		fingerprint: fingerprint(want),
+		started:     time.Now(),
+		deadline:    time.Now().Add(10 * time.Minute),
+	}
+}
+
+// The agent does not resume an interrupted operation, it re-drives it:
+// ReRunIncompleteCommands resets an InProgress resource update to NotStarted and
+// calls Create again (metastructure.go:1262). The plugin is a separate process,
+// so our install goroutine is usually still running. Without rejoin the
+// re-driven call sees Helm's lock, returns ResourceConflict until its attempts
+// run out, and fails a command whose install then succeeds anyway.
+func TestPlanSubmit_RejoinsItsOwnInFlightOperation(t *testing.T) {
+	want := wantProps()
+	cur := relAt(release.StatusPendingInstall, 1, 5*time.Second)
+
+	action, target := planSubmit(cur, true, liveFlight(opInstall, 1, want), want)
+	if action != actionRejoin {
+		t.Fatalf("got action=%d, want actionRejoin", action)
+	}
+	// Rejoining must name the revision already in flight — that is the whole
+	// point, the RequestID has to reconstruct identically.
+	if target != 1 {
+		t.Errorf("target revision = %d, want 1", target)
+	}
+}
+
+// The narrow reading of the rule at release.go:374-380. Reporting InProgress for
+// an in-flight revision that is NOT the one we were asked for would report
+// success for work that never ran. The fingerprint is what separates the two.
+func TestPlanSubmit_DoesNotRejoinADifferentDesiredState(t *testing.T) {
+	inFlight := wantProps()
+	asked := wantProps()
+	asked.Values = map[string]any{"replicaCount": 5.0}
+
+	action, _ := planSubmit(
+		relAt(release.StatusPendingInstall, 1, 5*time.Second), true,
+		liveFlight(opInstall, 1, inFlight), asked)
+	if action != actionRetry {
+		t.Fatalf("got action=%d, want actionRetry", action)
+	}
+}
+
+// A registry miss on a release this plugin installed is not ambiguity, it is an
+// answer: Helm operations for formae run in exactly one process, so nothing is
+// driving this release and its pending record is a lock nobody will release.
+// There is nothing to rejoin and nothing to wait for.
+func TestPlanSubmit_OwnPendingReleaseWithNoFlightIsRecovered(t *testing.T) {
+	want := wantProps()
+	action, target := planSubmit(relAt(release.StatusPendingInstall, 1, 5*time.Second), true, nil, want)
+	if action != actionRecover {
+		t.Fatalf("got action=%d, want actionRecover", action)
+	}
+	if target != 1 {
+		t.Errorf("target = %d, want the pending revision 1", target)
+	}
+}
+
+// Recovery must not wait out a clock. The whole point of deciding from the
+// registry is that a release abandoned seconds ago is as recoverable as one
+// abandoned an hour ago.
+func TestPlanSubmit_RecoveryDoesNotWaitOutTheStallWindow(t *testing.T) {
+	fresh := relAt(release.StatusPendingInstall, 1, time.Second)
+	if action, _ := planSubmit(fresh, true, nil, wantProps()); action != actionRecover {
+		t.Fatalf("got action=%d, want actionRecover for a release abandoned one second ago", action)
+	}
+}
+
+// A flight past its deadline is a goroutine that has already given up; its
+// context is cancelled and it is not going to finish the operation.
+func TestPlanSubmit_DoesNotRejoinAnExpiredFlight(t *testing.T) {
+	want := wantProps()
+	expired := liveFlight(opInstall, 1, want)
+	expired.deadline = time.Now().Add(-time.Second)
+
+	action, _ := planSubmit(relAt(release.StatusPendingInstall, 1, 5*time.Second), true, expired, want)
+	if action != actionRetry {
+		t.Fatalf("got action=%d, want actionRetry", action)
+	}
+}
+
+// A flight for a different revision is not this operation.
+func TestPlanSubmit_DoesNotRejoinAnotherRevision(t *testing.T) {
+	want := wantProps()
+	action, _ := planSubmit(
+		relAt(release.StatusPendingUpgrade, 4, 5*time.Second), false,
+		liveFlight(opUpgrade, 2, want), want)
+	if action != actionRetry {
+		t.Fatalf("got action=%d, want actionRetry", action)
+	}
+}
+
+// The second half of the restart problem. If the agent dies after the install
+// finished, it still re-drives Create — and without this the release is upgraded
+// to revision 2 for nothing, re-firing pre-upgrade and post-upgrade hooks. On
+// kratos that is a second automigrate run.
+func TestPlanSubmit_AlreadyDeployedDesiredStateIsANoOp(t *testing.T) {
+	want := wantProps()
+	cur := relWithChart("podinfo", "6.7.1")
+	cur.Config = map[string]any{"replicaCount": 2.0}
+
+	for _, isCreate := range []bool{true, false} {
+		action, target := planSubmit(cur, isCreate, nil, want)
+		if action != actionSettled {
+			t.Errorf("isCreate=%v: got action=%d, want actionSettled", isCreate, action)
+		}
+		if target != 1 {
+			t.Errorf("isCreate=%v: target = %d, want the live revision 1", isCreate, target)
+		}
+	}
+}
+
+// Concluding "settled" wrongly silently drops a change, so every doubt has to
+// fall through to a real upgrade.
+func TestPlanSubmit_NotSettledOnAnyDifference(t *testing.T) {
+	cases := map[string]struct {
+		mutateCurrent func(*release.Release)
+		mutateWant    func(*releaseProperties)
+	}{
+		"different values": {
+			mutateWant: func(p *releaseProperties) { p.Values = map[string]any{"replicaCount": 3.0} },
+		},
+		"extra desired value": {
+			mutateWant: func(p *releaseProperties) {
+				p.Values = map[string]any{"replicaCount": 2.0, "ingress": true}
+			},
+		},
+		"different chart version": {
+			mutateWant: func(p *releaseProperties) { p.Version = "6.7.2" },
+		},
+		// "newest at apply time" can never be concluded settled — the same
+		// reasoning storedChartUsable already applies.
+		"unpinned version": {
+			mutateWant: func(p *releaseProperties) { p.Version = "" },
+		},
+		"different chart": {
+			mutateWant: func(p *releaseProperties) { p.Chart = "other" },
+		},
+		"not deployed": {
+			mutateCurrent: func(r *release.Release) { r.Info.Status = release.StatusFailed },
+		},
+		"not owned by formae": {
+			mutateCurrent: func(r *release.Release) { r.Labels = map[string]string{"someone": "else"} },
+		},
+	}
+
+	for name, tc := range cases {
+		cur := relWithChart("podinfo", "6.7.1")
+		cur.Config = map[string]any{"replicaCount": 2.0}
+		want := wantProps()
+		if tc.mutateCurrent != nil {
+			tc.mutateCurrent(cur)
+		}
+		if tc.mutateWant != nil {
+			tc.mutateWant(want)
+		}
+
+		action, _ := planSubmit(cur, false, nil, want)
+		if action == actionSettled {
+			t.Errorf("%s: planned actionSettled, which would drop the change", name)
+		}
+	}
+}
+
+// Values are compared as canonical JSON, so map ordering and the int/float
+// asymmetry between a decoded release record and a decoded request cannot
+// produce a spurious upgrade.
+func TestPlanSubmit_SettledIgnoresValueEncodingNoise(t *testing.T) {
+	cur := relWithChart("podinfo", "6.7.1")
+	cur.Config = map[string]any{"b": 2, "a": map[string]any{"d": 4, "c": 3}}
+
+	want := wantProps()
+	want.Values = map[string]any{"a": map[string]any{"c": 3.0, "d": 4.0}, "b": 2.0}
+
+	if action, _ := planSubmit(cur, false, nil, want); action != actionSettled {
+		t.Errorf("got action=%d, want actionSettled", action)
 	}
 }
 
