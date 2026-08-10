@@ -130,7 +130,17 @@ func runInteropCell(t *testing.T, pair specPair) {
 	if state.Labels[formaeManagedLabel] != "true" {
 		t.Errorf("formae's own upgrade did not stamp %s (labels: %v)", formaeManagedLabel, state.Labels)
 	}
-	t.Log("✓ upgraded by formae, ownership marker now on the lineage")
+	// formae mutates a release through Helm's upgrade action and has no rollback
+	// verb, which is what decides the hook event a chart sees. Asserted here, on
+	// every chart, because this is the only step where formae actually moves a
+	// release: the reconcile in step 7 is refused by the drift guard in every run
+	// observed so far, CI included, so nothing downstream exercises the path.
+	if strings.HasPrefix(state.Description, "Rollback") {
+		t.Errorf("formae moves a release with Helm's upgrade action, so revision 2 "+
+			"must be recorded as one; Helm says %q", state.Description)
+	}
+	t.Logf("✓ upgraded by formae as %q, ownership marker now on the lineage",
+		state.Description)
 
 	// --- 6. a human rolls it back -------------------------------------------
 	if err := cell.helm.Rollback(cell.namespace, cell.release, 1); err != nil {
@@ -170,7 +180,19 @@ func runInteropCell(t *testing.T, pair specPair) {
 	case "Success":
 		assertEqual(t, "reconcile converged the release back to the forma", target, after.Version)
 		assertEqual(t, "convergence produced a new revision", 4, after.Revision)
-		t.Log("✓ reconcile converged the out-of-band rollback back to the forma")
+		// formae has no rollback verb: it converges by re-applying the forma,
+		// which Helm performs as an upgrade. That is what decides the hook event,
+		// so a chart whose pre-upgrade and pre-rollback hooks differ gets
+		// pre-upgrade here — the claim in examples/helm/README.md. Asserted on
+		// every chart that converges rather than only on the pre-rollback one,
+		// because velero is the only chart carrying that trait and its reconcile
+		// is refused, so the trait alone would never exercise this.
+		if strings.HasPrefix(after.Description, "Rollback") {
+			t.Errorf("formae converged by re-applying, which Helm must record as an upgrade; "+
+				"revision 4 says %q", after.Description)
+		}
+		t.Logf("✓ reconcile converged the out-of-band rollback back to the forma, as %q",
+			after.Description)
 	default:
 		// A refusal is legitimate too — the guard that makes an operator
 		// acknowledge an out-of-band change before overwriting it. What must not
@@ -498,6 +520,15 @@ forma {
 // only in how long they take.
 func (c *interopCell) assertTrait(when string) {
 	c.t.Helper()
+
+	// pre-rollback asserts on the release record rather than on an object,
+	// because for this chart no object can answer the question — see
+	// assertPreRollback.
+	if c.spec.Trait == "pre-rollback" {
+		c.assertPreRollback(when)
+		return
+	}
+
 	if c.spec.TraitObject == "" {
 		c.t.Logf("no traitObject for %q; cell proves the chain only", c.spec.Trait)
 		return
@@ -522,6 +553,73 @@ func (c *interopCell) assertTrait(when string) {
 		c.t.Logf("✓ %s object %s %s: %s", c.spec.Trait, c.spec.TraitObject, when,
 			map[bool]string{true: "present", false: "reaped or never created"}[present])
 	}
+}
+
+// assertPreRollback pins which Helm verb wrote each revision, and with it which
+// hook events fired.
+//
+// Why not look at the hook objects: velero's hooks are annotated
+// `helm.sh/hook: pre-install,pre-upgrade,pre-rollback` — one set of objects for
+// all three events — with `hook-delete-policy: hook-succeeded`. So the objects
+// are reaped on success, and even if they survived, their existence could not say
+// which of the three events created them. Presence-checking a hook object is
+// unfalsifiable here, which is what made the old assertion padding.
+//
+// The release record can answer it. Helm stamps every revision with what produced
+// it, and the verb determines the hook event: `helm rollback` fires pre-rollback,
+// an upgrade fires pre-upgrade, and nothing else can. So:
+//
+//   - revision 3 is the out-of-band `helm rollback` — it must be recorded as a
+//     rollback, which is the only revision in this scenario that fires
+//     pre-rollback hooks at all.
+//   - revision 4, if reconcile converged, is formae reverting values by
+//     re-applying. It must be recorded as an *upgrade*. formae has no rollback
+//     verb, so a revert fires pre-upgrade hooks and never pre-rollback — the
+//     claim in examples/helm/README.md, which until now nothing checked.
+//
+// A chart whose pre-upgrade and pre-rollback hooks differ — a CRD migration that
+// must run forwards only, say — is where that distinction costs something.
+func (c *interopCell) assertPreRollback(when string) {
+	c.t.Helper()
+
+	history, err := c.helm.History(c.namespace, c.release)
+	if err != nil {
+		c.t.Errorf("pre-rollback: read history %s: %v", when, err)
+		return
+	}
+	byRevision := map[int]releaseState{}
+	for _, rev := range history {
+		byRevision[rev.Revision] = rev
+	}
+
+	rollback, ok := byRevision[3]
+	if !ok {
+		// Only reachable for a pre-rollback chart with no -migrate sibling, which
+		// never rolls back. Not a failure; the cell proved the chain.
+		c.t.Logf("pre-rollback: no revision 3 %s; the chain did not reach a rollback", when)
+		return
+	}
+	if !strings.HasPrefix(rollback.Description, "Rollback to") {
+		c.t.Errorf("pre-rollback: revision 3 was the out-of-band `helm rollback`, "+
+			"so Helm must record it as one and fire pre-rollback hooks; it says %q",
+			rollback.Description)
+		return
+	}
+	c.t.Logf("✓ revision 3 is %q — the rollback fired pre-rollback hooks", rollback.Description)
+
+	converge, ok := byRevision[4]
+	if !ok {
+		c.t.Logf("pre-rollback: no revision 4 %s; reconcile did not converge, "+
+			"so there is no formae-side revert to check", when)
+		return
+	}
+	if strings.HasPrefix(converge.Description, "Rollback") {
+		c.t.Errorf("pre-rollback: formae has no rollback verb, so its convergence "+
+			"must be an upgrade; Helm recorded revision 4 as %q", converge.Description)
+		return
+	}
+	c.t.Logf("✓ revision 4 is %q — formae reverting values is an upgrade, "+
+		"so it fires pre-upgrade hooks and never pre-rollback", converge.Description)
 }
 
 // teardown dumps what a failure needs explained, then removes the cell.

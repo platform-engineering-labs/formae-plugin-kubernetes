@@ -48,7 +48,8 @@ Each is a self-contained directory with its own `PklProject`, a script, and a
 | `immutable-field-upgrade/` | `make helm-immutable-test` | A chart version that changes an immutable field. The upgrade is refused — and so is plain `helm upgrade`, and so is `--force-replace`. Shows the limitation is Kubernetes', not formae's. |
 | `adopt-and-rollback/` | `make helm-adopt-test` | `helm install` a release formae knows nothing about, watch the apply get **refused**, then discover → `formae extract` → adopt → upgrade with formae → `helm rollback`. Shows the ownership guard and the whole adoption path. |
 
-Both need `make install` and a running agent. Each has its own README covering
+All need `make install`. `helm-drift-test` and `helm-adopt-test` need an agent
+already running; `helm-immutable-test` starts its own. Each has its own README covering
 what the scenario proves; read `adopt-and-rollback/README.md` before adopting
 anything real — several of its findings are not obvious and cost real time.
 
@@ -60,14 +61,22 @@ anything real — several of its findings are not obvious and cost real time.
 - **No `helm rollback` verb.** Revert the values in your forma and re-apply. Note
   that fires `pre-upgrade` hooks, not `pre-rollback` hooks.
 
-  **Not covered by a test.** The interop suite in `test/helm-interop/` runs 25
-  real charts through install, discovery, adoption, upgrade, `helm rollback`,
-  drift detection and reconcile — but the hook *events* a rollback fires are the
-  one thing it does not check. No chart in the set carries a `post-rollback`
-  hook, and the `pre-rollback` assertion only logs what it finds rather than
-  failing on it. So the sentence above is reasoning about Helm's behaviour, not a
-  measured result. See `test/helm-interop/charts/README.md` for what would close
-  it.
+  **Checked** in `test/helm-interop/`, via the verb Helm records for each
+  revision — the verb being what decides the hook event. Every chart asserts that
+  formae's own upgrade was recorded as an upgrade and never a rollback, and
+  velero additionally asserts that the out-of-band `helm rollback` *was* recorded
+  as a rollback, which is the only revision in the scenario that fires
+  `pre-rollback` hooks at all.
+
+  What that leaves: the release formae moves is moved *forwards*. A
+  formae-performed reverse move is not exercised, because the reconcile that
+  would do it is refused by the drift guard in every run observed so far
+  (22 of 22 charts in CI). The mechanism is the same either way — one Helm
+  upgrade action, no rollback verb — but the reverse direction is inference, not
+  measurement.
+
+  Also still not covered: a `post-rollback` hook. No chart in the set carries one
+  and the corpus cannot supply one — see `test/helm-interop/charts/README.md`.
 - **No `helm test`.** A CI verb, not desired state.
 - **Uninstall leaves residue.** Objects from the chart's `crds/` directory and
   anything annotated `helm.sh/resource-policy: keep` outlive a delete, and

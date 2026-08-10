@@ -184,6 +184,11 @@ type releaseState struct {
 	Revision int
 	Status   string
 	Labels   map[string]string
+	// What Helm says produced this revision: "Upgrade complete",
+	// "Rollback to 1", "Install complete". This is the only observable that says
+	// which *verb* wrote a revision, and therefore which hook events fired — see
+	// assertPreRollback.
+	Description string
 }
 
 // helmClient is how the test talks to Helm.
@@ -354,6 +359,7 @@ func stateOf(rel *release.Release) *releaseState {
 	state := &releaseState{Revision: rel.Version, Labels: rel.Labels}
 	if rel.Info != nil {
 		state.Status = rel.Info.Status.String()
+		state.Description = rel.Info.Description
 	}
 	if rel.Chart != nil && rel.Chart.Metadata != nil {
 		state.Version = rel.Chart.Metadata.Version
@@ -416,9 +422,10 @@ func (h *cliHelm) History(namespace, release string) ([]releaseState, error) {
 		return nil, err
 	}
 	var rows []struct {
-		Revision int    `json:"revision"`
-		Status   string `json:"status"`
-		Chart    string `json:"chart"`
+		Revision    int    `json:"revision"`
+		Status      string `json:"status"`
+		Chart       string `json:"chart"`
+		Description string `json:"description"`
 	}
 	if err := json.Unmarshal([]byte(out), &rows); err != nil {
 		return nil, err
@@ -428,9 +435,10 @@ func (h *cliHelm) History(namespace, release string) ([]releaseState, error) {
 		states = append(states, releaseState{
 			// "<name>-<version>", and chart names contain hyphens while versions
 			// do not, so the split is on the last one.
-			Version:  row.Chart[strings.LastIndex(row.Chart, "-")+1:],
-			Revision: row.Revision,
-			Status:   row.Status,
+			Version:     row.Chart[strings.LastIndex(row.Chart, "-")+1:],
+			Revision:    row.Revision,
+			Status:      row.Status,
+			Description: row.Description,
 		})
 	}
 	return states, nil

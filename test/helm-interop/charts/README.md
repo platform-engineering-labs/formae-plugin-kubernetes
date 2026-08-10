@@ -24,12 +24,12 @@ rollback and CRD story are the least represented in the wild.
 ## What the traits actually assert
 
 Selecting a chart for a trait is not the same as testing that trait, and right
-now only one of them is checked in a way that can fail.
+now two of them are checked in a way that can fail.
 
 | trait | charts | assertion |
 |---|---|---|
 | `test-hook` | 18 | **real** — fails if the hook object was ever applied |
-| `pre-rollback` | 1 (velero) | logs whether the object is present; cannot fail |
+| `pre-rollback` | 1 (velero) | **real** — fails if the rollback was not recorded as one, or if formae's convergence was |
 | `crd-install` | 1 (cert-manager) | logs; cannot fail |
 | `no-hooks` | 5 | nothing to assert — the control |
 | `post-rollback` | **0** | no chart at all |
@@ -50,17 +50,42 @@ versions, a post-rollback hook Job, nothing else. `testdata/charts/hooked`,
 which the Go integration tests use, is the pattern. It would run in seconds
 instead of minutes and could carry `pre-rollback` too.
 
-### The assertion worth writing first
+### pre-rollback is now asserted, via the release record
 
 `examples/helm/README.md` records that `Release` has **no `helm rollback` verb**:
 reverting values and re-applying fires `pre-upgrade` hooks, not `pre-rollback`
-ones. That is a claim in a README and nothing checks it.
+ones. `assertPreRollback` in `interop_test.go` now checks it, on velero, with no
+new chart.
 
-velero is already in the set and already carries `pre-rollback` — its hook is a
-CRD-migration Job, which is exactly the case where firing the wrong event
-matters. Making that assertion real needs no new chart, and it closes the more
-important half of this gap. A post-rollback fixture is worth adding after it,
-not before.
+The first thing tried was the obvious one — look for the hook object — and it
+cannot work. velero annotates one set of objects
+`helm.sh/hook: pre-install,pre-upgrade,pre-rollback` with
+`hook-delete-policy: hook-succeeded`, so they are reaped on success, and their
+existence could not say which of the three events created them anyway. That is
+what made the old assertion unfalsifiable rather than merely weak.
+
+What is observable is the verb, and the verb determines the event. Helm stamps
+each revision with what produced it, so:
+
+* `assertPreRollback` reads revision 3, the out-of-band `helm rollback` and the
+  only revision in the scenario that fires pre-rollback hooks at all. It fails if
+  Helm did not record it as a rollback.
+* Step 5 asserts, on **every** chart, that revision 2 — formae's own upgrade — was
+  recorded as an upgrade and not a rollback. That is the half about formae, and it
+  is here rather than in the trait because step 5 is the only step where formae
+  actually moves a release.
+
+Why the second one is not where you would expect it: the reconcile in step 7 is
+the step that would have formae move a release *backwards*, and it is refused by
+the drift guard in every run observed, 22 of 22 charts in CI, with "the stacks it
+references have been modified since the last reconcile command". The Success
+branch there carries the same assertion and has never executed. So a
+formae-performed reverse move stays inference — same single Helm upgrade action,
+no rollback verb — rather than a measured result. Worth revisiting if the
+scenario ever gains a step that acknowledges the drift first.
+
+A `post-rollback` fixture chart is still worth adding, and is the remaining half
+of this gap.
 
 ## Charts deliberately not here
 
