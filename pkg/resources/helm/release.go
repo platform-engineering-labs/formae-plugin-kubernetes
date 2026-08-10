@@ -993,23 +993,35 @@ func manifestReady(
 // List
 // ---------------------------------------------------------------------------
 
+// List enumerates every release in the cluster, in one call.
+//
+// Not per namespace. The resource used to declare Namespace as its parent with a
+// listParam, which meant discovery had to hand over a namespace before it could
+// list anything, and did so once per namespace per pass. Helm has no such
+// constraint — buildInventory has always listed the whole cluster this way — and
+// the release's own metadata.namespace carries the value anyway.
+//
+// Dropping the parent also makes releases in a formae-managed namespace
+// discoverable. Discovery queues a child List only for parents it synced during
+// that pass, and a managed namespace is kept up to date by the sync loop
+// instead, so it was never offered as a parent and the releases inside it were
+// never listed at all (PLA-530).
 func (r *Release) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	ns, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypeRelease)
-	if err != nil {
-		return nil, err
-	}
-
-	conf, err := newActionConfig(r.Config, ns)
+	// Namespace "" with AllNamespaces: the storage driver needs a namespace to
+	// build its client, the list itself spans the cluster.
+	conf, err := newActionConfig(r.Config, "")
 	if err != nil {
 		return nil, err
 	}
 
 	list := action.NewList(conf)
+	list.All = true
+	list.AllNamespaces = true
 	list.StateMask = action.ListAll
 
 	releases, err := list.Run()
 	if err != nil {
-		return nil, fmt.Errorf("list helm releases in %s: %w", ns, err)
+		return nil, fmt.Errorf("list helm releases: %w", err)
 	}
 
 	nativeIDs := make([]string, 0, len(releases))

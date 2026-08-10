@@ -55,15 +55,33 @@ open class ReleaseResolvable extends formae.Resolvable {
 /// - Uninstall residue. Objects from the chart's `crds/` directory and any
 ///   object annotated `helm.sh/resource-policy: keep` outlive a delete, and
 ///   correctly reappear as unmanaged once no release claims them.
+/// Deliberately parentless, despite a release living in a namespace.
+///
+/// A parent with a listParam says two things at once: this resource belongs to
+/// that one, and you must hand me the parent's value before I can enumerate it.
+/// The first is true here, the second is not. Helm lists every release in the
+/// cluster in one call - `list.AllNamespaces = true`, which is exactly what
+/// buildInventory already does - so requiring a namespace per List bought
+/// nothing but a List call per namespace per discovery pass.
+///
+/// The dependency edge does not come from this hint either. `metadata.namespace`
+/// is `(String|formae.Resolvable)`, so a forma writes
+/// `namespace = appNs.res.name` and formae orders on that reference. And a
+/// release cannot exist without a namespace, so the value discovery needs is
+/// always on the resource itself; the parent was never the only way to know it.
+///
+/// Being parentless also keeps this type discoverable in a namespace formae
+/// already manages. Discovery queues a child List only for parents it synced in
+/// that pass, and a managed namespace is maintained by the sync loop instead, so
+/// releases inside one were never listed at all and could never be adopted -
+/// which is backwards, since whoever manages the namespace is the likeliest
+/// person to find a stray `helm install` in it. See PLA-530: the core bug is
+/// real and still affects every other listParam child, but Helm no longer needs
+/// to wait for it.
 @k8s.ResourceHint {
   type = module.type
   identifier = "$.metadata.name"
   discoverable = true
-  parent = "K8S::Core::Namespace"
-  listParam = new formae.ListProperty {
-    parentProperty = "metadata.name"
-    listParameter = "namespace"
-  }
 }
 open class Release extends formae.Resource {
   hidden parent = this
