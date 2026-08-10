@@ -73,8 +73,40 @@ if ! agent_running; then
 fi
 echo "Agent up."
 
+# Clear commands left InProgress by an earlier run, and treat this as
+# load-bearing rather than tidiness.
+#
+# A killed run leaves its apply InProgress in this profile's datastore, against a
+# namespace the cleanup then deletes, so it can never finish. The agent re-drives
+# incomplete commands on every start, and a user changeset holds discovery paused
+# for as long as it runs — so one leftover command keeps discovery paused for the
+# entire life of every later agent. Every cell then waits out its timeout at step
+# 3 with nothing wrong with it, and the suite reads as a regression in whatever
+# changed most recently. That is exactly how a schema change was blamed for two
+# charts failing.
+#
+# --force is the right hammer: whatever it is mid-update on lives in a namespace
+# from a finished run, so there is no cluster-side work worth waiting for.
+if "${FORMAE}" --profile "${PROFILE}" status command --query 'status:InProgress' \
+        --output-consumer machine 2>/dev/null | grep -q '"CommandId"'; then
+    echo "Cancelling commands left InProgress by an earlier run..."
+    "${FORMAE}" --profile "${PROFILE}" cancel --force --yes \
+        --query 'status:InProgress' >/dev/null 2>&1 || true
+fi
+
 RUN_PATTERN="TestHelmInterop"
 if [[ -n "${CHART_FILTER}" ]]; then
+    # An unparenthesised alternation silently under-tests, which is worse than
+    # the empty-match case guarded below because it still reports green.
+    # `go test -run` splits the pattern on `/` per name level, but a top-level
+    # `|` alternates the *whole* pattern: `TestHelmInterop/a|b` reads as
+    # "TestHelmInterop/a" or "b", and `b` matches no top-level test — so only `a`
+    # ever runs. Parenthesise and it means what it looks like.
+    if [[ "${CHART_FILTER}" == *"|"* ]] && [[ "${CHART_FILTER}" != "("*")" ]]; then
+        echo "Error: parenthesise the alternation: '(${CHART_FILTER})'." >&2
+        echo "       Without it, go test runs only the first chart and still reports PASS." >&2
+        exit 1
+    fi
     RUN_PATTERN="TestHelmInterop/${CHART_FILTER}"
 fi
 
