@@ -14,11 +14,13 @@ name: Helm Interop (PR)
 # formae binary built from a chosen branch and shared across matrix jobs, this
 # builds from main the way conformance-version.yml does.
 #
-# Runs a subset, not the whole set. The suite walks charts serially — they
-# collide on cluster-scoped names, so it cannot shard — and a full sweep spent
-# ninety minutes to get through 24 of 30 before CI cancelled it. The full set
-# runs nightly; a PR gets one chart per trait plus a couple of shapes that have
-# actually caught things.
+# Runs the whole set, split across parallel jobs.
+#
+# Charts collide on cluster-scoped names — ClusterRoles, CRDs and webhooks under
+# fixed names — so two of them must never share a cluster. That rules out running
+# them concurrently against one cluster; it does not rule out parallelism, since
+# each matrix job below brings up its own kind cluster and the groups cannot see
+# each other. Serially this took ninety minutes and CI cancelled it at 24 of 30.
 
 on:
   # No branch filter, unlike conformance-pr.yml. Work on this suite lands on
@@ -27,15 +29,48 @@ on:
   pull_request:
 
 concurrency:
-  # A PR that gets pushed twice should not run two of these against two
-  # clusters; the later push is the one anybody cares about.
+  # A PR pushed twice should not hold six kind clusters; the later push is the
+  # one anybody cares about. Keyed on the ref, not the matrix entry, so a new
+  # push cancels the whole fan-out rather than three groups racing two ways.
   group: helm-interop-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  helm-interop:
+  discover-charts:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    outputs:
+      groups: ${{ steps.split.outputs.groups }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Split charts into groups
+        id: split
+        env:
+          INTEROP_GROUPS: "3"
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, pathlib
+          n = int(os.environ.get("INTEROP_GROUPS", "3"))
+          charts = sorted(
+              p.stem for p in pathlib.Path("test/helm-interop/charts").glob("*.yaml")
+              if not p.stem.endswith("-migrate")
+          )
+          # Round-robin, not blocks: a run of slow charts that happen to sort
+          # together should not all land in one group.
+          groups = [charts[i::n] for i in range(n)]
+          print("groups=" + json.dumps(
+              [{"name": f"group-{i+1}", "pattern": "(" + "|".join(g) + ")"}
+               for i, g in enumerate(groups) if g]))
+          PY
+
+  helm-interop:
+    needs: discover-charts
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        group: ${{ fromJson(needs.discover-charts.outputs.groups) }}
+      fail-fast: false
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
 
@@ -48,7 +83,7 @@ jobs:
       - name: Create kind cluster
         uses: helm/kind-action@v1
         with:
-          cluster_name: formae-helm-interop
+          cluster_name: formae-helm-interop-${{ matrix.group.name }}
           node_image: "kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
 
       - name: Build formae
@@ -91,11 +126,7 @@ jobs:
           # Matches the kind image above; the generated bootstrap forma imports
           # the schema subtree for this minor.
           INTEROP_KUBE_VERSION: "1.36"
-        # One per trait, plus two that earned a slot: external-secrets ships two
-        # dozen CRDs and was the chart that exposed reordered resourceNames
-        # manufacturing permanent drift, and velero's pre-rollback hook is a
-        # CRD-migration Job — the case where having no rollback verb would bite.
-        run: make helm-interop-test CHART='(podinfo|velero|cert-manager|external-secrets|nats|external-dns)'
+        run: make helm-interop-test CHART='${{ matrix.group.pattern }}'
 
       - name: Agent log on failure
         if: failure()

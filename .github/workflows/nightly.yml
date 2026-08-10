@@ -351,6 +351,44 @@ jobs:
               ]
             }
 
+  # Split the interop chart set into groups so the suite can run in parallel.
+  #
+  # The charts collide on cluster-scoped names — ClusterRoles, CRDs, webhooks
+  # under fixed names — so two of them must never share a cluster. That is a
+  # constraint on sharing a cluster, not on parallelism: every matrix job below
+  # creates its own kind cluster, so the groups cannot see each other.
+  #
+  # Grouped round-robin rather than in blocks, so a run of slow charts sitting
+  # together alphabetically does not land entirely in one group.
+  discover-interop-charts:
+    runs-on: ubuntu-latest
+    outputs:
+      groups: ${{ steps.split.outputs.groups }}
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v7
+
+      - name: Split charts into groups
+        id: split
+        env:
+          INTEROP_GROUPS: "3"
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, pathlib
+          n = int(os.environ.get("INTEROP_GROUPS", "3"))
+          charts = sorted(
+              p.stem for p in pathlib.Path("test/helm-interop/charts").glob("*.yaml")
+              if not p.stem.endswith("-migrate")
+          )
+          groups = [charts[i::n] for i in range(n)]
+          # A group name is the -run regex the suite is invoked with.
+          out = [{"name": f"group-{i+1}", "pattern": "(" + "|".join(g) + ")"}
+                 for i, g in enumerate(groups) if g]
+          print("groups=" + json.dumps(out))
+          for g in out:
+              print(f"# {g['name']}: {g['pattern']}", file=__import__("sys").stderr)
+          PY
+
   # formae <-> Helm interop, helm-first: a release installed by Helm is
   # discovered, adopted, upgraded by formae, rolled back with Helm, and
   # reconciled. Separate from the chart conformance job, which drives charts
@@ -361,12 +399,15 @@ jobs:
   # one cluster, and several install cluster-scoped objects under fixed names
   # (ClusterRoles, CRDs, webhooks) that collide if two run at once.
   helm-interop-tests:
-    needs: build-formae
+    needs: [build-formae, discover-interop-charts]
     runs-on: ubuntu-latest
-    # The full set, serially: charts collide on cluster-scoped names so this
-    # cannot shard, and 24 charts took ninety minutes when CI cancelled the PR
-    # job. PRs run a subset; this is where everything gets exercised.
-    timeout-minutes: 150
+    strategy:
+      matrix:
+        group: ${{ fromJson(needs.discover-interop-charts.outputs.groups) }}
+      fail-fast: false
+    # A third of the set on its own cluster. The whole set ran serially before
+    # and CI cancelled it at ninety minutes having reached 24 of 30.
+    timeout-minutes: 60
     steps:
       - name: Checkout plugin
         uses: actions/checkout@v7
@@ -384,7 +425,7 @@ jobs:
       - name: Create kind cluster
         uses: helm/kind-action@v1
         with:
-          cluster_name: formae-helm-interop
+          cluster_name: formae-helm-interop-${{ matrix.group.name }}
           node_image: "kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
 
       - name: Download formae binary
@@ -423,7 +464,7 @@ jobs:
           # kind image above is v1.36; the generated forma imports the matching
           # schema subtree.
           INTEROP_KUBE_VERSION: "1.36"
-        run: make helm-interop-test
+        run: make helm-interop-test CHART='${{ matrix.group.pattern }}' 
 
       - name: Agent log on failure
         if: failure()
