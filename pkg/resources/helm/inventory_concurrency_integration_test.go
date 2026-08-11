@@ -8,10 +8,65 @@ package helm
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/prov"
+	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+const (
+	inventoryNamespace = "formae-helm-inventory-it"
+	inventoryRelease   = "inventory-herd"
+)
+
+// installInventoryFixture puts one release in the cluster so there is something
+// to inventory, and takes it away again afterwards.
+func installInventoryFixture(t *testing.T, r *Release) {
+	t.Helper()
+
+	nsClient := r.Client.CoreV1().Namespaces()
+	ensureNamespaceNamed(t, nsClient, inventoryNamespace)
+	t.Cleanup(func() {
+		_ = nsClient.Delete(context.Background(), inventoryNamespace, metav1.DeleteOptions{})
+	})
+
+	raw, err := json.Marshal(map[string]any{
+		"metadata": map[string]any{"name": inventoryRelease, "namespace": inventoryNamespace},
+		"chart":    chartPath(t),
+		"values":   map[string]any{"message": "hello"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	created, err := r.Create(context.Background(), &resource.CreateRequest{
+		ResourceType: ResourceTypeRelease,
+		Properties:   raw,
+	})
+	if err != nil {
+		t.Fatalf("install inventory fixture: %v", err)
+	}
+	if final := pollUntilTerminal(t, r, "", created.ProgressResult.RequestID); final.OperationStatus != resource.OperationStatusSuccess {
+		t.Fatalf("inventory fixture install ended %s: %s", final.OperationStatus, final.StatusMessage)
+	}
+
+	nativeID := prov.NativeID(inventoryNamespace, inventoryRelease)
+	t.Cleanup(func() {
+		del, err := r.Delete(context.Background(), &resource.DeleteRequest{
+			NativeID:     nativeID,
+			ResourceType: ResourceTypeRelease,
+		})
+		if err != nil {
+			t.Logf("cleanup delete %s: %v", nativeID, err)
+			return
+		}
+		pollUntilTerminal(t, r, nativeID, del.ProgressResult.RequestID)
+	})
+}
 
 // TestInventoryColdCacheConcurrent reproduces what discovery does to the
 // inventory cache on a cold start.
@@ -24,10 +79,14 @@ import (
 // silently unfiltered list: every object the chart rendered then surfaces as an
 // unmanaged resource.
 //
-// Needs a cluster with at least one Helm release installed; the more objects it
-// renders, the sharper the effect.
+// The release it needs is installed here rather than assumed. Depending on
+// whatever the cluster happened to hold made this test pass on a developer's
+// machine — where earlier runs leave releases behind — and fail on a fresh kind
+// cluster, where every caller correctly returns an empty inventory because there
+// is nothing to inventory.
 func TestInventoryColdCacheConcurrent(t *testing.T) {
-	_, cfg := newTestRelease(t)
+	r, cfg := newTestRelease(t)
+	installInventoryFixture(t, r)
 
 	// Cold, as after an agent restart.
 	invalidateInventory(cfg)

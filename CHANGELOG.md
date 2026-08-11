@@ -251,12 +251,16 @@ formae agent.
   (9 assertions), and un-rotting them is separate work. `test/` keeps its own
   workflows, which need an agent.
 
-  Two things had to change for the suite to be runnable as a whole rather than
-  one test at a time: the stability tests now use their own namespace instead of
-  the lifecycle test's, which that test deletes in cleanup — every test declared
-  after it failed with `namespace is being terminated` — and the kube context
-  comes from `FORMAE_TEST_KUBE_CONTEXT` rather than being pinned to one
-  developer's `orbstack`.
+  Three things had to change for the suite to be runnable anywhere but the
+  machine that wrote it. The stability tests now use their own namespace instead
+  of the lifecycle test's, which that test deletes in cleanup — every test
+  declared after it failed with `namespace is being terminated`. The kube context
+  comes from `KUBE_CONTEXT`, which `pkg/resources/testutil` already read but
+  defaulted to one developer's `orbstack`, so 20 tests failed with
+  `context "orbstack" does not exist`. And the inventory herd test installs the
+  release it needs instead of assuming the cluster holds one: it had been passing
+  on the residue earlier runs leave behind, and on a fresh cluster every caller
+  correctly returned an empty inventory.
 
 - **Chart-owned objects are collapsed in discovery.** Objects a Helm release
   renders no longer surface as unmanaged alongside the release that owns them.

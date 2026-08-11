@@ -23,14 +23,14 @@ const gatedType = "K8S::Admissionregistration::MutatingAdmissionPolicy"
 
 // targetConfig builds the target for the cluster under test.
 //
-// The kube context comes from FORMAE_TEST_KUBE_CONTEXT rather than being pinned
-// to one developer's cluster, so the same test runs locally and in CI. Empty —
-// the default — means whatever the ambient kubeconfig points at, which is how
-// every other integration test in this repo finds its cluster.
+// The kube context comes from KUBE_CONTEXT — the same variable
+// pkg/resources/testutil already uses — rather than being pinned to one
+// developer's cluster, so the same test runs locally and against CI's kind
+// cluster. Empty means whatever the ambient kubeconfig points at.
 func targetConfig(t *testing.T, extra string) []byte {
 	t.Helper()
 	return []byte(fmt.Sprintf(`{"Auth":{"Type":"Kubeconfig","Context":%q}%s}`,
-		os.Getenv("FORMAE_TEST_KUBE_CONTEXT"), extra))
+		os.Getenv("KUBE_CONTEXT"), extra))
 }
 
 func TestTypeGate_UnsupportedType(t *testing.T) {

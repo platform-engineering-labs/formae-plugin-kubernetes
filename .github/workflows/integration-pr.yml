@@ -60,14 +60,21 @@ jobs:
           kubectl version
 
       - name: Run integration tests
-        # FORMAE_TEST_KUBE_CONTEXT is left unset on purpose: the tests then use
-        # the ambient context, which kind-action has already pointed at the
-        # cluster it just created.
+        # KUBE_CONTEXT is what pkg/resources/testutil reads to build its target,
+        # and it defaults to "orbstack" — one developer's cluster — so without it
+        # every package using that helper fails with
+        # `context "orbstack" does not exist`. Taken from the live kubeconfig
+        # rather than written out again here, so renaming the kind cluster above
+        # cannot leave this behind. The helm tests declare no context at all and
+        # use the ambient one either way.
         # Fed to xargs rather than expanded into an argument list, so the package
         # names cannot be mangled by word splitting. `xargs <file` rather than
         # `xargs -a`, so the same line runs on a developer's macOS shell too.
         run: |
           set -euo pipefail
+          KUBE_CONTEXT="$(kubectl config current-context)"
+          export KUBE_CONTEXT
+          echo "KUBE_CONTEXT=$KUBE_CONTEXT"
           go list -tags=integration ./... | grep -Ev "$EXCLUDED_PACKAGES" > /tmp/pkgs.txt
           cat /tmp/pkgs.txt
           xargs < /tmp/pkgs.txt go test -tags=integration -timeout 25m
