@@ -52,20 +52,22 @@ formae agent.
   stayed empty during a rollout. Provisioner messages now pass through on
   `InProgress` (e.g. `replicas: 2/3 ready`) and are blanked only on terminal
   `Success`, where a lingering message is just noise.
-
-### Added
-
-- `examples/rollout-safety/` — one folder per case (paused Deployment,
-  `OnDelete` StatefulSet, partitioned StatefulSet, HPA coexistence), each with
-  `create.pkl`/`update.pkl` and the old-vs-new plugin behavior in the header.
-
-## [0.1.10]
-
-### Changed
-
 - Drop the removed `--watch` flag from the example commands in the README,
   CONTRIBUTING, the helm/flux/crossplane/bookstore/custom-resource docs, and
   the example file headers. `formae apply`/`destroy` are submit-then-poll.
+
+### Added
+
+- `K8S::Core::Secret` adopts formae's first-class map-shaped secret types. A
+  Secret's value can now be referenced one key at a time with
+  `secret.res.secretValue.at("key")`, resolved live at the plugin-call
+  boundary so a consumer such as a target credential picks it up without an
+  agent restart. The decoded value is hashed at rest and excluded from drift
+  detection. Requires formae 0.89.0 or later; `minFormaeVersion` is raised to
+  0.89.0.
+- `examples/rollout-safety/` — one folder per case (paused Deployment,
+  `OnDelete` StatefulSet, partitioned StatefulSet, HPA coexistence), each with
+  `create.pkl`/`update.pkl` and the old-vs-new plugin behavior in the header.
 
 ## [0.1.9]
 
