@@ -1,0 +1,133 @@
+# © 2026 Platform Engineering Labs Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Helm Interop (PR)
+
+# formae <-> Helm interop, helm-first: a release installed by Helm is
+# discovered, adopted, upgraded by formae, rolled back with Helm, and
+# reconciled. Distinct from the conformance suites, which drive charts formae
+# installed itself — none of them exercise adopting a release formae did not
+# create, which is the whole adoption story.
+#
+# Self-contained rather than reusing nightly's job: nightly tests against a
+# formae binary built from a chosen branch and shared across matrix jobs, this
+# builds from main the way conformance-version.yml does.
+#
+# Runs the whole set, split across parallel jobs.
+#
+# Charts collide on cluster-scoped names — ClusterRoles, CRDs and webhooks under
+# fixed names — so two of them must never share a cluster. That rules out running
+# them concurrently against one cluster; it does not rule out parallelism, since
+# each matrix job below brings up its own kind cluster and the groups cannot see
+# each other. Serially this took ninety minutes and CI cancelled it at 24 of 30.
+
+on:
+  # No branch filter, unlike conformance-pr.yml. Work on this suite lands on
+  # stacked branches before it reaches main, and a filter of [main] means the
+  # PR that changes the suite is the one PR that never runs it.
+  pull_request:
+
+concurrency:
+  # A PR pushed twice should not hold six kind clusters; the later push is the
+  # one anybody cares about. Keyed on the ref, not the matrix entry, so a new
+  # push cancels the whole fan-out rather than three groups racing two ways.
+  group: helm-interop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  discover-charts:
+    runs-on: ubuntu-latest
+    outputs:
+      groups: ${{ steps.split.outputs.groups }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Split charts into groups
+        id: split
+        env:
+          INTEROP_GROUPS: "3"
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, pathlib
+          n = int(os.environ.get("INTEROP_GROUPS", "3"))
+          charts = sorted(
+              p.stem for p in pathlib.Path("test/helm-interop/charts").glob("*.yaml")
+              if not p.stem.endswith("-migrate")
+          )
+          # Round-robin, not blocks: a run of slow charts that happen to sort
+          # together should not all land in one group.
+          groups = [charts[i::n] for i in range(n)]
+          print("groups=" + json.dumps(
+              [{"name": f"group-{i+1}", "pattern": "(" + "|".join(g) + ")"}
+               for i, g in enumerate(groups) if g]))
+          PY
+
+  helm-interop:
+    needs: discover-charts
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        group: ${{ fromJson(needs.discover-charts.outputs.groups) }}
+      fail-fast: false
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+
+      - uses: ./.github/actions/setup-pkl-cached
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: formae-helm-interop-${{ matrix.group.name }}
+          node_image: "kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
+
+      - name: Build formae
+        # From main rather than a release: the suite drives extract, adopt and
+        # discovery, and leans on fixes that land there before they ship. The
+        # version stamped in resolves the plugin's PKL formae dep against
+        # package://...formae@<X.Y.Z>, so it has to match a published schema —
+        # hence the canonical version stripped from the latest tag.
+        run: |
+          git clone --branch main --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          cd /tmp/formae
+          git fetch --tags
+          LATEST_TAG=$(git tag -l "[0-9]*" --sort=-version:refname | head -1)
+          VERSION=$(echo "$LATEST_TAG" | cut -d'-' -f1)
+          echo "Building formae ${VERSION} (from tag ${LATEST_TAG})"
+          make build VERSION="${VERSION}"
+          sudo mkdir -p /opt/pel/bin
+          sudo install -m 0755 /tmp/formae/formae /opt/pel/bin/formae
+          /opt/pel/bin/formae --version
+
+      - name: Inject formae replace directives
+        run: |
+          for pkg in pkg/auth pkg/model pkg/plugin pkg/plugin-conformance-tests; do
+            if grep -q "formae/$pkg" go.mod 2>/dev/null; then
+              go mod edit -replace "github.com/platform-engineering-labs/formae/$pkg=/tmp/formae/$pkg"
+            fi
+          done
+          go mod tidy
+
+      - name: Install plugin
+        run: make install
+
+      - name: Run Helm interop suite
+        env:
+          FORMAE_BINARY: /opt/pel/bin/formae
+          # A chart that cannot  ready inside the cap is reported as a
+          # skip, not a failure — its own prerequisites are not formae's
+          # behaviour. Kept tight so one unhealthy chart cannot eat the job.
+          INTEROP_TIMEOUT: 6m
+          # Matches the kind image above; the generated bootstrap forma imports
+          # the schema subtree for this minor.
+          INTEROP_KUBE_VERSION: "1.36"
+        run: make helm-interop-test CHART='${{ matrix.group.pattern }}'
+
+      - name: Agent log on failure
+        if: failure()
+        run: tail -200 ~/.pel/formae/log/helm-interop-ci.log || true

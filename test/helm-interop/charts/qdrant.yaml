@@ -1,0 +1,13 @@
+# qdrant — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: qdrant
+repoURL: https://qdrant.github.io/qdrant-helm
+version: 1.18.1
+
+trait: test-hook
+traitObject: "ConfigMap/qdrant-test-db-interaction"
+
+notes: >-
+  Artifact Hub rank 126. Installed bare. A failure before
+  formae is involved is the chart's prerequisites, not formae's behaviour,
+  and is reported as a skip.

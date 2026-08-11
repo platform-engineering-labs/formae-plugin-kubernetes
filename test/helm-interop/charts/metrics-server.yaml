@@ -1,0 +1,13 @@
+# metrics-server — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the no-hooks trait.
+chart: metrics-server
+repoURL: https://kubernetes-sigs.github.io/metrics-server/
+version: 3.13.0
+
+trait: no-hooks
+traitObject: ""
+
+notes: >-
+  Artifact Hub rank 10. Installed bare, with no values
+  overrides, so a failure here is the chart's prerequisites rather than
+  formae's behaviour.

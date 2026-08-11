@@ -1,0 +1,13 @@
+# fluent-bit — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: fluent-bit
+repoURL: https://fluent.github.io/helm-charts
+version: 0.57.8
+
+trait: test-hook
+traitObject: "Pod/fluent-bit-test-connection"
+
+notes: >-
+  Artifact Hub rank 40. Installed bare, with no values
+  overrides, so a failure here is the chart's prerequisites rather than
+  formae's behaviour.

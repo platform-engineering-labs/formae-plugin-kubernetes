@@ -1,0 +1,6 @@
+# Opts pgadmin4 into the rest of the chain: formae upgrade, helm
+# rollback, reconcile. Adjacent pair from the repo index, not a guess.
+version: 1.65.0
+
+notes: >-
+  1.64.1 -> 1.65.0.

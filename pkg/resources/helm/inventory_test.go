@@ -677,10 +677,18 @@ func TestReleaseLabels_PreservesUserLabelsAndAddsMarker(t *testing.T) {
 	}
 }
 
-// Helm's own bookkeeping labels must never reach a forma or come back to Helm.
-// The secrets driver filters them on Get but not on the list/last paths
-// (driver/secrets.go:103,141), so an extracted forma picked them up and Helm then
-// rejected the next upgrade outright.
+// No label that came from bookkeeping may reach a forma or come back to Helm —
+// only ones the user actually declared.
+//
+// Helm's own: the secrets driver filters them on Get but not on the list/last
+// paths (driver/secrets.go:103,141), so an extracted forma picked them up and
+// Helm then rejected the next upgrade outright.
+//
+// Ours: the marker is stamped unconditionally, so reporting it back out of Read
+// diffs against every forma that declares labels. releaseLabels re-adds it, so
+// dropping it here costs nothing on the way in — see
+// TestReleaseLabels_StampsTheMarker and
+// TestPropertiesFromRelease_OmitsTheOwnershipMarker for the two directions.
 func TestWithoutSystemLabels(t *testing.T) {
 	got := withoutSystemLabels(map[string]string{
 		"name":             "kratos",
@@ -691,11 +699,14 @@ func TestWithoutSystemLabels(t *testing.T) {
 		formaeManagedLabel: "true",
 		"team":             "identity",
 	})
-	if len(got) != 2 || got[formaeManagedLabel] != "true" || got["team"] != "identity" {
-		t.Fatalf("got %v, want only the marker and team", got)
+	if len(got) != 1 || got["team"] != "identity" {
+		t.Fatalf("got %v, want only team", got)
 	}
 	if withoutSystemLabels(map[string]string{"owner": "helm"}) != nil {
 		t.Error("a labels map of only system labels should reduce to nil")
+	}
+	if withoutSystemLabels(map[string]string{formaeManagedLabel: "true"}) != nil {
+		t.Error("a labels map of only the marker should reduce to nil")
 	}
 	if withoutSystemLabels(nil) != nil {
 		t.Error("nil in, nil out")

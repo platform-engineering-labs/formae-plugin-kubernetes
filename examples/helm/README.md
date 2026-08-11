@@ -45,9 +45,11 @@ Each is a self-contained directory with its own `PklProject`, a script, and a
 | Directory | Command | Scenario |
 |---|---|---|
 | `drift-helm-upgrade/` | `make helm-drift-test` | Deploy version A with formae, `helm upgrade` to B behind its back, watch formae detect the drift and reconcile it back. Shows a release is **not** opaque to drift detection, and that a plain reconcile refuses to clobber an out-of-band change. |
+| `immutable-field-upgrade/` | `make helm-immutable-test` | A chart version that changes an immutable field. The upgrade is refused — and so is plain `helm upgrade`, and so is `--force-replace`. Shows the limitation is Kubernetes', not formae's. |
 | `adopt-and-rollback/` | `make helm-adopt-test` | `helm install` a release formae knows nothing about, watch the apply get **refused**, then discover → `formae extract` → adopt → upgrade with formae → `helm rollback`. Shows the ownership guard and the whole adoption path. |
 
-Both need `make install` and a running agent. Each has its own README covering
+All need `make install`. `helm-drift-test` and `helm-adopt-test` need an agent
+already running; `helm-immutable-test` starts its own. Each has its own README covering
 what the scenario proves; read `adopt-and-rollback/README.md` before adopting
 anything real — several of its findings are not obvious and cost real time.
 
@@ -58,12 +60,60 @@ anything real — several of its findings are not obvious and cost real time.
   Helm does not detect it either — hence `helm diff`.
 - **No `helm rollback` verb.** Revert the values in your forma and re-apply. Note
   that fires `pre-upgrade` hooks, not `pre-rollback` hooks.
+
+  **Checked** in `test/helm-interop/`, via the verb Helm records for each
+  revision — the verb being what decides the hook event. Every chart asserts that
+  formae's own upgrade was recorded as an upgrade and never a rollback, and
+  velero additionally asserts that the out-of-band `helm rollback` *was* recorded
+  as a rollback, which is the only revision in the scenario that fires
+  `pre-rollback` hooks at all.
+
+  What that leaves: the release formae moves is moved *forwards*. A
+  formae-performed reverse move is not exercised, because the reconcile that
+  would do it is refused by the drift guard in every run observed so far
+  (22 of 22 charts in CI). The mechanism is the same either way — one Helm
+  upgrade action, no rollback verb — but the reverse direction is inference, not
+  measurement.
+
+  Also still not covered: a `post-rollback` hook. No chart in the set carries one
+  and the corpus cannot supply one — see `test/helm-interop/charts/README.md`.
 - **No `helm test`.** A CI verb, not desired state.
 - **Uninstall leaves residue.** Objects from the chart's `crds/` directory and
   anything annotated `helm.sh/resource-policy: keep` outlive a delete, and
   correctly reappear as unmanaged.
 - **Controller-created objects still surface.** The Pods behind a chart's
   Deployment are in no manifest, so discovery lists them individually.
+- **A chart that changes an immutable field between versions cannot be
+  upgraded.** Not by formae, and not by anything else. Kubernetes freezes some
+  fields after creation — `Deployment.spec.selector`, most of
+  `PersistentVolumeClaim.spec`, `Service.spec.clusterIP` — and Helm upgrades by
+  patching, so the apiserver rejects the change:
+
+  ```
+  Deployment.apps "flowise" is invalid: spec.selector: Invalid value:
+    v1.LabelSelector{...}: field is immutable
+  ```
+
+  This is not formae inheriting a limitation it could route around. Plain
+  `helm upgrade` fails identically, and so does Helm's own escape hatch:
+  `--force-replace` issues a *replace*, not a delete-and-recreate, and a replace
+  cannot change an immutable field either. (In Helm v4 that flag is
+  `--force-replace`, renamed from `--force`, and it refuses to run alongside
+  server-side apply — which is the default.) The only way through is deleting
+  the object and letting the chart recreate it, which no `helm upgrade` will do
+  for you.
+
+  It bites on rollback too, and there it is easier to hit by accident: rolling
+  back to an older revision means applying an older manifest, and if the field
+  changed in the meantime the rollback is refused for the same reason.
+
+  Seen upgrading `flowise` 5.1.1 -> 6.0.0, which renames its selector labels,
+  and rolling `helm-dashboard` back over a PersistentVolumeClaim.
+
+  Whether the `HelmChart.pkl` path escapes this is **untested**. In principle
+  formae owns each rendered object there and could mark the field `createOnly`
+  and replace that one object — but that depends on formae issuing a genuine
+  destroy-then-create rather than a replace, and nobody has checked.
 
 ### What happens if something dies mid-install
 

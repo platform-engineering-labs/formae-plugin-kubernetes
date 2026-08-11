@@ -1,0 +1,6 @@
+# Opts gotenberg into upgrade, rollback and reconcile.
+# Adjacent pair from the repo index, not a guess.
+version: 1.23.0
+
+notes: >-
+  1.22.0 -> 1.23.0.

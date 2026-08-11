@@ -1,0 +1,6 @@
+# Opts velero into the rest of the chain: formae upgrade, helm
+# rollback, reconcile. Adjacent pair from the repo index, not a guess.
+version: 12.1.0
+
+notes: >-
+  12.0.3 -> 12.1.0.

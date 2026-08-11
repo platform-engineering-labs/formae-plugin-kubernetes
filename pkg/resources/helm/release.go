@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	goerrors "errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -229,10 +230,19 @@ func releaseTimeout(rel *release.Release) time.Duration {
 
 // withoutSystemLabels drops Helm's own bookkeeping labels.
 //
-// Needed because the secrets driver only filters them on Get; the list and last
-// paths hand them back verbatim (driver/secrets.go:103,141). Left in place they
-// leak into Read, get copied into an extracted forma, and Helm then rejects the
-// next upgrade with "user supplied labels contains system reserved label name".
+// Helm's are needed because the secrets driver only filters them on Get; the
+// list and last paths hand them back verbatim (driver/secrets.go:103,141). Left
+// in place they leak into Read, get copied into an extracted forma, and Helm
+// then rejects the next upgrade with "user supplied labels contains system
+// reserved label name".
+//
+// The ownership marker is ours and is stamped unconditionally by releaseLabels,
+// so a forma never declares it. Reported back out of Read it would diff against
+// every forma that does declare labels, and whether the schema's
+// hasProviderDefault on labels absorbs that depends on the host diffing the map
+// key-by-key rather than whole. Dropping it here removes the dependency.
+// releaseLabels re-adds it straight after, so the round trip stays lossless
+// where it matters.
 func withoutSystemLabels(in map[string]string) map[string]string {
 	if len(in) == 0 {
 		return nil
@@ -241,6 +251,7 @@ func withoutSystemLabels(in map[string]string) map[string]string {
 	for _, k := range driver.GetSystemLabels() {
 		system[k] = struct{}{}
 	}
+	system[formaeManagedLabel] = struct{}{}
 	out := make(map[string]string, len(in))
 	for k, v := range in {
 		if _, reserved := system[k]; reserved {
@@ -926,6 +937,21 @@ func resourceNames(rel *release.Release) map[string][]string {
 		}
 		out[key] = append(out[key], id.Namespace+"/"+id.Name)
 	}
+
+	// Sort. inv.objects is a map, and Go randomises map iteration order per
+	// range, so without this every Read returns the same names in a different
+	// order.
+	//
+	// That is not cosmetic. resourceNames is reported state, so a reordered
+	// slice is a change: every sync records a modification that never happened,
+	// and the guard that refuses to apply over an out-of-band change then
+	// refuses every apply, permanently. A release with two objects of one kind
+	// becomes unmanageable, and the bigger the chart the more certain it is —
+	// vault, cert-manager and a chart shipping two dozen CRDs could not be
+	// upgraded at all, while a single-object chart was fine by luck.
+	for _, names := range out {
+		sort.Strings(names)
+	}
 	return out
 }
 
@@ -1418,23 +1444,35 @@ func manifestReady(
 // List
 // ---------------------------------------------------------------------------
 
+// List enumerates every release in the cluster, in one call.
+//
+// Not per namespace. The resource used to declare Namespace as its parent with a
+// listParam, which meant discovery had to hand over a namespace before it could
+// list anything, and did so once per namespace per pass. Helm has no such
+// constraint — buildInventory has always listed the whole cluster this way — and
+// the release's own metadata.namespace carries the value anyway.
+//
+// Dropping the parent also makes releases in a formae-managed namespace
+// discoverable. Discovery queues a child List only for parents it synced during
+// that pass, and a managed namespace is kept up to date by the sync loop
+// instead, so it was never offered as a parent and the releases inside it were
+// never listed at all (PLA-530).
 func (r *Release) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	ns, err := prov.ResolveListNamespace(request.AdditionalProperties, ResourceTypeRelease)
-	if err != nil {
-		return nil, err
-	}
-
-	conf, err := newActionConfig(r.Config, ns)
+	// Namespace "" with AllNamespaces: the storage driver needs a namespace to
+	// build its client, the list itself spans the cluster.
+	conf, err := newActionConfig(r.Config, "")
 	if err != nil {
 		return nil, err
 	}
 
 	list := action.NewList(conf)
+	list.All = true
+	list.AllNamespaces = true
 	list.StateMask = action.ListAll
 
 	releases, err := list.Run()
 	if err != nil {
-		return nil, fmt.Errorf("list helm releases in %s: %w", ns, err)
+		return nil, fmt.Errorf("list helm releases: %w", err)
 	}
 
 	nativeIDs := make([]string, 0, len(releases))

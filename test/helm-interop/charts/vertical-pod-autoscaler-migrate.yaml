@@ -1,0 +1,6 @@
+# Opts vertical-pod-autoscaler into upgrade, rollback and reconcile.
+# Adjacent pair from the repo index, not a guess.
+version: 11.1.1
+
+notes: >-
+  11.1.0 -> 11.1.1.

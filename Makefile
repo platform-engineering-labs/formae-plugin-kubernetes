@@ -27,7 +27,7 @@ FORMAE_BINARY ?= $(shell realpath $(firstword $(wildcard $(CURDIR)/../../formae/
 PLUGIN_BASE_DIR := $(HOME)/.pel/formae/plugins
 INSTALL_DIR := $(PLUGIN_BASE_DIR)/$(PLUGIN_NAME)/v$(PLUGIN_VERSION)
 
-.PHONY: all build test test-unit test-integration lint verify-schema clean install help setup-credentials clean-environment conformance-test conformance-test-crud conformance-test-discovery conformance-test-crud-run conformance-test-discovery-run conformance-test-resources conformance-test-charts generate-schema chart-test drift-test helm-drift-test helm-adopt-test helm-stability-test
+.PHONY: all build test test-unit test-integration lint verify-schema clean install help setup-credentials clean-environment conformance-test conformance-test-crud conformance-test-discovery conformance-test-crud-run conformance-test-discovery-run conformance-test-resources conformance-test-charts generate-schema chart-test drift-test helm-drift-test helm-adopt-test helm-immutable-test helm-interop-test helm-interop-charts helm-interop-clean helm-stability-test
 
 all: build
 
@@ -336,6 +336,50 @@ helm-adopt-test:
 ## Requires `make install` and a running agent.
 helm-drift-test:
 	@FORMAE_BINARY="$(FORMAE_BINARY)" ./scripts/run-helm-drift-test.sh
+
+## helm-interop-test: formae<->Helm interop, helm-first: helm install, discover,
+## adopt, formae upgrade, helm rollback, reconcile. Lives in test/helm-interop/,
+## one subtest per chart file in its charts/ dir; a chart with a -migrate.yaml
+## sibling runs the whole chain, one without stops after adoption.
+##
+## Owns its agent: starts one under its own profile with discovery enabled (no
+## default config has it, and without it adoption never gets a candidate) and
+## stops it afterwards. Needs a reachable cluster and `make install`.
+##   CHART=velero        one chart, by subtest name
+##   INTEROP_TIMEOUT=4m  per-chart readiness cap (default 10m)
+##   INTEROP_HELM=cli    drive Helm through its CLI instead of the SDK
+##   INTEROP_KEEP=1      keep cluster state even when a cell passes
+helm-interop-test:
+	@# CHART is quoted: it is a -run regex, so a group filter like
+	@# '(podinfo|velero)' reaches /bin/sh as bare parens otherwise and dies with
+	@# 'Syntax error: "(" unexpected'. Local runs passed a single chart name and
+	@# never showed it; CI passes a group and did.
+	@FORMAE_BINARY="$(FORMAE_BINARY)" ./scripts/run-helm-interop-test.sh "$(CHART)"
+
+## helm-interop-clean: Remove what a killed interop run left behind — ci-*
+## namespaces and the cluster-scoped objects owned by them. Teardown handles
+## this when a run finishes; t.Cleanup does not survive a Ctrl-C or a CI
+## timeout, and what survives blocks the next run of the same chart.
+## Shows what it would remove; pass YES=1 to apply.
+helm-interop-clean:
+	@FORMAE_BINARY="$(FORMAE_BINARY)" ./scripts/clean-helm-interop.sh $(if $(YES),--yes,)
+
+## helm-interop-charts: List the chart specs and which run the migrate path.
+helm-interop-charts:
+	@for f in test/helm-interop/charts/*.yaml; do \
+		case "$$f" in *-migrate.yaml) continue;; esac; \
+		name=$$(basename "$$f" .yaml); \
+		if [ -f "test/helm-interop/charts/$$name-migrate.yaml" ]; then path="full chain"; else path="adopt only"; fi; \
+		printf '%-24s %-14s %s\n' "$$name" "$$path" "$$(grep -m1 '^trait:' "$$f" | cut -d' ' -f2-)"; \
+	done
+
+## helm-immutable-test: Show an upgrade that no tool can perform. A chart version
+## that changes an immutable field (flowise 5.1.1 -> 6.0.0 renames its Deployment
+## selector) is refused by formae, by plain `helm upgrade`, and by
+## `helm upgrade --force-replace` alike.
+## Requires `make install`. Owns its own agent, under its own profile.
+helm-immutable-test:
+	@FORMAE_BINARY="$(FORMAE_BINARY)" ./scripts/run-helm-immutable-test.sh
 
 ## helm-stability-test: Kill the agent and the plugin mid-install and check what
 ## the release is left in. Lives in test/helm-stability/, owns its own agent

@@ -210,12 +210,20 @@ formae agent.
   Objects created *downstream* of the chart by controllers (the Pods behind a
   Deployment) are not in any manifest and are still discovered individually.
 
+  `resourceNames` is reported **sorted**, and that is load-bearing rather than
+  cosmetic. It is reported state, so an order that varies between reads is an
+  out-of-band change on every sync, and formae's guard then refuses every apply
+  — permanently, with the empty diagnostic of a transient conflict. Any release
+  with two objects of one kind is affected, so this is the difference between a
+  release being upgradable through formae and not.
+
 ### Fixed
 
 - **The plugin's own release labels no longer leak into resource state.**
   `formae.dev/managed` — and now `formae.dev/timeout-seconds` — were reported
   back in `metadata.labels`, which put them into `formae extract` output and made
   them read as drift against a forma that never declared them.
+
 
 ## [0.1.8]
 

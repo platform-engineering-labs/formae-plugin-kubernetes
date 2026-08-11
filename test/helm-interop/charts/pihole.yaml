@@ -1,0 +1,13 @@
+# pihole — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: pihole
+repoURL: https://mojo2600.github.io/pihole-kubernetes/
+version: 2.37.0
+
+trait: test-hook
+traitObject: "Pod/pihole-smoke-test"
+
+notes: >-
+  Artifact Hub rank 53. Installed bare. A failure before
+  formae is involved is the chart's prerequisites, not formae's behaviour,
+  and is reported as a skip.

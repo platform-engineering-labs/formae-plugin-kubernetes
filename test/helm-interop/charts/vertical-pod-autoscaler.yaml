@@ -1,0 +1,13 @@
+# vertical-pod-autoscaler — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: vertical-pod-autoscaler
+repoURL: https://cowboysysop.github.io/charts/
+version: 11.1.0
+
+trait: test-hook
+traitObject: "ConfigMap/vertical-pod-autoscaler-tests"
+
+notes: >-
+  Artifact Hub rank 296. Installed bare. A failure before
+  formae is involved is the chart's prerequisites, not formae's behaviour,
+  and is reported as a skip.

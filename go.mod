@@ -13,6 +13,7 @@ require (
 	github.com/platform-engineering-labs/formae/pkg/plugin v0.4.0
 	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.2.5
 	github.com/stretchr/testify v1.11.1
+	github.com/theory/jsonpath v0.10.2
 	github.com/tidwall/gjson v1.19.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.21.0
@@ -20,6 +21,7 @@ require (
 	k8s.io/api v0.36.3
 	k8s.io/apimachinery v0.36.3
 	k8s.io/client-go v0.36.3
+	sigs.k8s.io/yaml v1.6.0
 )
 
 require (
@@ -134,7 +136,6 @@ require (
 	github.com/spf13/cast v1.7.0 // indirect
 	github.com/spf13/cobra v1.10.2 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
-	github.com/theory/jsonpath v0.10.2 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
@@ -193,7 +194,6 @@ require (
 	sigs.k8s.io/kustomize/kyaml v0.21.1 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.3 // indirect
-	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
 replace ergo.services/ergo => github.com/JeroenSoeters/ergo v1.999.320-pel.1

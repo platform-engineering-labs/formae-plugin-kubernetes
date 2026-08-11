@@ -1,0 +1,13 @@
+# traefik — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the no-hooks trait.
+chart: traefik
+repoURL: https://traefik.github.io/charts
+version: 41.0.2
+
+trait: no-hooks
+traitObject: ""
+
+notes: >-
+  Artifact Hub rank 8. Installed bare, with no values
+  overrides, so a failure here is the chart's prerequisites rather than
+  formae's behaviour.

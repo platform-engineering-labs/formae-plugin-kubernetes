@@ -1,0 +1,6 @@
+# Opts trino into upgrade, rollback and reconcile.
+# Adjacent pair from the repo index, not a guess.
+version: 1.42.2
+
+notes: >-
+  1.42.1 -> 1.42.2.
