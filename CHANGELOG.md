@@ -326,9 +326,17 @@ formae agent.
   template: no template "ory.extraEnvContainsEnvName" associated with template "gotpl"
   ```
 
-  Such a chart is now re-fetched. The no-op check that stops a re-driven `Create`
-  re-running hooks is unaffected — it compares a version and a set of values and
-  renders nothing, so an incomplete stored chart tells it nothing.
+  Such a chart is re-fetched now — but only when there is somewhere to fetch
+  from. An adopted release has no `repoURL`, because Helm never records where a
+  chart came from, so insisting on a fetch there would fail every upgrade of an
+  adopted subchart chart outright. With nothing to fetch from, the incomplete
+  stored chart is used anyway: rendering it may well succeed, and when a dropped
+  subchart really is needed Helm names the template it cannot find. Trading a
+  possible failure for a certain one is not an improvement.
+
+  The no-op check that stops a re-driven `Create` re-running hooks is unaffected —
+  it compares a version and a set of values and renders nothing, so an incomplete
+  stored chart tells it nothing.
 
 - **The plugin's own release labels no longer leak into resource state.**
   `formae.dev/managed` — and now `formae.dev/timeout-seconds` — were reported

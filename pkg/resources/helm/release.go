@@ -482,6 +482,37 @@ func storedChartUsable(current *release.Release, props *releaseProperties) bool 
 	return chartRefName(props.Chart) == current.Chart.Metadata.Name
 }
 
+// chooseChart picks the chart to render: the one stored in the release record, or
+// a freshly fetched one.
+//
+// Three cases, in order of preference:
+//
+//  1. The stored chart matches the request and came back whole — render it, and
+//     touch no repository. This is what lets an adopted release be managed with
+//     no repoURL at all, since Helm never records where a chart came from.
+//  2. It matches but its subcharts did not survive storage — fetch, because
+//     rendering the remnant fails on any helper a dependency defines.
+//  3. Fetching is not possible — an adopted release has no repoURL to fetch
+//     from, so `loadChart` refuses before it starts. Fall back to the stored
+//     chart even though it is incomplete: refusing here fails the upgrade
+//     outright, while rendering may well succeed, and when a dropped subchart
+//     really is needed Helm names the template it cannot find. Trading a
+//     possible failure for a certain one is not an improvement.
+func chooseChart(current *release.Release, props *releaseProperties, fetch func() (*chart.Chart, error)) (*chart.Chart, error) {
+	usable := storedChartUsable(current, props)
+	if usable && storedChartComplete(current) {
+		return current.Chart, nil
+	}
+	chrt, err := fetch()
+	if err == nil {
+		return chrt, nil
+	}
+	if usable {
+		return current.Chart, nil
+	}
+	return nil, err
+}
+
 // storedChartComplete reports whether the chart Helm read back out of the release
 // record is the whole chart, and so safe to render from.
 //
@@ -683,16 +714,13 @@ func (r *Release) submit(
 		return nil, goerrors.New(stalledMessage(current, ns, name))
 	}
 
-	// Reuse the stored chart when the forma asks for what is already deployed,
-	// so re-applying an unchanged release needs no repository access.
-	var chrt *chart.Chart
-	if storedChartUsable(current, props) && storedChartComplete(current) {
-		chrt = current.Chart
-	} else {
-		chrt, err = loadChart(conf, props)
-		if err != nil {
-			return nil, err
-		}
+	// Reuse the stored chart when the forma asks for what is already deployed, so
+	// re-applying an unchanged release needs no repository access.
+	chrt, err := chooseChart(current, props, func() (*chart.Chart, error) {
+		return loadChart(conf, props)
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	// Detached: the request context is cancelled the moment submit returns.
