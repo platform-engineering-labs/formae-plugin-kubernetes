@@ -102,7 +102,7 @@ function gatewayDeployment(k8sTarget: formae.Target, appNs: ns.Namespace): dep.D
       replicas = 2
       selector = new k8s.LabelSelector { matchLabels = gatewayLabels }
       template = new k8s.PodTemplateSpec {
-
+        metadata = new k8s.PodTemplateMetadata { labels = gatewayLabels }
         spec = new k8s.PodSpec {
           containers = new Listing {
             new k8s.Container {
@@ -294,7 +294,7 @@ function agentDaemonSet(k8sTarget: formae.Target, appNs: ns.Namespace): ds.Daemo
     spec = new ds.DaemonSetSpec {
       selector = new k8s.LabelSelector { matchLabels = agentLabels }
       template = new k8s.PodTemplateSpec {
-
+        metadata = new k8s.PodTemplateMetadata { labels = agentLabels }
         spec = new k8s.PodSpec {
           serviceAccountName = agentServiceAccount
           containers = new Listing {

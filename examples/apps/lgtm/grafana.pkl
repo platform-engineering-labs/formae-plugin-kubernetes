@@ -165,7 +165,7 @@ function grafanaDeployment(k8sTarget: formae.Target, appNs: ns.Namespace, enable
       replicas = 1
       selector = new k8s.LabelSelector { matchLabels = grafanaLabels }
       template = new k8s.PodTemplateSpec {
-
+        metadata = new k8s.PodTemplateMetadata { labels = grafanaLabels }
         spec = new k8s.PodSpec {
           containers = new Listing {
             new k8s.Container {
