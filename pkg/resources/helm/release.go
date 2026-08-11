@@ -482,6 +482,28 @@ func storedChartUsable(current *release.Release, props *releaseProperties) bool 
 	return chartRefName(props.Chart) == current.Chart.Metadata.Name
 }
 
+// storedChartComplete reports whether the chart Helm read back out of the release
+// record is the whole chart, and so safe to render from.
+//
+// It often is not. `chart.Chart.dependencies` is unexported and carries no JSON
+// tag (helm/pkg/chart/chart.go:56), so Helm's own storage drops every subchart on
+// the way in, while `Metadata.Dependencies` — which is serialized — goes on
+// listing them. Rendering that remnant fails on any helper a dependency defines,
+// which for every ory chart is the whole templates directory:
+//
+//	template: no template "ory.extraEnvContainsEnvName" associated with template "gotpl"
+//
+// Consulted only where the chart is about to be rendered. settled() compares a
+// version and a set of values and renders nothing, so an incomplete stored chart
+// tells it nothing and must not stop it concluding a no-op — otherwise a
+// re-driven Create on a subchart chart plans an upgrade and re-runs its hooks.
+func storedChartComplete(current *release.Release) bool {
+	if current == nil || current.Chart == nil || current.Chart.Metadata == nil {
+		return false
+	}
+	return len(current.Chart.Metadata.Dependencies) == 0 || len(current.Chart.Dependencies()) > 0
+}
+
 // chartRefName reduces a chart reference to its chart name.
 func chartRefName(ref string) string {
 	ref = strings.TrimSuffix(ref, "/")
@@ -664,7 +686,7 @@ func (r *Release) submit(
 	// Reuse the stored chart when the forma asks for what is already deployed,
 	// so re-applying an unchanged release needs no repository access.
 	var chrt *chart.Chart
-	if storedChartUsable(current, props) {
+	if storedChartUsable(current, props) && storedChartComplete(current) {
 		chrt = current.Chart
 	} else {
 		chrt, err = loadChart(conf, props)
@@ -986,7 +1008,11 @@ func (r *Release) Delete(ctx context.Context, request *resource.DeleteRequest) (
 	// accepted. Returning before termination let a destroy-then-apply race the
 	// objects it had just asked Kubernetes to remove.
 	un.Wait = true
-	un.Timeout = defaultTimeoutSeconds * time.Second
+	// The timeout the release was installed with, not the package default: a
+	// release given timeoutSeconds = 1800 would otherwise have its uninstall cut
+	// off at 600s while stalled() waits 2x1800s before saying anything, leaving
+	// the command InProgress for the best part of an hour on dead work.
+	un.Timeout = releaseTimeout(rel)
 	// KeepHistory=false: formae's own state records the intent to delete, so a
 	// retained uninstall record buys nothing and makes a later reinstall of the
 	// same name need a replace strategy.
@@ -1005,7 +1031,16 @@ func (r *Release) Delete(ctx context.Context, request *resource.DeleteRequest) (
 	//
 	// Uninstall has no RunWithContext in Helm v3 (helm#12109 is not in), so
 	// u.Timeout is what bounds it.
+	//
+	// Registered before the goroutine starts, so no Status poll can slip between
+	// the two and see a record with no operation behind it. No cancel func is
+	// supplied for the same reason there is no RunWithContext: there is nothing to
+	// unwind. DrainInFlight still waits for it to deregister, and an uninstall cut
+	// short by a kill is picked up by the next Delete, which Helm makes idempotent.
+	registerFlight(r.Config, ns, name, deleteFlight(rel), nil)
+
 	go func() {
+		defer removeFlight(r.Config, ns, name)
 		defer invalidateInventory(r.Config)
 		_, _ = un.Run(name)
 	}()
@@ -1210,7 +1245,7 @@ func (r *Release) installStatus(
 			return nil, err
 		}
 		if !ready {
-			return inProgress(pendingID, reqID, nil, msg), nil
+			return readinessProgress(rel, flight, pendingID, reqID, msg), nil
 		}
 		props, err := json.Marshal(propertiesFromRelease(rel))
 		if err != nil {
@@ -1227,6 +1262,51 @@ func (r *Release) installStatus(
 	default:
 		return inProgress(pendingID, reqID, nil, fmt.Sprintf("release is %s", rel.Info.Status)), nil
 	}
+}
+
+// deleteFlight describes the uninstall Delete is about to start.
+//
+// Registering it is not bookkeeping, it is what keeps a live uninstall from being
+// called abandoned. `abandoned` is "a record this plugin owns, with no operation
+// behind it", so with nothing registered the first Status poll — 20s after Delete
+// under the default StatusCheckInterval — reports every uninstall slower than
+// that as abandoned and asks the agent to re-drive Delete, starting a second
+// uninstall of the same release. Slower than that is ordinary: a pre-delete hook,
+// or Wait=true sitting through a Pod's terminationGracePeriodSeconds.
+//
+// Bounded by the timeout recorded on the release so that the uninstall and the
+// stalled() verdict that judges it agree on how long it is allowed to take.
+func deleteFlight(rel *release.Release) inflight {
+	return inflight{
+		op:       opDelete,
+		revision: rel.Version,
+		deadline: time.Now().Add(releaseTimeout(rel)),
+	}
+}
+
+// readinessProgress decides what to report for a release Helm has recorded as
+// deployed whose objects are not ready yet.
+//
+// Under Wait=false, `deployed` means the apiserver accepted the manifests —
+// nothing more. A Pod that never starts (a typo'd image tag, a node with no room
+// for it) leaves that record untouched forever, so reporting InProgress on the
+// objects alone means reporting progress forever on work that will never finish.
+// The host does not save us: it fails an operation when the plugin goes silent,
+// never because the plugin keeps saying "still working".
+//
+// So the same clock stalled() uses for a pending release bounds this one, with the
+// same asymmetry — an operation this process is still running is never declared
+// dead, however long its hooks take.
+func readinessProgress(rel *release.Release, flight *inflight, pendingID, reqID, msg string) *resource.StatusResult {
+	if !stalled(rel, flight) {
+		return inProgress(pendingID, reqID, nil, msg)
+	}
+	return failure(pendingID, resource.OperationErrorCodeGeneralServiceException,
+		fmt.Sprintf("release %s/%s is recorded deployed but its objects did not become ready "+
+			"within %s: %s. Helm writes `deployed` once the apiserver accepts the manifests, so "+
+			"that record will not change on its own — inspect the objects, fix the chart or its "+
+			"values, and apply again",
+			rel.Namespace, rel.Name, 2*releaseTimeout(rel), msg))
 }
 
 // stalled reports whether a pending release has been pending long enough that no

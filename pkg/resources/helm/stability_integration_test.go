@@ -28,12 +28,20 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// stabilityNamespace is this file's own namespace, not the lifecycle test's.
+//
+// Sharing one was why the whole integration suite could not be run in a single
+// `go test` invocation: TestReleaseLifecycle deletes its namespace in cleanup,
+// and every test declared after it then failed on
+// `unable to create new content in namespace ... because it is being terminated`.
+const stabilityNamespace = "formae-helm-stability-it"
+
 // slowProps builds a request whose pre-install hook takes long enough that the
 // install is reliably still in flight when the test acts on it.
 func slowProps(t *testing.T, name, chart string, hookSeconds int) json.RawMessage {
 	t.Helper()
 	raw, err := json.Marshal(map[string]any{
-		"metadata": map[string]any{"name": name, "namespace": testNamespace},
+		"metadata": map[string]any{"name": name, "namespace": stabilityNamespace},
 		"chart":    chart,
 		"values":   map[string]any{"message": "hello", "hookSleepSeconds": hookSeconds},
 	})
@@ -45,7 +53,7 @@ func slowProps(t *testing.T, name, chart string, hookSeconds int) json.RawMessag
 
 func currentRelease(t *testing.T, r *Release, name string) *release.Release {
 	t.Helper()
-	conf, err := newActionConfig(r.Config, testNamespace)
+	conf, err := newActionConfig(r.Config, stabilityNamespace)
 	if err != nil {
 		t.Fatalf("newActionConfig: %v", err)
 	}
@@ -68,10 +76,10 @@ func purgeRelease(t *testing.T, r *Release, name string) {
 	// install races it: the goroutine goes on to write the record we just
 	// purged. Tests run sequentially, so draining everything is safe here.
 	DrainInFlight(30 * time.Second)
-	removeFlight(r.Config, testNamespace, name)
+	removeFlight(r.Config, stabilityNamespace, name)
 
 	if _, err := r.Delete(context.Background(), &resource.DeleteRequest{
-		NativeID:     prov.NativeID(testNamespace, name),
+		NativeID:     prov.NativeID(stabilityNamespace, name),
 		ResourceType: ResourceTypeRelease,
 	}); err != nil {
 		t.Logf("purge %s: %v", name, err)
@@ -90,7 +98,7 @@ func purgeRelease(t *testing.T, r *Release, name string) {
 func setUpRelease(t *testing.T, name string) (*Release, string) {
 	t.Helper()
 	r, _ := newTestRelease(t)
-	ensureNamespace(t, r.Client.CoreV1().Namespaces())
+	ensureNamespaceNamed(t, r.Client.CoreV1().Namespaces(), stabilityNamespace)
 	// Start clean as well as finish clean: a run killed mid-test leaves a
 	// release the next run would otherwise upgrade rather than install.
 	purgeRelease(t, r, name)
@@ -150,8 +158,8 @@ func TestReDrivenCreateRejoinsTheInstallAlreadyInFlight(t *testing.T) {
 	if final.OperationStatus != resource.OperationStatusSuccess {
 		t.Fatalf("rejoined install ended %s: %s", final.OperationStatus, final.StatusMessage)
 	}
-	if final.NativeID != prov.NativeID(testNamespace, name) {
-		t.Errorf("NativeID on success = %q, want %q", final.NativeID, prov.NativeID(testNamespace, name))
+	if final.NativeID != prov.NativeID(stabilityNamespace, name) {
+		t.Errorf("NativeID on success = %q, want %q", final.NativeID, prov.NativeID(stabilityNamespace, name))
 	}
 	if rel := currentRelease(t, r, name); rel.Version != 1 {
 		t.Errorf("revision = %d after a rejoined install, want 1", rel.Version)
@@ -251,7 +259,7 @@ func TestReDrivenCreateOnASettledReleaseRunsNoHelmOperation(t *testing.T) {
 		t.Errorf("revision = %d after re-driving a settled release, want 1", rel.Version)
 	}
 	// And therefore no second hook run.
-	jobs, err := r.Client.BatchV1().Jobs(testNamespace).List(ctx, metav1.ListOptions{})
+	jobs, err := r.Client.BatchV1().Jobs(stabilityNamespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		t.Fatalf("list jobs: %v", err)
 	}
@@ -328,7 +336,7 @@ func TestDrainLeavesTheReleaseFailedRatherThanPending(t *testing.T) {
 // they are worth testing on purpose rather than by luck.
 func wedge(t *testing.T, r *Release, name string) {
 	t.Helper()
-	conf, err := newActionConfig(r.Config, testNamespace)
+	conf, err := newActionConfig(r.Config, stabilityNamespace)
 	if err != nil {
 		t.Fatalf("newActionConfig: %v", err)
 	}
@@ -373,7 +381,7 @@ func TestStatusRecoversAReleaseWhoseFinalRecordWriteWasLost(t *testing.T) {
 	wedge(t, r, name)
 
 	res, err := r.Status(ctx, &resource.StatusRequest{
-		RequestID:    requestID(testNamespace, name, 1, opInstall),
+		RequestID:    requestID(stabilityNamespace, name, 1, opInstall),
 		ResourceType: ResourceTypeRelease,
 	})
 	if err != nil {
@@ -419,14 +427,14 @@ func TestStatusMarksAnIncompleteAbandonedReleaseFailed(t *testing.T) {
 	}
 
 	// Remove an object the chart renders, so the release is genuinely incomplete.
-	if err := r.Client.CoreV1().ConfigMaps(testNamespace).Delete(ctx,
+	if err := r.Client.CoreV1().ConfigMaps(stabilityNamespace).Delete(ctx,
 		name+"-config", metav1.DeleteOptions{}); err != nil {
 		t.Fatalf("delete chart ConfigMap: %v", err)
 	}
 	wedge(t, r, name)
 
 	res, err := r.Status(ctx, &resource.StatusRequest{
-		RequestID:    requestID(testNamespace, name, 1, opInstall),
+		RequestID:    requestID(stabilityNamespace, name, 1, opInstall),
 		ResourceType: ResourceTypeRelease,
 	})
 	if err != nil {
@@ -457,7 +465,7 @@ func TestStatusMarksAnIncompleteAbandonedReleaseFailed(t *testing.T) {
 	if final := pollUntilTerminal(t, r, "", retried.ProgressResult.RequestID); final.OperationStatus != resource.OperationStatusSuccess {
 		t.Fatalf("upgrade over the recovered release ended %s: %s", final.OperationStatus, final.StatusMessage)
 	}
-	if _, err := r.Client.CoreV1().ConfigMaps(testNamespace).Get(ctx, name+"-config", metav1.GetOptions{}); err != nil {
+	if _, err := r.Client.CoreV1().ConfigMaps(stabilityNamespace).Get(ctx, name+"-config", metav1.GetOptions{}); err != nil {
 		t.Errorf("chart ConfigMap was not restored by the recovery upgrade: %v", err)
 	}
 }
@@ -465,7 +473,7 @@ func TestStatusMarksAnIncompleteAbandonedReleaseFailed(t *testing.T) {
 // hookCreatedAt reports when the chart's pre-install hook Job was created.
 func hookCreatedAt(t *testing.T, r *Release, name string) (time.Time, bool) {
 	t.Helper()
-	job, err := r.Client.BatchV1().Jobs(testNamespace).Get(
+	job, err := r.Client.BatchV1().Jobs(stabilityNamespace).Get(
 		context.Background(), name+"-preinstall", metav1.GetOptions{})
 	if err != nil {
 		return time.Time{}, false
@@ -481,7 +489,7 @@ func TestTimeoutIsRecoverableFromTheReleaseRecord(t *testing.T) {
 	ctx := context.Background()
 
 	raw, err := json.Marshal(map[string]any{
-		"metadata":       map[string]any{"name": name, "namespace": testNamespace},
+		"metadata":       map[string]any{"name": name, "namespace": stabilityNamespace},
 		"chart":          chart,
 		"values":         map[string]any{"message": "hello", "hookSleepSeconds": 0},
 		"timeoutSeconds": 1800,
@@ -506,7 +514,7 @@ func TestTimeoutIsRecoverableFromTheReleaseRecord(t *testing.T) {
 	// And it must not leak back out as part of the resource, or every later
 	// plain apply reads as drift.
 	read, err := r.Read(ctx, &resource.ReadRequest{
-		NativeID:     prov.NativeID(testNamespace, name),
+		NativeID:     prov.NativeID(stabilityNamespace, name),
 		ResourceType: ResourceTypeRelease,
 	})
 	if err != nil {

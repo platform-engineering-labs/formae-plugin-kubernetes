@@ -302,8 +302,14 @@ func TestReleaseLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if del.ProgressResult.OperationStatus != resource.OperationStatusSuccess {
-		t.Fatalf("Delete returned %s", del.ProgressResult.OperationStatus)
+	// Fire-and-poll, like install: Helm blocks on pre-delete and post-delete
+	// hooks regardless of Wait, so Delete submits and Status waits for the record
+	// to disappear.
+	if del.ProgressResult.OperationStatus != resource.OperationStatusInProgress {
+		t.Fatalf("Delete returned %s, want InProgress", del.ProgressResult.OperationStatus)
+	}
+	if final := pollUntilTerminal(t, r, nativeID, del.ProgressResult.RequestID); final.OperationStatus != resource.OperationStatusSuccess {
+		t.Fatalf("uninstall ended %s: %s", final.OperationStatus, final.StatusMessage)
 	}
 
 	// Read must now report NotFound so formae drops it from state.
@@ -324,13 +330,18 @@ func TestReleaseLifecycle(t *testing.T) {
 
 func ensureNamespace(t *testing.T, nsClient corev1.NamespaceInterface) {
 	t.Helper()
-	_, err := nsClient.Get(context.Background(), testNamespace, metav1.GetOptions{})
+	ensureNamespaceNamed(t, nsClient, testNamespace)
+}
+
+func ensureNamespaceNamed(t *testing.T, nsClient corev1.NamespaceInterface, name string) {
+	t.Helper()
+	_, err := nsClient.Get(context.Background(), name, metav1.GetOptions{})
 	if err == nil {
 		return
 	}
-	ns := &apicorev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: testNamespace}}
+	ns := &apicorev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}}
 	if _, err := nsClient.Create(context.Background(), ns, metav1.CreateOptions{}); err != nil {
-		t.Fatalf("create namespace %s: %v", testNamespace, err)
+		t.Fatalf("create namespace %s: %v", name, err)
 	}
 }
 

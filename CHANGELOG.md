@@ -238,6 +238,26 @@ formae agent.
   `OnDelete` StatefulSet, partitioned StatefulSet, HPA coexistence), each with
   `create.pkl`/`update.pkl` and the old-vs-new plugin behavior in the header.
 
+- **CI runs the `integration` tests against a kind cluster**
+  (`.github/workflows/integration-pr.yml`). Nothing ran them before: they were
+  green only on whichever developer's machine last touched them, and several had
+  been red for months against behaviour that had since changed — which is how a
+  live uninstall being reported as abandoned reached a release branch. They need
+  no formae binary and no agent, only an apiserver, so kind is the whole
+  environment.
+
+  Every package is included bar three: `apps`, `batch` and `core` still expect
+  `Create`/`Delete` to return `Success` where the plugin returns `InProgress`
+  (9 assertions), and un-rotting them is separate work. `test/` keeps its own
+  workflows, which need an agent.
+
+  Two things had to change for the suite to be runnable as a whole rather than
+  one test at a time: the stability tests now use their own namespace instead of
+  the lifecycle test's, which that test deletes in cleanup — every test declared
+  after it failed with `namespace is being terminated` — and the kube context
+  comes from `FORMAE_TEST_KUBE_CONTEXT` rather than being pinned to one
+  developer's `orbstack`.
+
 - **Chart-owned objects are collapsed in discovery.** Objects a Helm release
   renders no longer surface as unmanaged alongside the release that owns them.
   Ownership comes from the release's stored manifest rather than the
@@ -256,6 +276,55 @@ formae agent.
   release being upgradable through formae and not.
 
 ### Fixed
+
+- **A live uninstall is no longer reported as abandoned.** `Delete` started its
+  Helm uninstall without registering it in the in-flight registry, and
+  "a release record this plugin owns with no operation behind it" is exactly how
+  an abandoned uninstall is recognised. So the first `Status` poll — 20 seconds
+  after `Delete` under the default `statusCheckInterval` — declared every
+  uninstall slower than that abandoned, with a recoverable error code that asks
+  the agent to re-drive `Delete`, starting a second concurrent uninstall of the
+  same release. Slower than 20s is ordinary: a `pre-delete` hook, or `Wait=true`
+  sitting through a Pod's `terminationGracePeriodSeconds`.
+
+  Only podinfo-sized charts escaped it, which is why the conformance destroy step
+  passed throughout: its record is purged before the first poll. No test chart in
+  the repo declares a delete hook, and the kratos scenarios call
+  `formae destroy` from a `trap EXIT` cleanup that swallows failures.
+
+- **A release whose objects never become ready now fails instead of polling
+  forever.** Under `Wait=false` Helm records `deployed` as soon as the apiserver
+  accepts the manifests, and that record never changes again — so a Pod stuck in
+  `ImagePullBackOff` from a typo'd tag, or one no node has room for, left `Status`
+  answering `InProgress` for eternity. Nothing above caught it either: the agent
+  fails an operation when a plugin goes *silent*, never because it keeps
+  reporting progress, and there is no cap on how long an operation may run. The
+  readiness wait is now bounded by the timeout recorded on the release, the same
+  clock that already bounds a pending release, and the failure names the object
+  that never came up. An operation this process is still running is exempt, so a
+  slow hook is never cut short.
+
+- **An uninstall is bounded by the release's own timeout**, not the package
+  default. A release given `timeoutSeconds = 1800` had its uninstall cut off at
+  600s while the stalled-release verdict waited twice 1800s before saying so,
+  leaving the command `InProgress` for the best part of an hour on work nothing
+  was doing.
+
+- **Upgrading a chart with subcharts no longer fails to render.** Re-applying the
+  deployed version reuses the chart stored in the release record instead of
+  fetching it, but `chart.Chart.dependencies` is unexported and carries no JSON
+  tag (`helm/pkg/chart/chart.go:56`), so Helm's own storage drops every subchart
+  on the way in — while `Metadata.Dependencies`, which is serialized, goes on
+  listing them. Rendering that remnant failed on any helper a dependency defines,
+  which for an ory chart is the whole templates directory:
+
+  ```
+  template: no template "ory.extraEnvContainsEnvName" associated with template "gotpl"
+  ```
+
+  Such a chart is now re-fetched. The no-op check that stops a re-driven `Create`
+  re-running hooks is unaffected — it compares a version and a set of values and
+  renders nothing, so an incomplete stored chart tells it nothing.
 
 - **The plugin's own release labels no longer leak into resource state.**
   `formae.dev/managed` — and now `formae.dev/timeout-seconds` — were reported

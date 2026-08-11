@@ -1,0 +1,73 @@
+name: Integration (kind)
+
+# Runs the //go:build integration tests against a real apiserver.
+#
+# These tests talk to a cluster through the ambient kubeconfig and need no formae
+# agent and no plugin install, so a kind cluster is the whole environment. Before
+# this workflow existed nothing ran them: they were green only on whichever
+# developer's machine last touched them, and several had been silently red for
+# months against behaviour that had since changed (Create and Delete returning
+# InProgress rather than Success).
+#
+# Every package is included except the three named in EXCLUDED_PACKAGES, so a new
+# package is covered the moment it exists. Deleting a line from that list, once
+# its tests are honest, is the whole change needed.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # apps, batch and core still expect Create/Delete to return Success where
+      # the plugin has long returned InProgress (9 assertions across the three).
+      # test/ is excluded because those suites need a formae binary and a running
+      # agent — helm-interop-pr.yml and helm-stability-pr.yml own them.
+      EXCLUDED_PACKAGES: "/pkg/resources/apps$|/pkg/resources/batch$|/pkg/resources/core$|/test/"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+
+      - name: Restore Go module cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: gomod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            gomod-${{ runner.os }}-
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: formae-integration
+          node_image: "kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
+
+      - name: Show cluster
+        run: |
+          kubectl config current-context
+          kubectl version
+
+      - name: Run integration tests
+        # FORMAE_TEST_KUBE_CONTEXT is left unset on purpose: the tests then use
+        # the ambient context, which kind-action has already pointed at the
+        # cluster it just created.
+        # Fed to xargs rather than expanded into an argument list, so the package
+        # names cannot be mangled by word splitting. `xargs <file` rather than
+        # `xargs -a`, so the same line runs on a developer's macOS shell too.
+        run: |
+          set -euo pipefail
+          go list -tags=integration ./... | grep -Ev "$EXCLUDED_PACKAGES" > /tmp/pkgs.txt
+          cat /tmp/pkgs.txt
+          xargs < /tmp/pkgs.txt go test -tags=integration -timeout 25m

@@ -290,10 +290,16 @@ func TestKratosChart(t *testing.T) {
 	}
 
 	// --- Delete, and the documented residue --------------------------------
-	if _, err := r.Delete(ctx, &resource.DeleteRequest{
+	// Fire-and-poll, like install: kratos has pre-delete hooks, so Delete submits
+	// and the record's absence is what says the uninstall finished.
+	del, err := r.Delete(ctx, &resource.DeleteRequest{
 		NativeID: nativeID, ResourceType: ResourceTypeRelease,
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("Delete: %v", err)
+	}
+	if final := pollUntilTerminal(t, r, nativeID, del.ProgressResult.RequestID); final.OperationStatus != resource.OperationStatusSuccess {
+		t.Fatalf("uninstall ended %s: %s", final.OperationStatus, final.StatusMessage)
 	}
 
 	read, err = r.Read(ctx, &resource.ReadRequest{NativeID: nativeID, ResourceType: ResourceTypeRelease})
