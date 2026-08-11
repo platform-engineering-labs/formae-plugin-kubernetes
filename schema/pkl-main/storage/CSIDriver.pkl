@@ -46,9 +46,11 @@ open class CSIDriver extends k8s.Resource {
   spec: CSIDriverSpec
 }
 
-/// CSIDriver spec is fully immutable post-create — the API server
-/// rejects any update with "field is immutable". Every field below
-/// is marked createOnly so formae surfaces the violation at plan time.
+/// Most of CSIDriver spec is immutable post-create — the API server
+/// rejects an update with "field is immutable". Those fields are marked
+/// createOnly so formae surfaces the violation at plan time. The
+/// exceptions are `requiresRepublish` and `tokenRequests`, mutable since
+/// Kubernetes 1.22, which update in place.
 @k8s.SubResourceHint {}
 open class CSIDriverSpec extends formae.SubResource {
   @k8s.FieldHint { hasProviderDefault = true; createOnly = true }
@@ -57,13 +59,13 @@ open class CSIDriverSpec extends formae.SubResource {
   @k8s.FieldHint { createOnly = true }
   attachRequired: Boolean?
 
-  @k8s.FieldHint { hasProviderDefault = true; createOnly = true }
+  @k8s.FieldHint { hasProviderDefault = true }
   requiresRepublish: Boolean?
 
   @k8s.FieldHint { hasProviderDefault = true; createOnly = true }
   storageCapacity: Boolean?
 
-  @k8s.FieldHint { createOnly = true }
+  @k8s.FieldHint {}
   tokenRequests: Listing<TokenRequest>?
 
   @k8s.FieldHint { hasProviderDefault = true; createOnly = true }

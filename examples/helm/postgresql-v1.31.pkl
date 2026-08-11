@@ -13,7 +13,7 @@
 ///
 /// Usage:
 ///   pkl eval examples/helm/postgresql-v1.31.pkl
-///   formae apply --mode reconcile --yes --watch examples/helm/postgresql-v1.31.pkl
+///   formae apply --mode reconcile --yes examples/helm/postgresql-v1.31.pkl
 ///
 /// Requires:
 ///   - pkl-reader-helm binary on PATH (see helm/README.md "Install pkl-reader-helm")

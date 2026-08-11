@@ -97,6 +97,13 @@ function allResources(k8sTarget: formae.Target, enableDemoTraffic: Boolean, enab
   let (_grafanaRest = grafana.allResourcesExceptSvc(k8sTarget, _ns, namespaceName, enableGrafanaAdminAuth))
     new {
       grafanaSvc = _grafanaSvc
+      // Handle for cross-plugin Resolvables: the managed Grafana admin Secret,
+      // so a Grafana Target can source its basic-auth password from
+      // `grafanaAdminSecret.res.secretValue.at("admin-password")` instead of a
+      // GRAFANA_AUTH env var. Only its `.res` resolvable is used here (resolvables
+      // key on label/stack), so this adds no duplicate resource — the Secret
+      // itself is created once inside `_grafanaRest` when enableGrafanaAdminAuth.
+      grafanaAdminSecret = grafana.adminSecret(k8sTarget, _ns)
       resources = new Listing {
         _ns
         _creds

@@ -13,7 +13,7 @@ import "common.pkl"
 // =============================================================================
 
 // NOTE: mapJobSpec/mapCronJobSpec take prefix to wire pod serviceAccountName.
-function mapJob(src: Any, prefix: String, namespace: String): job.Job =
+function mapJob(src: Any, prefix: String, namespace: common.NamespaceArg): job.Job =
   new job.Job {
     label = common.makeLabel(prefix, "job", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)
@@ -50,7 +50,7 @@ function mapJobSpec(src: Any, ownerName: String, prefix: String): k8s.JobSpec =
 // CronJob
 // =============================================================================
 
-function mapCronJob(src: Any, prefix: String, namespace: String): cj.CronJob =
+function mapCronJob(src: Any, prefix: String, namespace: common.NamespaceArg): cj.CronJob =
   new cj.CronJob {
     label = common.makeLabel(prefix, "cronjob", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)

@@ -10,7 +10,7 @@ import "common.pkl"
 // HorizontalPodAutoscaler
 // =============================================================================
 
-function mapHorizontalPodAutoscaler(src: Any, prefix: String, namespace: String): hpa.HorizontalPodAutoscaler =
+function mapHorizontalPodAutoscaler(src: Any, prefix: String, namespace: common.NamespaceArg): hpa.HorizontalPodAutoscaler =
   new hpa.HorizontalPodAutoscaler {
     label = common.makeLabel(prefix, "horizontalpodautoscaler", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)

@@ -28,7 +28,7 @@ helm repo update
 
 ```bash
 pkl project resolve examples/flux
-formae apply --mode reconcile --yes --watch examples/flux/flux-helm.pkl
+formae apply --mode reconcile --yes examples/flux/flux-helm.pkl
 ```
 
 Verify:

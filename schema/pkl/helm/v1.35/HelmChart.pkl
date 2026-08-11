@@ -26,6 +26,7 @@ module HelmChart
 
 import "@helm/helm.pkl"
 import "@formae/formae.pkl"
+import "../../v1.35/core/Namespace.pkl" as ns
 
 import "mappers/dispatch.pkl"
 
@@ -51,12 +52,39 @@ labelPrefix: String = releaseName
 /// When false, throw on unsupported types.
 skipUnsupported: Boolean = true
 
+/// When true, emit a Namespace resource named `namespace` and wire every
+/// namespaced resource's `metadata.namespace` to it as a formae reference, so
+/// formae creates the namespace BEFORE the resources placed in it. Fixes the
+/// "namespaces <x> not found" apply race that hits charts targeting a
+/// namespace the chart itself does not template (e.g. ingress-nginx). Default
+/// false preserves prior behaviour: the namespace is assumed to already exist
+/// or to be modelled separately.
+createNamespace: Boolean = false
+
+/// The Namespace resource created when `createNamespace` is true (else null).
+hidden _namespaceResource: ns.Namespace? =
+  if (createNamespace)
+    new ns.Namespace {
+      label = "\(labelPrefix)-namespace-\(namespace)"
+      metadata = new ns.NamespaceMetadata { name = namespace }
+    }
+  else null
+
+/// Namespace value threaded to the mappers. When `createNamespace` is set it
+/// is a resolvable reference to the created Namespace (that reference is the
+/// dependency edge formae orders on); otherwise the literal `namespace`.
+hidden _namespaceArg: (String | formae.Resolvable) =
+  if (createNamespace) _namespaceResource!!.res.name else namespace
+
 /// The rendered Helm chart resources, mapped to k8s types.
 /// Ready to be spread into a `forma {}` block.
 resources: Listing<formae.Resource> = new Listing {
+  when (createNamespace) {
+    _namespaceResource
+  }
   for (_key, _res in _rendered) {
     when (dispatch.isSupported(_res.apiVersion, _res.kind)) {
-      dispatch.mapResource(_res, labelPrefix, namespace)
+      dispatch.mapResource(_res, labelPrefix, _namespaceArg)
     }
     // Kinds without a typed mapper (CRDs the chart ships, custom-resource
     // instances) fall back to the generic K8S::Custom::Resource catch-all, so

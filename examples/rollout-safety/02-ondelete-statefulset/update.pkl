@@ -1,0 +1,46 @@
+/// Case 02 — StatefulSet OnDelete. UPDATE: bump image to nginx:1.28.
+///
+///   formae apply examples/rollout-safety/02-ondelete-statefulset/update.pkl
+///
+/// OnDelete → the controller does NOT recreate pods, so updatedReplicas stays 0
+/// until you manually delete pods. readyReplicas stays 3.
+/// OLD plugin: InProgress forever.  NEW plugin: Success once ready.
+amends "@formae/forma.pkl"
+
+import "@formae/formae.pkl"
+import "@clusters/local.pkl" as cluster
+import "@k8s/v1.34/apps/StatefulSet.pkl" as sts
+import "@k8s/v1.34/k8s.pkl" as k8s
+
+local k8sTarget = cluster.target("rollout-ondelete")
+
+forma {
+  new formae.Stack { label = "rollout-ondelete"; description = "Rollout-safety case 02: OnDelete StatefulSet" }
+  k8sTarget
+  new sts.StatefulSet {
+    target = k8sTarget.res
+    label = "ondelete-demo"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "ondelete-demo"
+      namespace = "default"
+    }
+    spec = new sts.StatefulSetSpec {
+      serviceName = "ondelete-demo"
+      replicas = 3
+      updateStrategy = new sts.StatefulSetUpdateStrategy { type = "OnDelete" }
+      selector = new k8s.LabelSelector {
+        matchLabels = new Mapping { ["app"] = "ondelete-demo" }
+      }
+      template = new k8s.PodTemplateSpec {
+        metadata = new k8s.PodTemplateMetadata {
+          labels = new Mapping { ["app"] = "ondelete-demo" }
+        }
+        spec = new k8s.PodSpec {
+          containers {
+            new k8s.Container { name = "c"; image = "nginx:1.28" }
+          }
+        }
+      }
+    }
+  }
+}

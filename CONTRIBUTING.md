@@ -35,7 +35,7 @@ make install
 formae agent start
 
 # Apply example resources
-formae apply --mode reconcile --watch examples/webapp.pkl
+formae apply --mode reconcile examples/webapp.pkl
 ```
 
 ## Credentials Setup for Testing

@@ -13,7 +13,7 @@ import "common.pkl"
 // Deployment
 // =============================================================================
 
-function mapDeployment(src: Any, prefix: String, namespace: String): dep.Deployment =
+function mapDeployment(src: Any, prefix: String, namespace: common.NamespaceArg): dep.Deployment =
   new dep.Deployment {
     label = common.makeLabel(prefix, "deployment", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)
@@ -65,7 +65,7 @@ function mapDeploymentStrategy(src: Any): dep.DeploymentStrategy =
 // ReplicaSet
 // =============================================================================
 
-function mapReplicaSet(src: Any, prefix: String, namespace: String): rs.ReplicaSet =
+function mapReplicaSet(src: Any, prefix: String, namespace: common.NamespaceArg): rs.ReplicaSet =
   new rs.ReplicaSet {
     label = common.makeLabel(prefix, "replicaset", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)
@@ -85,7 +85,7 @@ function mapReplicaSet(src: Any, prefix: String, namespace: String): rs.ReplicaS
 // StatefulSet
 // =============================================================================
 
-function mapStatefulSet(src: Any, prefix: String, namespace: String): sts.StatefulSet =
+function mapStatefulSet(src: Any, prefix: String, namespace: common.NamespaceArg): sts.StatefulSet =
   new sts.StatefulSet {
     label = common.makeLabel(prefix, "statefulset", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)
@@ -167,7 +167,7 @@ function mapPVCTemplate(src: Any): sts.PersistentVolumeClaimTemplate =
 // DaemonSet
 // =============================================================================
 
-function mapDaemonSet(src: Any, prefix: String, namespace: String): ds.DaemonSet =
+function mapDaemonSet(src: Any, prefix: String, namespace: common.NamespaceArg): ds.DaemonSet =
   new ds.DaemonSet {
     label = common.makeLabel(prefix, "daemonset", src.metadata.name)
     metadata = common.mapObjectMeta(src.metadata, namespace)

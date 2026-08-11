@@ -10,7 +10,7 @@ import "common.pkl"
 // PriorityClass (cluster-scoped)
 // =============================================================================
 
-function mapPriorityClass(src: Any, prefix: String, _namespace: String): pc.PriorityClass =
+function mapPriorityClass(src: Any, prefix: String, _namespace: common.NamespaceArg): pc.PriorityClass =
   new pc.PriorityClass {
     label = common.makeLabel(prefix, "priorityclass", src.metadata.name)
     metadata = common.mapClusterMeta(src.metadata)

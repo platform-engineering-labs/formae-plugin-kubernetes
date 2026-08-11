@@ -38,25 +38,25 @@ the env-var support matrix.
 
 ```bash
 # Local cluster
-formae apply --mode reconcile --yes --watch \
+formae apply --mode reconcile --yes \
   examples/crossplane/local.pkl
 
 # AWS EKS
-formae apply --mode reconcile --yes --watch \
+formae apply --mode reconcile --yes \
   examples/crossplane/aws.pkl
 
 # Azure AKS
-formae apply --mode reconcile --yes --watch \
+formae apply --mode reconcile --yes \
   examples/crossplane/azure.pkl
 
 # GCP GKE
 GCP_PROJECT=my-gcp-project \
-  formae apply --mode reconcile --yes --watch \
+  formae apply --mode reconcile --yes \
   examples/crossplane/gcp.pkl
 
 # Oracle OKE
 OCI_COMPARTMENT_ID=ocid1.compartment.oc1..xxx \
-  formae apply --mode reconcile --yes --watch \
+  formae apply --mode reconcile --yes \
   examples/crossplane/oci.pkl
 ```
 

@@ -78,7 +78,7 @@ function isSupported(apiVersion: String, kind: String): Boolean =
 
 /// Map a K8S resource to its k8s typed equivalent.
 /// The caller must verify isSupported() first; calling with unsupported types will throw.
-function mapResource(src: Any, prefix: String, namespace: String): formae.Resource =
+function mapResource(src: Any, prefix: String, namespace: (String | formae.Resolvable)): formae.Resource =
   let (apiVersion = src.apiVersion)
   let (kind = src.kind)
   // core/v1

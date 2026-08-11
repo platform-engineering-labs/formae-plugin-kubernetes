@@ -10,7 +10,7 @@ import "common.pkl"
 // RuntimeClass (cluster-scoped)
 // =============================================================================
 
-function mapRuntimeClass(src: Any, prefix: String, _namespace: String): rc.RuntimeClass =
+function mapRuntimeClass(src: Any, prefix: String, _namespace: common.NamespaceArg): rc.RuntimeClass =
   new rc.RuntimeClass {
     label = common.makeLabel(prefix, "runtimeclass", src.metadata.name)
     metadata = common.mapClusterMeta(src.metadata)

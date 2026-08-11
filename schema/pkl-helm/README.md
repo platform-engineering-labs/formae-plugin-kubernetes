@@ -111,8 +111,8 @@ forma {
 Apply / destroy:
 
 ```bash
-formae apply <forma>.pkl --mode reconcile --yes --watch
-formae destroy <forma>.pkl --yes --watch
+formae apply <forma>.pkl --mode reconcile --yes
+formae destroy <forma>.pkl --yes
 ```
 
 `HelmChart` fields:

@@ -260,6 +260,14 @@ func (ds *DaemonSet) operationStatus(daemonset *appsv1.DaemonSet) resource.Opera
 	if !prov.ObservedGenerationReady(&daemonset.ObjectMeta, daemonset.Status.ObservedGeneration) {
 		return resource.OperationStatusInProgress
 	}
+	// OnDelete: pods are only replaced when manually deleted, so updated count
+	// never advances on its own — gate on readiness of the desired set only.
+	if daemonset.Spec.UpdateStrategy.Type == appsv1.OnDeleteDaemonSetStrategyType {
+		if daemonset.Status.NumberReady < daemonset.Status.DesiredNumberScheduled {
+			return resource.OperationStatusInProgress
+		}
+		return resource.OperationStatusSuccess
+	}
 	if daemonset.Status.UpdatedNumberScheduled < daemonset.Status.DesiredNumberScheduled ||
 		daemonset.Status.NumberReady < daemonset.Status.DesiredNumberScheduled {
 		return resource.OperationStatusInProgress

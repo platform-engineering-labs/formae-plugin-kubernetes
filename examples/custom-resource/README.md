@@ -33,7 +33,7 @@ the plugin NativeID.
 ```bash
 make install                           # build + install the plugin
 pkl project resolve examples/custom-resource
-formae apply --mode reconcile --yes --watch examples/custom-resource/crd-and-widget.pkl
+formae apply --mode reconcile --yes examples/custom-resource/crd-and-widget.pkl
 
 # verify
 kubectl get crd widgets.example.com

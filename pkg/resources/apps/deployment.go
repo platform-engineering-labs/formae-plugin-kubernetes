@@ -69,6 +69,7 @@ func (d *Deployment) Create(ctx context.Context, request *resource.CreateRequest
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deployment live state: %w", err)
 	}
+	properties = prov.StripUnownedReplicas(properties, result.ManagedFields)
 
 	return &resource.CreateResult{
 		ProgressResult: &resource.ProgressResult{
@@ -102,6 +103,7 @@ func (d *Deployment) Read(ctx context.Context, request *resource.ReadRequest) (*
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deployment live state: %w", err)
 	}
+	properties = prov.StripUnownedReplicas(properties, result.ManagedFields)
 
 	return &resource.ReadResult{
 		ResourceType: request.ResourceType,
@@ -140,6 +142,7 @@ func (d *Deployment) Update(ctx context.Context, request *resource.UpdateRequest
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deployment live state: %w", err)
 	}
+	properties = prov.StripUnownedReplicas(properties, result.ManagedFields)
 
 	return &resource.UpdateResult{
 		ProgressResult: &resource.ProgressResult{
@@ -209,6 +212,7 @@ func (d *Deployment) Status(ctx context.Context, request *resource.StatusRequest
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deployment live state: %w", err)
 	}
+	properties = prov.StripUnownedReplicas(properties, result.ManagedFields)
 
 	return &resource.StatusResult{
 		ProgressResult: &resource.ProgressResult{
@@ -270,6 +274,12 @@ func (d *Deployment) operationStatus(deploy *appsv1.Deployment) resource.Operati
 	}
 	if !prov.ObservedGenerationReady(&deploy.ObjectMeta, deploy.Status.ObservedGeneration) {
 		return resource.OperationStatusInProgress
+	}
+	// A paused Deployment is the user's declared desired state: the controller
+	// will not converge replicas while paused, so once it has observed the
+	// paused spec, treat it as Success rather than polling forever.
+	if deploy.Spec.Paused {
+		return resource.OperationStatusSuccess
 	}
 	var desired int32 = 1
 	if deploy.Spec.Replicas != nil {

@@ -209,6 +209,7 @@ silently wrong.
 ```bash
 pkl project resolve examples/helm/
 pkl eval --project-dir examples/ examples/helm/release-kratos.pkl
+pkl eval --project-dir examples/ examples/helm/nginx.pkl
 ```
 
 **They evaluate, but `formae apply` on them currently fails.**

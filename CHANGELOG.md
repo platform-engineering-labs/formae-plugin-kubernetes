@@ -200,6 +200,10 @@ formae agent.
   objects a chart *renders*, and a release Secret appears in no manifest. Only the
   secret driver is covered, which is the one this plugin uses.
 
+- `examples/rollout-safety/` — one folder per case (paused Deployment,
+  `OnDelete` StatefulSet, partitioned StatefulSet, HPA coexistence), each with
+  `create.pkl`/`update.pkl` and the old-vs-new plugin behavior in the header.
+
 - **Chart-owned objects are collapsed in discovery.** Objects a Helm release
   renders no longer surface as unmanaged alongside the release that owns them.
   Ownership comes from the release's stored manifest rather than the
@@ -224,6 +228,60 @@ formae agent.
   back in `metadata.labels`, which put them into `formae extract` output and made
   them read as drift against a forma that never declared them.
 
+- **Paused Deployments settle instead of polling forever.** A `Deployment` with
+  `spec.paused: true` never converges its replica counts — the controller stops
+  reconciling by design — so `Status()` reported `InProgress` until the operation
+  timed out. A paused Deployment is now `Success` once the apiserver has observed
+  the paused spec.
+- **StatefulSet `OnDelete` and partitioned rollouts settle.** With
+  `updateStrategy.type: OnDelete`, pods are only replaced when deleted by hand, so
+  `status.updatedReplicas` never advances and the rollout looked stuck forever.
+  `OnDelete` now gates on readiness of the desired set only. With
+  `rollingUpdate.partition: N`, only ordinals `>= N` are updated, so the reachable
+  updated count is `replicas - partition` (floored at 0) rather than `replicas`.
+- **DaemonSet `OnDelete` rollouts settle.** Same root cause as the StatefulSet
+  case: `status.updatedNumberScheduled` never reaches
+  `desiredNumberScheduled` under `OnDelete`, so status now gates on
+  `numberReady` alone.
+- **No more false drift against an HPA.** When a `HorizontalPodAutoscaler` scales
+  a `Deployment`, `ReplicaSet`, or `StatefulSet`, the HPA — not formae — owns
+  `spec.replicas`. formae still read the live count back and reported it as drift
+  against a forma that deliberately omitted `replicas`, every reconcile. The
+  plugin now consults `metadata.managedFields` and strips `spec.replicas` from
+  reported state whenever the `formae` field manager does not own it. A forma
+  that *does* declare `replicas` is unaffected — formae owns the field and it
+  keeps drifting as before, which is the intended behavior for that case.
+- **Over-marked `createOnly` fields no longer force a destructive replace.** Every
+  `createOnly` field makes formae plan a delete-then-create replace when the value
+  changes. Five fields were marked immutable but are in fact accepted in place by
+  the apiserver, so formae was destroying resources for changes Kubernetes would
+  have taken: `CSIDriver.spec.requiresRepublish`, `CSIDriver.spec.tokenRequests`
+  (both mutable since Kubernetes 1.22), `PriorityClass.globalDefault`,
+  `RuntimeClass.overhead`, and `RuntimeClass.scheduling`. Each verdict was
+  verified against a live apiserver. The fields that are genuinely immutable keep
+  `createOnly`, and their per-field docstrings say so.
+
+### Changed
+
+- **Rollout progress is visible while an operation runs.** The plugin blanked
+  `StatusMessage` on every non-`Failure` result, so the per-resource `reason` row
+  stayed empty during a rollout. Provisioner messages now pass through on
+  `InProgress` (e.g. `replicas: 2/3 ready`) and are blanked only on terminal
+  `Success`, where a lingering message is just noise.
+
+## [0.1.10]
+
+### Changed
+
+- Drop the removed `--watch` flag from the example commands in the README,
+  CONTRIBUTING, the helm/flux/crossplane/bookstore/custom-resource docs, and
+  the example file headers. `formae apply`/`destroy` are submit-then-poll.
+
+## [0.1.9]
+
+### Changed
+
+- Bump examples to the latest formae 0.88.0 schema.
 
 ## [0.1.8]
 
