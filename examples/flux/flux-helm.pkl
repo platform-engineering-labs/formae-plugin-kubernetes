@@ -1,15 +1,13 @@
 /*
  * Install Flux end-to-end with formae ONLY (no kubectl) via Helm.
  *
- * The fluxcd-community/flux2 chart ships both the controllers (typed K8s
- * resources) and 14 CRDs. HelmChart renders it at pkl-eval time; typed kinds
- * map to typed resources, and the CRDs fall back to K8S::Custom::Resource —
- * so a single `formae apply` installs the whole operator.
+ * The fluxcd-community/flux2 chart ships both the controllers and 14 CRDs.
+ * K8S::Helm::Release hands the whole chart to the embedded Helm SDK, so Helm
+ * installs the CRDs before the controllers that need them and formae manages
+ * one resource: the release. A single `formae apply` installs the operator.
  *
- * Prereqs (tooling only, no cluster mutation):
- *   helm repo add fluxcd-community https://fluxcd-community.github.io/helm-charts
- *   helm repo update
- *   pkl-reader-helm on PATH
+ * Prereqs: none beyond a reachable cluster. The plugin embeds the Helm SDK, so
+ * there is no `helm repo add` and no reader binary on PATH.
  *
  * Apply:
  *   pkl project resolve examples/flux
@@ -19,20 +17,12 @@ amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
 import "@k8s/v1.33/k8s.pkl" as k8s
 import "@k8s/v1.33/core/Namespace.pkl" as ns
-import "@k8s/helm/v1.33/HelmChart.pkl"
-
-local flux = new HelmChart {
-  chart = "fluxcd-community/flux2"
-  version = "2.18.4"
-  releaseName = "flux"
-  namespace = "flux-system"
-  values = new Dynamic {}
-}
+import "@k8s/v1.33/helm/Release.pkl" as helm
 
 forma {
   new formae.Stack {
     label = "flux"
-    description = "Flux installed via Helm (controllers typed + 14 CRDs via catch-all)"
+    description = "Flux installed via Helm (controllers + 14 CRDs, one release)"
   }
 
   new formae.Target {
@@ -43,12 +33,23 @@ forma {
     }
   }
 
-  new ns.Namespace {
+  local fluxNs = new ns.Namespace {
     label = "flux-system-namespace"
     metadata = new ns.NamespaceMetadata { name = "flux-system" }
   }
+  fluxNs
 
-  for (resource in flux.resources) {
-    resource
+  new helm.Release {
+    label = "flux"
+    metadata {
+      name = "flux"
+      // Resolved from the Namespace above so formae orders the two and owns
+      // the namespace's lifecycle.
+      namespace = fluxNs.res.name
+    }
+
+    chart = "flux2"
+    repoURL = "https://fluxcd-community.github.io/helm-charts"
+    version = "2.18.4"
   }
 }

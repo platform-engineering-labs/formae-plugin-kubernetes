@@ -91,12 +91,6 @@ accident: a rollback applies an *older* manifest, so if an immutable field moved
 in the meantime the rollback is refused for the same reason. `helm-dashboard`
 does exactly this over a PersistentVolumeClaim.
 
-**Whether `HelmChart.pkl` escapes it is untested.** There formae owns each
-rendered object, so in principle the changed field could be marked `createOnly`
-and that one object replaced. That only holds if formae issues a genuine
-destroy-then-create rather than a replace — a replace fails here just as Helm's
-does. Nobody has checked.
-
 ## Recovering
 
 Delete the object the chart cannot patch and re-apply:

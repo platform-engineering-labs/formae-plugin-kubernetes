@@ -164,14 +164,21 @@ The Pod's ServiceAccount token at
 
 ## Helm charts
 
-The K8s package ships Helm-chart wrappers under
-[`schema/pkl/helm/`](schema/pkl/helm/) that render Helm
-charts at Pkl-eval time and map the output to typed K8s resources. Import via
-`@k8s/helm/v<X.Y>/HelmChart.pkl`; the wrapper version must match the
-`kubernetesVersion` on the Target. Requires `pkl-reader-helm` on `PATH`.
+A chart is installed as a single `K8S::Helm::Release`, driven by the Helm SDK
+embedded in the plugin. Formae manages the release; Helm manages the objects the
+chart renders, so hooks, hook weights, CRD install ordering and revision history
+all work — and `helm list`, `helm history` and `helm rollback` see the release.
 
-See [`schema/pkl-helm/README.md`](schema/pkl-helm/README.md)
-for the wrapper layout and codegen details.
+```pkl
+import "@k8s/v<X.Y>/helm/Release.pkl" as helm
+```
+
+The version segment matches the Target's `kubernetesVersion`, as with every
+other schema import. No `pkl-reader-helm` on `PATH` and no `helm repo add`: the
+plugin embeds the SDK and nothing is rendered at Pkl-eval time.
+
+See [`examples/helm/`](examples/helm/) for runnable formae and the drift and
+adoption scenarios.
 
 ## Examples
 

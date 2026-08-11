@@ -8,6 +8,13 @@
 module release
 
 import "@formae/formae.pkl"
+// No field on a release has a shape that depends on the apiserver minor, so
+// this module is copied into every v<X.Y>/ tree unchanged rather than hoisted
+// to the package root. That is not cosmetic: `formae extract` builds its
+// resource-type map by globbing `@k8s/*.pkl` plus `@k8s/v<ver>/**/*.pkl`
+// (formae's ImportsGenerator.pkl), so a resource module at a root-level
+// subdirectory is invisible to it and extract fails with
+// `Cannot find key "K8S::Helm::Release"`.
 import "../k8s-subresources.pkl" as k8s
 
 const type = "K8S::Helm::Release"
@@ -31,14 +38,11 @@ open class ReleaseResolvable extends formae.Resolvable {
 /// (the Pods behind a Deployment, the Jobs behind a CronJob) are not in the
 /// rendered manifest and are still discovered individually.
 ///
-/// ## Compared with [K8S::Helm::Chart]
-///
-/// `Chart` renders the chart client-side and decomposes it into typed formae
-/// resources, so every Deployment and Service is separately managed, diffed and
-/// referenceable. It cannot honour hooks. `Release` honours everything Helm
-/// does but exposes one resource. Prefer `Release` for charts that carry hooks,
-/// CRDs or subcharts; prefer `Chart` when per-object formae state matters more
-/// than chart fidelity.
+/// This replaces the removed `HelmChart.pkl`, which rendered a chart
+/// client-side and decomposed it into typed formae resources. That gave
+/// per-object state but could not honour hooks at all, so charts carrying them
+/// applied silently wrong. The trade is deliberate: one resource here, and
+/// everything Helm does works.
 ///
 /// ## What is not modelled
 ///
@@ -158,8 +162,8 @@ open class Release extends formae.Resource {
   /// Typed `Dynamic?` with an explicit null default, not `Mapping<String, Any>`:
   /// the renderer reads a mapping's value type eagerly and `Any` has no default,
   /// which fails with "Tried to read property `default` but its value is
-  /// undefined" for every chart that needs no overrides. HelmChart.pkl hit the
-  /// same thing.
+  /// undefined" for every chart that needs no overrides. The removed
+  /// HelmChart.pkl hit the same thing.
   ///
   /// One trap worth knowing: a values key literally named `default` must use
   /// bracket syntax — `["default"] = ...`, not `default = ...`. On a `Dynamic`,
@@ -182,9 +186,9 @@ open class Release extends formae.Resource {
 
   /// Skip the chart's hooks entirely.
   ///
-  /// Setting this gives up the main reason to use this resource over
-  /// [K8S::Helm::Chart]. Charts that install CRDs or migrate databases in a
-  /// `pre-install` hook will apply incompletely.
+  /// Setting this gives up the main reason to drive Helm at all. Charts that
+  /// install CRDs or migrate databases in a `pre-install` hook will apply
+  /// incompletely.
   @k8s.FieldHint {}
   disableHooks: Boolean?
 

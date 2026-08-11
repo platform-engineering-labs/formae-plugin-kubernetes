@@ -1,12 +1,10 @@
 /// bitnami/nginx via K8S::Helm::Release — the Helm SDK drives the install.
 ///
-/// Contrast with nginx.pkl, which uses HelmChart.pkl to render the chart and
-/// decompose it into individually-managed typed resources. Here formae manages
-/// one resource, the release, and Helm manages everything the chart renders.
-/// The chart's Deployment, Service and ConfigMap are hidden from discovery and
-/// listed on the release's `resourceNames` instead.
+/// Formae manages one resource, the release; Helm manages everything the chart
+/// renders. The chart's Deployment, Service and ConfigMap are hidden from
+/// discovery and listed on the release's `resourceNames` instead.
 ///
-/// Needs no pkl-reader-helm binary — the plugin embeds the Helm SDK.
+/// Needs no reader binary and no `helm repo add` — the plugin embeds the SDK.
 ///
 /// Resolve Pkl dependencies (first time, or after PklProject changes):
 ///   pkl project resolve examples/helm/

@@ -25,14 +25,6 @@ dependencies {
   ["formae-formations"] = import("./formations/PklProject")
 }
 
-// Helm wrappers ship inside the @k8s package as `@k8s/helm/v<X.Y>/...`,
-// so there's no `formae-helm` dep. The reader+helm scheme is still
-// declared here for raw `pkl eval`; `formae apply` registers it
-// automatically when `pkl-reader-helm` is on PATH.
-evaluatorSettings {
-  externalResourceReaders {
-    ["reader+helm"] {
-      executable = "pkl-reader-helm"
-    }
-  }
-}
+// No external reader is declared: charts are no longer rendered at pkl-eval
+// time. `@k8s/v<X.Y>/helm/Release.pkl` is plain schema and the plugin drives
+// Helm through the embedded SDK.

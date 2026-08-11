@@ -10,6 +10,40 @@ formae agent.
 
 ## [Unreleased]
 
+### Removed
+
+- **`HelmChart.pkl` and its per-version wrapper trees are gone** — 281 files,
+  ~39k lines: `schema/pkl-helm/` (the `HelmChart` module, 17 api-group mappers
+  and the `gen-versioned-helm` codegen) and the generated
+  `schema/pkl/helm/v1.21…v1.36/` trees, plus the `make` targets
+  `generate-versioned-helm-schemas`, `verify-helm-schemas` and the CI job that
+  ran the latter.
+
+  **Breaking for anyone importing `@k8s/helm/v<X.Y>/HelmChart.pkl`.** Migrate to
+  `K8S::Helm::Release`: one resource per chart, Helm applies the objects. There
+  is no mechanical rewrite — `HelmChart` produced N typed resources in formae
+  state and `Release` produces one, so the release adopts what the chart already
+  installed rather than inheriting per-object state.
+
+  It was removed rather than deprecated because it could not honour hooks.
+  `helm template` emits hook-annotated manifests with no orchestration, so a
+  `pre-install` Job became a permanent resource that never re-ran, `hook-weight`
+  was ignored, finished hooks accumulated, and `test` hooks were applied on every
+  reconcile. Charts that relied on hooks applied silently wrong, which is a worse
+  failure than not being supported.
+
+  Removing it also drops the `pkl-readers/helm@0.1.2` package dependency and the
+  `pkl-reader-helm` external-reader declaration from the example projects:
+  nothing renders a chart at Pkl-eval time any more.
+
+  Deleted with it: the seven `HelmChart`-based single-file examples
+  (`nginx*.pkl`, `postgresql-v1.31.pkl`, `memcached-v1.31.pkl`,
+  `create-namespace-test.pkl`, `imagepullsecrets-test.pkl`) and two already-dead
+  `make` targets — `chart-test`, whose script had been removed, and
+  `conformance-test-charts`, whose `*-chart` filter matched no remaining fixture.
+  `examples/flux/flux-helm.pkl` is ported to a `Release`, so Flux still installs
+  with one `formae apply`.
+
 ### Added
 
 - **`K8S::Helm::Release` — Helm charts driven by the embedded Helm SDK.** Formae

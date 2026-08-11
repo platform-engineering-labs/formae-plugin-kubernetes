@@ -55,8 +55,8 @@ func init() {
 
 // Release provisions K8S::Helm::Release by driving the Helm SDK.
 //
-// Helm owns the objects the chart renders; formae owns the release. This is the
-// opposite of the HelmChart render-and-decompose path, and it is deliberate:
+// Helm owns the objects the chart renders; formae owns the release. That is the
+// opposite of the render-and-decompose path this replaced, and it is deliberate:
 // hooks, hook ordering, hook delete policies, CRD install ordering and release
 // history are Helm's to implement, and reimplementing them in formae means
 // reimplementing Helm.

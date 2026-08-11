@@ -1,27 +1,23 @@
 # Helm
 
-Two different ways to run a Helm chart from formae. They are not variations on a
-theme — they put ownership in different places, and that decides which one you
-want.
+A chart runs as one resource — `K8S::Helm::Release` — installed and upgraded
+through the Helm SDK embedded in the plugin:
 
-| | `K8S::Helm::Release` | `HelmChart.pkl` |
-|---|---|---|
-| Who applies the objects | Helm, via the embedded SDK | formae, via Server-Side Apply |
-| What formae manages | one resource: the release | every rendered object, individually |
-| Hooks | work — Helm runs them | **ignored**, and leak as permanent resources |
-| CRD ordering, subcharts | Helm's problem | reimplemented, incompletely |
-| `helm list` / `history` / `rollback` | work against it | see nothing |
-| Per-object drift detection | no | yes |
-| Typed references into chart output | no | yes |
-| Needs `pkl-reader-helm` on PATH | no | yes |
+```pkl
+import "@k8s/v1.33/helm/Release.pkl" as helm
+```
 
-Prefer **`Release`** for charts with hooks, CRDs or subcharts — which is most
-real-world charts. Prefer **`HelmChart`** when per-object formae state matters
-more than chart fidelity, and you know the chart has no hooks.
+The version segment matches your cluster minor, like every other schema import.
+No reader binary is needed — nothing is rendered at Pkl-eval time.
 
----
+> The earlier `HelmChart.pkl` path, which rendered a chart client-side and
+> decomposed it into individually-managed typed resources, has been removed. It
+> could not honour hooks: `helm template` emits hook-annotated manifests with no
+> orchestration, so a `pre-install` Job became a permanent resource, hook weights
+> were ignored, and `test` hooks were applied on every reconcile. Charts that
+> relied on hooks applied silently wrong.
 
-## `K8S::Helm::Release` — Helm drives it
+## How it works
 
 Formae manages the release; Helm manages the objects the chart renders. The
 release is a genuine Helm release (`owner=helm`, `type=helm.sh/release.v1`), so
@@ -110,11 +106,6 @@ anything real — several of its findings are not obvious and cost real time.
   Seen upgrading `flowise` 5.1.1 -> 6.0.0, which renames its selector labels,
   and rolling `helm-dashboard` back over a PersistentVolumeClaim.
 
-  Whether the `HelmChart.pkl` path escapes this is **untested**. In principle
-  formae owns each rendered object there and could mark the field `createOnly`
-  and replace that one object — but that depends on formae issuing a genuine
-  destroy-then-create rather than a replace, and nobody has checked.
-
 ### What happens if something dies mid-install
 
 Helm has no server-side operation controller. The install runs inside the plugin
@@ -167,49 +158,12 @@ and plugin processes and asserts the release is never left holding a lock.
 
 ---
 
-## `HelmChart.pkl` — formae drives it
-
-Renders the chart with `helm template` and decomposes the output into typed K8s
-resources you can `formae apply` like any other workload. Useful for keeping a
-chart as the source of truth upstream while managing the rendered output as plain
-formae resources.
-
-| File | Chart | K8s version pin |
-|---|---|---|
-| `nginx.pkl` | bitnami/nginx 22.4.7 | (version-agnostic) |
-| `nginx-v1.31.pkl` | bitnami/nginx, fixtures for K8s v1.31 | 1.31 |
-| `nginx-v1.34.pkl` | bitnami/nginx, fixtures for K8s v1.34 | 1.34 |
-| `postgresql-v1.31.pkl` | bitnami/postgresql | 1.31 |
-| `memcached-v1.31.pkl` | bitnami/memcached | 1.31 |
-
-The `-v<minor>` variants exist because charts can emit resources whose shape
-depends on the API server's minor version (`policy/v1` vs `policy/v1beta1`). Pick
-the variant matching your cluster.
-
-**Hooks are the known limitation.** `helm template` emits hook-annotated
-manifests with their annotations intact but performs no orchestration, so this
-path applies them as ordinary resources: a `pre-install` Job becomes permanent
-and never re-runs, `hook-weight` is ignored, finished hooks accumulate, and
-`test` hooks are applied on every reconcile. Charts relying on hooks apply
-silently wrong.
-
-### Prerequisites
-
-- `pkl-reader-helm` on `PATH` (see [`helm/README.md`](../../helm/README.md))
-- A Helm repo configured:
-  ```bash
-  helm repo add bitnami https://charts.bitnami.com/bitnami
-  helm repo update
-  ```
-
----
-
 ## Running the single-file examples
 
 ```bash
 pkl project resolve examples/helm/
 pkl eval --project-dir examples/ examples/helm/release-kratos.pkl
-pkl eval --project-dir examples/ examples/helm/nginx.pkl
+pkl eval --project-dir examples/ examples/helm/release-nginx.pkl
 ```
 
 **They evaluate, but `formae apply` on them currently fails.**

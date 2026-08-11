@@ -129,24 +129,6 @@ jobs:
       - name: Verify schema
         run: make verify-schema
 
-  verify-helm:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Set up Go
-        uses: actions/setup-go@v7
-        with:
-          go-version: "1.26"
-
-      - uses: ./.github/actions/setup-pkl-cached
-
-      # Regenerates helm/v*/ from helm/shared/ and fails if the diff
-      # isn't empty — catches stale committed trees in PRs.
-      - name: Verify helm generated trees
-        run: make verify-helm-schemas
-
   # Conformance tests are split across per-K8s-version workflow files
   # (.github/workflows/conformance-v1-XX.yml). Each version is chained
   # via workflow_run (older versions only run after the newer one has
@@ -158,7 +140,7 @@ jobs:
 
   # Notify when build is fixed (was red, now green)
   notify-fixed:
-    needs: [build, test-unit, lint, pkl-validate, verify-schema, verify-helm]
+    needs: [build, test-unit, lint, pkl-validate, verify-schema]
     runs-on: ubuntu-latest
     if: success() && github.event_name == 'push'
     permissions:
@@ -222,7 +204,7 @@ jobs:
 
   # Notify on failure
   notify-failure:
-    needs: [build, test-unit, lint, pkl-validate, verify-schema, verify-helm]
+    needs: [build, test-unit, lint, pkl-validate, verify-schema]
     runs-on: ubuntu-latest
     if: failure() && github.event_name == 'push'
     steps:

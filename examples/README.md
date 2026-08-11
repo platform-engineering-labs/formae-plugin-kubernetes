@@ -131,16 +131,13 @@ Cluster-side knobs (region, CIDRs, k8s version, etc.) live in
 
 ## Formations and Helm
 
-See [helm/](helm/) for the two ways to run a Helm chart — `K8S::Helm::Release`,
-where Helm applies the objects and formae manages the release, and the older
-`HelmChart.pkl` bridge, which renders the chart and decomposes it into typed
-resources. That README compares them and says which to pick.
+See [helm/](helm/) for running a Helm chart as a `K8S::Helm::Release`: Helm
+applies the objects, formae manages the release.
 
 `helm/` also holds two runnable scenarios with their own `make` targets:
 `helm-drift-test` (formae deploys, Helm upgrades behind its back, formae
 reconciles it back) and `helm-adopt-test` (adopt a Helm-installed release, upgrade
 it with formae, roll it back with Helm).
 
-See [formations/](formations/) for native Pkl charts. Formations and the
-`HelmChart.pkl` bridge predate the shared `apps/` pattern and will be migrated
-over time.
+See [formations/](formations/) for native Pkl charts. Formations predate the
+shared `apps/` pattern and will be migrated over time.

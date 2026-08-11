@@ -1,6 +1,6 @@
 // PostgreSQLChart: A native Formae chart for deploying PostgreSQL.
 //
-// Pure PKL — no Helm, no pkl-reader-helm, no external tools.
+// Pure PKL — no Helm, no external tools.
 //
 // Deploys a PostgreSQL StatefulSet with persistent storage, a headless Service,
 // and a Secret for credentials. Optionally creates a ConfigMap for custom

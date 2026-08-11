@@ -52,9 +52,9 @@ agent {
       // and left it undiscoverable inside a namespace formae manages.
       //
       // K8S::Helm::Release is the only Helm resource type the plugin registers.
-      // "K8S::Helm::Chart" was listed here too and is not a resource type at all
-      // — HelmChart.pkl is a forma-level abstraction that decomposes into typed
-      // resources, so there was never anything to List.
+      // "K8S::Helm::Chart" was listed here too and was never a resource type at
+      // all — the removed HelmChart.pkl was a forma-level abstraction that
+      // decomposed into typed resources, so there was nothing to List.
       "K8S::Helm::Release"
     }
   }
