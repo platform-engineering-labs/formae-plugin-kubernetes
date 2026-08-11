@@ -115,6 +115,56 @@ anything real — several of its findings are not obvious and cost real time.
   and replace that one object — but that depends on formae issuing a genuine
   destroy-then-create rather than a replace, and nobody has checked.
 
+### What happens if something dies mid-install
+
+Helm has no server-side operation controller. The install runs inside the plugin
+process, so if that process dies the work dies with it, and Helm's
+`pending-install` status is left behind as a lock with no owner — Helm then
+refuses both install *and* upgrade on that release.
+
+The plugin clears that lock itself on the next operation. What it settles on is
+decided by the cluster, because Helm writes `deployed` last:
+
+```
+Releases.Create(pending-install) -> hooks -> create objects -> SetStatus(deployed)
+```
+
+Dying anywhere in the middle leaves an identical record whether the work
+finished or never started, so recovery looks at the objects rather than the
+record:
+
+| Objects the release renders | What happens |
+|---|---|
+| All present and ready | The install *did* finish and only the record was lost. Recorded `deployed`, reported as success — no second Helm operation, no hooks re-run |
+| Anything missing | Recorded `failed`, which an upgrade runs over, three-way merging what is absent |
+
+**What you can rely on**, whatever died:
+
+1. The command reaches a verdict — it never sits in progress on work nothing is
+   doing.
+2. A failure says why, naming the missing object.
+3. The next apply converges. No `helm uninstall`, no manual step.
+
+**What to know before you rely on it:**
+
+- **A plugin crash defers recovery to the next apply.** The agent's operator runs
+  on the plugin's node and dies with it, so the command fails without the plugin
+  being asked again. The release stays `pending-install` until something applies
+  — which then recovers it automatically. That failure currently carries no
+  message, because it comes from the agent rather than the plugin.
+- **`formae agent stop` mid-install is a crash**, not a graceful stop: it reaches
+  the plugin as `SIGKILL` via the supervisor, so there is no opportunity to
+  unwind. A `SIGTERM` sent directly to the plugin — a container runtime stopping
+  the pod, systemd — *is* handled, and lands the release on `failed` instead.
+- **A release formae did not install is never rewritten.** Someone else's stuck
+  operation is reported with the recovery command, and left alone.
+- **`atomic = true`** makes a cancelled install try to uninstall itself on the
+  way out, bounded by `timeoutSeconds`, which can outlast the shutdown it is
+  racing.
+
+This is covered end to end by `make helm-stability-test`, which kills real agent
+and plugin processes and asserts the release is never left holding a lock.
+
 ---
 
 ## `HelmChart.pkl` — formae drives it

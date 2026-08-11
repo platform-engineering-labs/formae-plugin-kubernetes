@@ -3,8 +3,15 @@ name: CI
 on:
   push:
     branches: [main]
+  # Every PR, not just those targeting main. Build, unit tests and lint are cheap
+  # and there is no branch for which they are not worth running — a PR into a
+  # feature branch previously got no checks at all, so a regression could reach
+  # that branch unnoticed and only surface when it was merged onward to main.
+  #
+  # Conformance stays filtered to main (conformance-pr.yml): it is a per-K8s-minor
+  # matrix against live clusters, and the cost is not proportionate on every
+  # feature-branch push.
   pull_request:
-    branches: [main]
   workflow_dispatch:
     inputs:
       run_conformance:

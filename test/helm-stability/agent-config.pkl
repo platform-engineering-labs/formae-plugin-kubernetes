@@ -1,0 +1,58 @@
+/// Agent configuration for the helm-stability suite.
+///
+/// Installed as a named profile by scripts/run-helm-stability-test.sh, so it
+/// never touches ~/.config/formae/formae.conf.pkl or any profile a human is
+/// using.
+///
+/// Its own SQLite file, and that is load-bearing here rather than merely tidy:
+/// this suite restarts the agent mid-command on purpose, and the whole point is
+/// to watch what ReRunIncompleteCommands does with the rows left behind. Sharing
+/// a datastore with other work would mean re-driving somebody else's commands
+/// too.
+amends "formae:/Config.pkl"
+
+agent {
+  datastore {
+    sqlite { filePath = "~/.pel/formae/data/helm-stability-ci.db" }
+  }
+
+  synchronization {
+    // Off. Every scenario here asserts on a release that is deliberately mid-
+    // operation or deliberately wedged, and a sync pass writing its own view of
+    // that release in the background turns each assertion into a race.
+    enabled = false
+  }
+
+  discovery {
+    // On, because off is a configuration nobody runs. Discovery lists releases,
+    // which builds the release inventory, which takes the plugin's read path
+    // through a release that is pending or wedged on purpose — exactly the
+    // combination a crash produces in the field. A suite that switched it off
+    // would be proving recovery works in a setup the customer does not have.
+    enabled = true
+
+    // Long relative to a scenario. Nothing here waits on a discovery pass, so
+    // the interval only has to be short enough that some pass overlaps the
+    // wedged states, not short enough to gate the tests.
+    interval = 30.s
+
+    // Namespace is load-bearing, not decoration: both Helm types declare
+    // parent = K8S::Core::Namespace, and discovery only queues List for
+    // parentless types — leave it out and nothing is ever listed at all.
+    resourceTypesToDiscover = new Listing {
+      "K8S::Core::Namespace"
+      "K8S::Helm::Release"
+    }
+  }
+
+  logging {
+    filePath = "~/.pel/formae/log/helm-stability-ci.log"
+    fileLogLevel = "debug"
+    consoleLogLevel = "info"
+  }
+}
+
+// No telemetry from a test run whose entire job is to kill processes.
+cli {
+  disableUsageReporting = true
+}

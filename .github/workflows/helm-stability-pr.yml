@@ -1,0 +1,95 @@
+name: Helm stability (PR)
+
+# Kills the agent and the plugin mid-install and asserts a Helm release is never
+# left holding Helm's pending lock. See test/helm-stability/README.md.
+#
+# Runs on every PR regardless of base branch, unlike ci.yml and
+# conformance-pr.yml which filter on `branches: [main]`. Deliberate: this work
+# lands on feature branches first, and a suite that only runs once something
+# reaches main cannot stop a regression getting there.
+#
+# Self-contained rather than reusing conformance-version.yml's prepare job: this
+# needs no schema fixtures, no per-K8s-minor matrix and no discovery, so a single
+# job that builds formae and runs one suite is both faster and easier to read.
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      drain_samples:
+        description: 'Samples for the SIGTERM drain win-rate measurement (0 = skip)'
+        required: false
+        default: '0'
+        type: string
+
+concurrency:
+  group: helm-stability-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  helm-stability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+          cache: false
+
+      - name: Restore Go module cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: gomod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            gomod-${{ runner.os }}-
+
+      - uses: pkl-community/setup-pkl@v0
+        with:
+          pkl-version: 0.30.0
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: formae-stability
+          node_image: "kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
+
+      - name: Build formae
+        # Same approach as conformance-version.yml's prepare job: build from
+        # formae main, stamped with the canonical version of the latest tag so
+        # it matches a schema published on the hub.
+        run: |
+          set -euo pipefail
+          git clone --branch main --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          cd /tmp/formae
+          git fetch --tags
+          LATEST_TAG=$(git tag -l "[0-9]*" --sort=-version:refname | head -1)
+          VERSION=$(echo "$LATEST_TAG" | cut -d'-' -f1)
+          echo "latest tag=${LATEST_TAG}, canonical VERSION=${VERSION}"
+          make build VERSION="${VERSION}"
+          sudo mkdir -p /opt/pel/bin
+          sudo install -m 0755 /tmp/formae/formae /opt/pel/bin/formae
+          echo "/opt/pel/bin" >> "$GITHUB_PATH"
+          /opt/pel/bin/formae --version
+
+      - name: Run the stability suite
+        # make helm-stability-test depends on install, so the agent spawns the
+        # plugin built from this PR rather than whatever was installed last.
+        env:
+          FORMAE_BINARY: /opt/pel/bin/formae
+          STABILITY_KUBE_VERSION: "1.36"
+          SAMPLES: ${{ github.event.inputs.drain_samples || '0' }}
+        run: make helm-stability-test
+
+      - name: Agent log on failure
+        if: failure()
+        run: |
+          echo "=== agent log (tail) ==="
+          tail -300 ~/.pel/formae/log/helm-stability-ci.log || true
+          echo "=== helm releases ==="
+          kubectl get secrets -A -l owner=helm \
+            -o custom-columns=NS:.metadata.namespace,NAME:.metadata.labels.name,STATUS:.metadata.labels.status,REV:.metadata.labels.version \
+            || true

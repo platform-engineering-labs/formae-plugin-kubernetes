@@ -32,13 +32,92 @@ formae agent.
   `Update` is exempt — the resource is already in state.
 
   Consequence to be aware of: a first install that fails leaves formae with no
-  handle on the release, so `formae destroy` cannot clean it up and the wedged
-  release has to be removed with `helm uninstall`. The failure message says so.
+  handle on the release, so `formae destroy` cannot clean it up. Re-applying the
+  same forma does recover it — see the crash-recovery entry below.
 
   Complements `HelmChart.pkl`, which renders client-side and decomposes into
   typed resources. Prefer `Release` for charts with hooks, CRDs or subcharts;
   prefer `HelmChart` when per-object formae state matters more than chart
   fidelity.
+
+- **A crash mid-install no longer needs manual recovery.** Helm has no
+  server-side operation controller: the install runs in the plugin process, so
+  when that process dies the work dies with it, and Helm's `pending-install`
+  status is left behind as a lock with no owner. Helm refuses both install and
+  upgrade on a release in that state, and its documented way out is
+  `helm uninstall` — which destroys the objects and re-runs `pre-install` hooks
+  to get back to where it already was.
+
+  The plugin now clears that lock itself on the next operation, doing what
+  Helm's own `failRelease` does: set the status, write the record back. Whether
+  it settles on `deployed` or `failed` is decided by the cluster, because Helm
+  writes `deployed` last — after the hooks have run and every object exists:
+
+  ```
+  Releases.Create(pending-install) -> hooks -> create objects -> SetStatus(deployed)
+  ```
+
+  Dying anywhere in that middle stretch leaves an identical record, whether the
+  work finished or never started. So recovery checks: every object the release
+  renders present and ready means the install did complete and only the record
+  was lost — it is recorded `deployed` and reported as success, with no second
+  Helm operation and no hooks re-run. Anything missing means `failed`, which an
+  upgrade is allowed to run over, three-way merging what is absent.
+
+  The guarantee, whatever died:
+
+  | | |
+  |---|---|
+  | The command reaches a verdict | It never sits in `InProgress` reporting work nothing is doing |
+  | A failure says why | e.g. `objects are incomplete (ConfigMap/app-config is absent)` |
+  | The next apply converges | No operator, no `helm uninstall` |
+
+  Two limitations worth knowing before you rely on this:
+
+  - **A plugin crash defers recovery to the next apply.** The agent's
+    PluginOperator runs on the plugin's node and dies with it, so the agent
+    fails the command without calling `Status` again and the plugin never gets
+    the chance to clear the record. The release stays `pending-install` until
+    something applies again — which then recovers it automatically.
+  - **That failure currently carries no message**, because it comes from the
+    agent's own missing-in-action path rather than from the plugin.
+
+  A release this plugin did not install is never rewritten. Someone else's stuck
+  operation is reported, with the recovery command in the message, and left
+  alone.
+
+- **An interrupted operation is recognised rather than repeated.** A re-driven
+  `Create` against a release that is already at the desired version and values
+  runs no Helm operation at all — it only re-checks readiness. Previously it
+  planned an upgrade, bumping the revision for nothing and re-firing
+  `pre-upgrade` and `post-upgrade` hooks; on a chart like kratos that is a
+  second database migration.
+
+  A duplicate `Create` that reaches the *same* plugin process while its install
+  is still running rejoins that operation and returns the same `RequestID`,
+  guarded on a fingerprint of the desired state — a call carrying a *different*
+  change still gets `ResourceConflict`. Note this cannot help across an agent
+  restart: a restarted agent never reattaches to a surviving plugin, so the
+  re-driven call always lands on a process whose in-flight registry is empty.
+
+- **In-flight operations are cancelled on `SIGTERM`**, so Helm records `failed`
+  rather than leaving `pending-install`. This covers a signal sent directly to
+  the plugin — a container runtime stopping the pod, systemd, an operator. It
+  does **not** cover `formae agent stop`, which reaches the plugin as `SIGKILL`
+  via the supervisor's port, leaving no opportunity to unwind.
+
+- **A release is no longer declared dead while it is still installing.** Whether
+  an operation is running is now a fact rather than a guess: Helm operations for
+  formae run in exactly one process, so if this plugin is not running one for a
+  release, nothing is. Recovery is therefore immediate — a release abandoned
+  seconds ago is as recoverable as one abandoned an hour ago — and a release this
+  plugin *is* installing is never touched, however long its hooks take.
+
+  A clock is still needed for releases this plugin does not own, where another
+  tool may legitimately be mid-operation and we cannot see it. That window now
+  comes from the operation's own timeout, recorded on the release as
+  `formae.dev/timeout-seconds`, instead of a fixed 20 minutes that declared a
+  release with `timeoutSeconds = 1800` dead while it was still running.
 
 - **Ownership guard on adoption.** A release this plugin did not install is no
   longer taken over silently. Every release formae installs carries a
@@ -138,11 +217,13 @@ formae agent.
   with two objects of one kind is affected, so this is the difference between a
   release being upgradable through formae and not.
 
-- **The ownership marker is not reported as a user label.** `Read` filters
-  `formae.dev/managed` out of `labels` the same way it filters Helm's reserved
-  names. It is stamped on every mutation by the plugin, so reporting it back
-  reads as a label the forma never declared — permanent drift on any host that
-  diffs `labels` key-by-key rather than whole-map.
+### Fixed
+
+- **The plugin's own release labels no longer leak into resource state.**
+  `formae.dev/managed` — and now `formae.dev/timeout-seconds` — were reported
+  back in `metadata.labels`, which put them into `formae extract` output and made
+  them read as drift against a forma that never declared them.
+
 
 ## [0.1.8]
 
