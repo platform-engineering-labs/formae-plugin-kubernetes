@@ -198,6 +198,72 @@ jobs:
           FORMAE_TEST_TESTDATA_DIR: testdata/generated/v1.35/shared
         run: make conformance-test-crud-run conformance-test-discovery-run TEST=${{ matrix.test-case }} PARALLEL=1
 
+  # Helm stability: kills the agent and the plugin mid-install and asserts a
+  # release is never left holding Helm's pending lock. Separate from conformance
+  # because it owns the agent for its duration and deliberately crashes it, which
+  # no other suite tolerates running alongside.
+  #
+  # Linux exercises the Pdeathsig path (plugin dies with the agent, release left
+  # wedged, next apply recovers it); macOS would exercise the orphan path. The
+  # suite reads which happened off the machine rather than off runtime.GOOS, so
+  # one job covers both.
+  helm-stability:
+    needs: [build-formae]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+
+      - name: Set up Pkl
+        uses: pkl-community/setup-pkl@v0
+        with:
+          pkl-version: 0.30.0
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: formae-test
+          node_image: "kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
+
+      - name: Download formae binary
+        uses: actions/download-artifact@v8
+        with:
+          name: formae-binary
+          path: /tmp/formae-artifact
+
+      - name: Clone formae source for replace directives
+        run: |
+          BRANCH="${{ inputs.formae_branch || 'main' }}"
+          git clone --branch "${BRANCH}" --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          cp /tmp/formae-artifact/formae /tmp/formae/formae
+          chmod +x /tmp/formae/formae
+
+      - name: Inject formae replace directives
+        run: |
+          FORMAE_SRC=/tmp/formae
+          for pkg in pkg/auth pkg/model pkg/plugin pkg/plugin-conformance-tests; do
+            if grep -q "formae/$pkg" go.mod 2>/dev/null; then
+              go mod edit -replace "github.com/platform-engineering-labs/formae/$pkg=$FORMAE_SRC/$pkg"
+            fi
+          done
+          go mod tidy
+
+      - name: Run helm stability suite
+        env:
+          FORMAE_BINARY: /tmp/formae/formae
+          STABILITY_KUBE_VERSION: "1.36"
+        run: make helm-stability-test
+
+      - name: Agent log on failure
+        if: failure()
+        run: tail -300 ~/.pel/formae/log/helm-stability-ci.log || true
+
   # Chart conformance tests deploy full Helm charts (many resources).
   # Discovery needs a longer timeout since charts create numerous resources.
   chart-conformance-tests:
