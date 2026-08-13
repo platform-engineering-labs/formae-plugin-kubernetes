@@ -378,6 +378,31 @@ formae agent.
 
 ### Changed
 
+- **`K8S::Helm::Release` moved to `@k8s/helm/Release.pkl` — one copy, not
+  sixteen.** The module shipped in every `v<X.Y>/` tree as 16 byte-identical
+  copies; no field on a Helm release has a shape that depends on the apiserver
+  minor, so it now ships once at the package root.
+
+  **Breaking for the import path only:**
+
+  ```pkl
+  import "@k8s/v1.33/helm/Release.pkl" as helm   // before
+  import "@k8s/helm/Release.pkl" as helm         // after
+  ```
+
+  Nothing else changes — same type, same fields, same state. Every other schema
+  import keeps its `v<X.Y>/` segment.
+
+  This needs formae >= 0.89.0. The hoist was tried and reverted once because
+  `formae extract` globbed only `@k8s/*.pkl` plus `@k8s/v<ver>/**/*.pkl`, so a
+  resource module in a root-level subdirectory was invisible to it and extract
+  died with `Cannot find key "K8S::Helm::Release"`. formae#584 widened the glob
+  to cover version-independent subtrees, which is what makes this possible.
+
+  `tools/gen-versioned-reflect` grew a `versionIndependentDirs` set for this and
+  rejects a `@K8sVersion` gate inside one: with no per-version copy left there is
+  nothing to filter, and the gate would otherwise be silently ignored.
+
 - **Rollout progress is visible while an operation runs.** The plugin blanked
   `StatusMessage` on every non-`Failure` result, so the per-resource `reason` row
   stayed empty during a rollout. Provisioner messages now pass through on

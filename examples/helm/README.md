@@ -4,7 +4,7 @@ A chart runs as one resource — `K8S::Helm::Release` — installed and upgraded
 through the Helm SDK embedded in the plugin:
 
 ```pkl
-import "@k8s/v1.33/helm/Release.pkl" as helm
+import "@k8s/helm/Release.pkl" as helm
 ```
 
 The version segment matches your cluster minor, like every other schema import.

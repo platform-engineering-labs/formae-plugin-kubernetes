@@ -14,13 +14,21 @@ module release
 
 import "@formae/formae.pkl"
 // No field on a release has a shape that depends on the apiserver minor, so
-// this module is copied into every v<X.Y>/ tree unchanged rather than hoisted
-// to the package root. That is not cosmetic: `formae extract` builds its
-// resource-type map by globbing `@k8s/*.pkl` plus `@k8s/v<ver>/**/*.pkl`
-// (formae's ImportsGenerator.pkl), so a resource module at a root-level
-// subdirectory is invisible to it and extract fails with
+// this module is emitted ONCE at the package root as `@k8s/helm/Release.pkl`
+// instead of being copied into all 16 v<X.Y>/ trees — see
+// versionIndependentDirs in tools/gen-versioned-reflect.
+//
+// Hence shared.pkl rather than k8s-subresources.pkl: only the hint annotations
+// are needed here, they are plain re-exports of `formae.*` declared in
+// shared.pkl, and shared.pkl is the one root-shared module in both trees.
+// k8s-subresources.pkl is per-version (emitted as v<X.Y>/k8s.pkl), so it is
+// unreachable from the root.
+//
+// This needs formae >= the widened extract glob (formae#584). Older versions
+// glob only `@k8s/*.pkl` plus `@k8s/v<ver>/**/*.pkl`, so this module would be
+// invisible to `formae extract`, which then fails with
 // `Cannot find key "K8S::Helm::Release"`.
-import "../k8s.pkl" as k8s
+import "../shared.pkl" as k8s
 
 const type = "K8S::Helm::Release"
 

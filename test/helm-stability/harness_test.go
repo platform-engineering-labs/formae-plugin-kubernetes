@@ -610,7 +610,7 @@ func (s *scenario) writeForma(fileName, message string, hookSeconds, timeoutSeco
 
 import "@formae/formae.pkl"
 import "@k8s/v%s/k8s.pkl" as k8s
-import "@k8s/v%s/helm/Release.pkl" as helm
+import "@k8s/helm/Release.pkl" as helm
 
 forma {
   new formae.Stack {
@@ -641,7 +641,7 @@ forma {
     }
   }
 }
-`, kubeVersion(), kubeVersion(), s.stack, targetLabel, kubeVersion(),
+`, kubeVersion(), s.stack, targetLabel, kubeVersion(),
 		s.release, s.release, s.namespace,
 		chart, timeoutSeconds, message, hookSeconds)
 

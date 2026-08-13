@@ -38,6 +38,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -46,6 +47,28 @@ const (
 	defaultDiscoverScript = "tools/gen-versioned-reflect/discover.pkl"
 	defaultProjectDir     = "schema/pkl-main"
 )
+
+// versionIndependentDirs are master top-level directories emitted ONCE at the
+// generated tree root instead of being copied into every v<X.Y>/ subtree.
+//
+// `helm/` qualifies because a Helm release has no field whose shape depends on
+// the apiserver minor — the 16 per-version copies were byte-identical.
+//
+// This layout needs formae with the widened extract glob (formae#584): the
+// version-pinned branch of formae's ImportsGenerator.pkl now globs
+// `@k8s/<non-version-dir>/*.pkl` and `.../**/*.pkl` alongside the pinned
+// `v<ver>/` subtree. Against an older formae, a resource module here is
+// invisible to `formae extract`, which fails with
+// `Cannot find key "K8S::Helm::Release"` — see minFormaeVersion in
+// formae-plugin.pkl.
+//
+// A module in one of these dirs must not carry @K8sVersion gates; there is no
+// per-version copy left to filter, so a gate would be silently ignored.
+// writeVersionIndependentDirs rejects that rather than emit it.
+//
+// Keep in sync with versionIndependentDirs in tools/gen-versioned-testdata,
+// which skips the same dirs when rewriting fixture imports to `@k8s/v<X.Y>/`.
+var versionIndependentDirs = map[string]bool{"helm": true}
 
 type discoverResult struct {
 	Files []discoveredFile `json:"files"`
@@ -369,7 +392,8 @@ var pklProjectVersionRE = regexp.MustCompile(`version\s*=\s*"[^"]*"`)
 //	out/
 //	  PklProject              copied once from master (handled by the caller)
 //	  k8s.pkl                 copied once from master (handled by the caller)
-//	  PLUGINSCHEMAVERSIONS    written once (handled by the caller)
+//	  helm/                   version-independent subtree, emitted once
+//	                          (writeVersionIndependentDirs, not this function)
 //	  v1.21/                  this function fills these per-target subtrees
 //	    core/Pod.pkl
 //	    apps/Deployment.pkl
@@ -404,6 +428,12 @@ func processTarget(disc *discoverResult, target, in, out string) error {
 			return err
 		}
 		base := filepath.Base(rel)
+
+		// Version-independent subtrees (helm/) are emitted once at the
+		// generated tree root by writeVersionIndependentDirs.
+		if versionIndependentDirs[topDir(rel)] {
+			return nil
+		}
 
 		// Top-level files: only k8s-subresources.pkl is per-version (it
 		// carries the @K8sVersion-gated SubResource classes). Every other
@@ -583,6 +613,95 @@ func writeRootFiles(in, out string) error {
 	return nil
 }
 
+// topDir returns the first path segment of a relative path, or "" if the path
+// has no directory component.
+func topDir(rel string) string {
+	parts := strings.Split(rel, string(filepath.Separator))
+	if len(parts) < 2 {
+		return ""
+	}
+	return parts[0]
+}
+
+// masterRel maps a discover.pkl module path (e.g.
+// "../../schema/pkl-main/helm/Release.pkl") back to its path relative to the
+// master root. Returns "" when the path is not under `in`.
+func masterRel(path, in string) string {
+	marker := filepath.ToSlash(in) + "/"
+	idx := strings.LastIndex(filepath.ToSlash(path), marker)
+	if idx < 0 {
+		return ""
+	}
+	return filepath.FromSlash(filepath.ToSlash(path)[idx+len(marker):])
+}
+
+// writeVersionIndependentDirs copies each versionIndependentDirs subtree from
+// the master to the generated tree root, once, with the generated banner.
+//
+// No import rewriting: these files sit one level below the root in both trees
+// (master `helm/Release.pkl` → generated `helm/Release.pkl`), so a relative
+// `../shared.pkl` resolves identically. That is exactly why they can be hoisted
+// and the per-version modules cannot.
+//
+// A gate on a module here would have nothing left to filter — there is no
+// per-version copy — so it is a hard error rather than a silent no-op.
+func writeVersionIndependentDirs(disc *discoverResult, in, out string) error {
+	dirs := make([]string, 0, len(versionIndependentDirs))
+	for dir := range versionIndependentDirs {
+		dirs = append(dirs, dir)
+	}
+	sort.Strings(dirs)
+
+	for _, f := range disc.Files {
+		rel := masterRel(f.Path, in)
+		if rel == "" || !versionIndependentDirs[topDir(rel)] {
+			continue
+		}
+		if f.ModuleGate != nil || len(f.ClassGates) > 0 || len(f.PropertyGates) > 0 {
+			return fmt.Errorf("%s is in a version-independent dir but carries @K8sVersion gates; "+
+				"move it into an api-group dir (per-version) or drop the gates", rel)
+		}
+	}
+
+	for _, dir := range dirs {
+		src := filepath.Join(in, dir)
+		if _, err := os.Stat(src); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return err
+		}
+		written := 0
+		err := filepath.Walk(src, func(path string, info os.FileInfo, walkErr error) error {
+			if walkErr != nil || info.IsDir() {
+				return walkErr
+			}
+			rel, err := filepath.Rel(in, path)
+			if err != nil {
+				return err
+			}
+			dst := filepath.Join(out, rel)
+			if !strings.HasSuffix(path, ".pkl") {
+				return copyFile(path, dst)
+			}
+			body, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+				return err
+			}
+			written++
+			return writePklWithBanner(dst, path, body)
+		})
+		if err != nil {
+			return fmt.Errorf("version-independent dir %s: %w", dir, err)
+		}
+		fmt.Printf("gen-versioned-reflect: version-independent dir=%s written=%d\n", dir, written)
+	}
+	return nil
+}
+
 type stringSliceFlag []string
 
 func (s *stringSliceFlag) String() string     { return strings.Join(*s, ",") }
@@ -622,9 +741,9 @@ func main() {
 
 	// Wipe every top-level entry under outDir EXCEPT `VERSION`, the
 	// build-time plugin-version stamp, which is not a codegen output.
-	// `helm/` used to be preserved here for the HelmChart wrappers, which
-	// had their own codegen step; helm/Release.pkl is an ordinary versioned
-	// schema module emitted into each v<X.Y>/ tree by this tool.
+	// `helm/` is regenerated too — it is a version-independent subtree of
+	// this tool's output (writeVersionIndependentDirs), not a hand-written
+	// directory to preserve.
 	if entries, err := os.ReadDir(outDir); err == nil {
 		for _, e := range entries {
 			if e.Name() == "VERSION" {
@@ -642,6 +761,9 @@ func main() {
 	}
 	if err := writeRootFiles(in, outDir); err != nil {
 		log.Fatalf("root files: %v", err)
+	}
+	if err := writeVersionIndependentDirs(disc, in, outDir); err != nil {
+		log.Fatalf("version-independent dirs: %v", err)
 	}
 	for _, target := range targets {
 		_ = absFromKey // keep helper available if needed later
