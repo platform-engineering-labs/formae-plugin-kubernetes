@@ -1,0 +1,19 @@
+/// Self-contained project for the immutable-field upgrade demo.
+///
+/// Deliberately NOT using `examples/PklProject`: that project declares nested
+/// local dependencies (`clusters`, `apps`, `formations`), and evaluating a forma
+/// through `formae apply` against them trips a Pkl bug —
+/// "org.pkl.core.packages.Dependency$LocalDependency cannot be cast to
+/// ...$RemoteDependency". Every forma under examples/ is affected, not just this
+/// one. A single local dependency on the plugin's own schema evaluates fine, so
+/// this project declares only that.
+amends "pkl:Project"
+
+dependencies {
+  ["formae"] {
+    uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.88.0"
+  }
+  // The plugin's generated schema tree, straight from this repo. Run
+  // `make generate-versioned-schemas` if it is missing.
+  ["k8s"] = import("../../../schema/pkl/PklProject")
+}

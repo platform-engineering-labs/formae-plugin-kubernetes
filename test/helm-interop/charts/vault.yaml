@@ -1,0 +1,28 @@
+# vault — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: vault
+repoURL: https://helm.releases.hashicorp.com
+version: 0.33.0
+
+trait: test-hook
+traitObject: "Pod/vault-server-test"
+
+# Dev mode, and no agent injector.
+#
+# The default is a StatefulSet with a volume plus a mutating-webhook injector
+# deployment, and its upgrade did not settle in eighteen minutes on a laptop
+# cluster — the cell spent its whole budget waiting on Kubernetes rather than on
+# anything formae did. Dev mode is a single in-memory server that comes up in
+# seconds, which is all this cell needs: it is here for the release lifecycle
+# and its test hook, not to exercise Vault.
+values:
+  server:
+    dev:
+      enabled: true
+  injector:
+    enabled: false
+
+notes: >-
+  Artifact Hub rank 11. Installed bare, with no values
+  overrides, so a failure here is the chart's prerequisites rather than
+  formae's behaviour.

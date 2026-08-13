@@ -42,7 +42,7 @@ examples/
 │   ├── gke.pkl                # GKE Sandbox
 │   └── eks.pkl                # S3 (Mountpoint CSI) + gVisor
 ├── formations/                 # Native Pkl charts (no Helm)
-└── helm/                       # Helm bridge examples
+└── helm/                       # Helm: K8S::Helm::Release, and the older bridge
 ```
 
 ## Resolving Pkl deps
@@ -131,6 +131,13 @@ Cluster-side knobs (region, CIDRs, k8s version, etc.) live in
 
 ## Formations and Helm
 
-See [formations/](formations/) and [helm/](helm/) for deploying workloads via
-native Pkl charts or the Helm bridge. These predate the shared `apps/` pattern
-and will be migrated over time.
+See [helm/](helm/) for running a Helm chart as a `K8S::Helm::Release`: Helm
+applies the objects, formae manages the release.
+
+`helm/` also holds two runnable scenarios with their own `make` targets:
+`helm-drift-test` (formae deploys, Helm upgrades behind its back, formae
+reconciles it back) and `helm-adopt-test` (adopt a Helm-installed release, upgrade
+it with formae, roll it back with Helm).
+
+See [formations/](formations/) for native Pkl charts. Formations predate the
+shared `apps/` pattern and will be migrated over time.

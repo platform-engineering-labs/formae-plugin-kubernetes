@@ -1,0 +1,6 @@
+apiVersion: v2
+name: hooked
+description: Minimal chart with a pre-install hook, for K8S::Helm::Release tests.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

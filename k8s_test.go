@@ -71,13 +71,20 @@ func TestDiscoveryFilters_OwnedPods(t *testing.T) {
 	assert.Contains(t, f.Conditions[0].PropertyPath, "ownerReferences")
 }
 
-func TestDiscoveryFilters_OwnedEndpoints(t *testing.T) {
+// Endpoints are filtered by the endpoints controller's own label, not by
+// ownerReferences — an Endpoints object never has any, so the ownerReferences
+// filter this test used to assert could never fire. See
+// k8s_discovery_filter_test.go, which evaluates the filters against real object
+// JSON rather than only checking their shape.
+func TestDiscoveryFilters_ControllerManagedEndpoints(t *testing.T) {
 	p := &Plugin{}
 	filters := p.DiscoveryFilters()
 
-	f := findFilter(t, filters, "K8S::Core::Endpoints", "ownerReferences")
+	f := findFilter(t, filters, "K8S::Core::Endpoints", "managed-by")
 	require.Len(t, f.Conditions, 1)
-	assert.Contains(t, f.Conditions[0].PropertyPath, "ownerReferences")
+	assert.Equal(t, "$.metadata.labels['endpoints.kubernetes.io/managed-by']",
+		f.Conditions[0].PropertyPath)
+	assert.Equal(t, "endpoint-controller", f.Conditions[0].PropertyValue)
 }
 
 func TestDiscoveryFilters_ServiceAccountTokenSecrets(t *testing.T) {
@@ -270,4 +277,28 @@ func TestDiscoveryFilters_BuiltIns(t *testing.T) {
 		assert.True(t, hasMetadataSearchFilter(filters, "K8S::Rbac::ClusterRoleBinding", "^system:"),
 			"ClusterRoleBinding should be filtered by ^system: prefix at plugin level")
 	})
+}
+
+//nolint:gocritic // table-free assertion is clearer for a single filter
+func TestDiscoveryFilters_ExcludesHelmReleaseStorage(t *testing.T) {
+	// Every revision of every Helm release is a Secret of this type, so one
+	// release at the default MaxHistory would surface ten unmanaged Secrets.
+	// The K8S::Helm::Release inventory collapse cannot hide them: it hides
+	// objects a chart *renders*, and a release Secret appears in no manifest.
+	var found bool
+	for _, f := range (&Plugin{}).DiscoveryFilters() {
+		for _, rt := range f.ResourceTypes {
+			if rt != "K8S::Core::Secret" {
+				continue
+			}
+			for _, c := range f.Conditions {
+				if c.PropertyPath == "$.type" && c.PropertyValue == "helm.sh/release.v1" {
+					found = true
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no DiscoveryFilter excludes Secrets of type helm.sh/release.v1")
+	}
 }

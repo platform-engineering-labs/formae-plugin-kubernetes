@@ -1,6 +1,6 @@
 // KeycloakChart: A native Formae chart for deploying Keycloak.
 //
-// Pure PKL — no Helm, no pkl-reader-helm, no external tools.
+// Pure PKL — no Helm, no external tools.
 //
 // Keycloak is an open-source identity and access management solution.
 // It provides user authentication, authorization, SSO, and identity brokering.

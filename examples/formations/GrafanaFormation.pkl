@@ -1,6 +1,6 @@
 // GrafanaChart: A native Formae chart for deploying Grafana.
 //
-// Pure PKL — no Helm, no pkl-reader-helm, no external tools.
+// Pure PKL — no Helm, no external tools.
 //
 // Usage:
 //

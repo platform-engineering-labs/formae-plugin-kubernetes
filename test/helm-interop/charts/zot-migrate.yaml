@@ -1,0 +1,6 @@
+# Opts zot into upgrade, rollback and reconcile.
+# Adjacent pair from the repo index, not a guess.
+version: 0.1.122
+
+notes: >-
+  0.1.121 -> 0.1.122.

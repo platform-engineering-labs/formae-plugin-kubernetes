@@ -1,6 +1,6 @@
 // LangfuseChart: A native Formae chart for deploying Langfuse.
 //
-// Pure PKL — no Helm, no pkl-reader-helm, no external tools.
+// Pure PKL — no Helm, no external tools.
 //
 // Langfuse is an open-source LLM engineering platform with two components:
 //   - Web server (langfuse/langfuse) — API + UI on port 3000

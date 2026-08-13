@@ -1,0 +1,13 @@
+# gotenberg — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: gotenberg
+repoURL: https://maikumori.github.io/helm-charts/
+version: 1.22.0
+
+trait: test-hook
+traitObject: "Pod/gotenberg-test-connection"
+
+notes: >-
+  Artifact Hub rank 385. Installed bare. A failure before
+  formae is involved is the chart's prerequisites, not formae's behaviour,
+  and is reported as a skip.

@@ -1,0 +1,20 @@
+# A pre-install hook. Helm blocks on its completion inside Install.Run()
+# regardless of the Wait flag — the behaviour that makes hook-bearing charts
+# the reason K8S::Helm::Release exists.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-preinstall
+  annotations:
+    "helm.sh/hook": pre-install
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: noop
+          image: busybox:1.36
+          command: ["sh", "-c", "sleep {{ .Values.hookSleepSeconds }}; echo pre-install hook ran"]

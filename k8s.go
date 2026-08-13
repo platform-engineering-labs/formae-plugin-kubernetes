@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/k8sversion"
@@ -16,6 +17,9 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/model"
 	"github.com/platform-engineering-labs/formae/pkg/plugin"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/dynamic"
 
 	// Import resources to trigger init() registration
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/admissionregistration"
@@ -26,6 +30,7 @@ import (
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/core"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/custom"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/flowcontrol"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/helm"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/networking"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/node"
 	_ "github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/policy"
@@ -55,10 +60,55 @@ func (p *Plugin) RateLimit() model.RateLimitConfig {
 	}
 }
 
+// helmAppliedFilters excludes every object Helm applied for a release, on every
+// discoverable type except the release itself.
+//
+// Helm stamps meta.helm.sh/release-name and -namespace on everything it applies,
+// so this is ownership stated by the object itself: no apiserver call, no
+// manifest, nothing to go stale. The K8S::Helm::Release that owns the object
+// stands in for it, exactly as collapseHelmOwned intends.
+//
+// It overlaps collapseHelmOwned on purpose. That path is the more complete one —
+// it also covers hook objects, which carry no annotations — but it needs the
+// release inventory, and when that build fails it degrades to passing everything
+// through. This filter still holds in that case, so a chart's RBAC and CRDs do
+// not flood discovery just because one Helm call timed out.
+//
+// Driven off the registry rather than a hand-written list: a type added later
+// would otherwise silently have no filter, and a leak nobody notices is worse
+// than a compile error.
+func helmAppliedFilters() []model.MatchFilter {
+	var out []model.MatchFilter
+	for _, rt := range registry.ResourceTypes() {
+		// The release is the resource discovery is meant to surface, and its own
+		// storage Secret is filtered separately by type.
+		//
+		// K8S::Core::Namespace is excluded for a sharper reason: it is the
+		// discovery parent for every namespaced type, so filtering a
+		// chart-rendered namespace removes everything inside it from discovery —
+		// including objects Helm never applied, and including any
+		// K8S::Helm::Release installed there. Verified against a chart that
+		// templates its own namespace.
+		if rt == helm.ResourceTypeRelease ||
+			rt == "K8S::Core::Namespace" ||
+			strings.HasPrefix(rt, "K8S::Test::") {
+			continue
+		}
+		out = append(out, model.MatchFilter{
+			ResourceTypes: []string{rt},
+			Conditions: []model.FilterCondition{
+				// Existence check: any release name at all means Helm applied it.
+				{PropertyPath: "$.metadata.annotations['meta.helm.sh/release-name']"},
+			},
+		})
+	}
+	return out
+}
+
 // DiscoveryFilters returns filters to exclude certain resources from discovery.
 // Excludes system namespaces by default.
 func (p *Plugin) DiscoveryFilters() []model.MatchFilter {
-	return []model.MatchFilter{
+	return append(helmAppliedFilters(), []model.MatchFilter{
 		// Exclude kube-system namespace resources
 		{
 			ResourceTypes: []string{"K8S::Core::Namespace"},
@@ -158,12 +208,28 @@ func (p *Plugin) DiscoveryFilters() []model.MatchFilter {
 				{PropertyPath: "$.metadata.ownerReferences[0]"},
 			},
 		},
-		// Exclude Endpoints objects — K8S maintains one per Service with
-		// the Service as owner.
+		// Exclude Endpoints the endpoints controller maintains for a Service.
+		//
+		// Keyed on the controller's own label, NOT on ownerReferences: an
+		// Endpoints object never has any. Kubernetes associates it with its
+		// Service by matching name and namespace instead, so the obvious
+		// `$.metadata.ownerReferences[0]` filter that used to be here could
+		// never match and quietly covered nothing — every Service a Helm chart
+		// renders leaked an unmanaged Endpoints row. The hardcoded
+		// default/kubernetes exception above was the same bug, worked around
+		// one object at a time.
+		//
+		// An Endpoints with no Service of its name is left alone by the
+		// controller and so carries no labels at all. That one is somebody's
+		// deliberate resource — the selectorless-Service pattern pointing at
+		// external addresses — and stays discoverable.
 		{
 			ResourceTypes: []string{"K8S::Core::Endpoints"},
 			Conditions: []model.FilterCondition{
-				{PropertyPath: "$.metadata.ownerReferences[0]"},
+				{
+					PropertyPath:  "$.metadata.labels['endpoints.kubernetes.io/managed-by']",
+					PropertyValue: "endpoint-controller",
+				},
 			},
 		},
 		// Exclude auto-generated ServiceAccount token Secrets.
@@ -171,6 +237,26 @@ func (p *Plugin) DiscoveryFilters() []model.MatchFilter {
 			ResourceTypes: []string{"K8S::Core::Secret"},
 			Conditions: []model.FilterCondition{
 				{PropertyPath: "$.type", PropertyValue: "kubernetes.io/service-account-token"},
+			},
+		},
+		// Exclude Helm's release storage. Every revision of every release is a
+		// Secret of type helm.sh/release.v1 named
+		// sh.helm.release.v1.<release>.v<n>, so one release at the default
+		// MaxHistory would otherwise surface ten unmanaged Secrets. They are
+		// Helm's bookkeeping, never a user resource.
+		//
+		// This has to live here rather than in the K8S::Helm::Release inventory
+		// collapse: that collapse hides objects a chart *renders*, and a release
+		// Secret appears in no manifest. The Secret's `type` is a static property,
+		// which is precisely what a DiscoveryFilter can express.
+		//
+		// Only the secret driver is covered, which is the one this plugin uses
+		// (see helmDriver). A cluster running HELM_DRIVER=configmap keeps its
+		// records in ConfigMaps labelled owner=helm instead; not filtered.
+		{
+			ResourceTypes: []string{"K8S::Core::Secret"},
+			Conditions: []model.FilterCondition{
+				{PropertyPath: "$.type", PropertyValue: "helm.sh/release.v1"},
 			},
 		},
 		// Exclude Leases in kube-system — all are control-plane leader
@@ -495,7 +581,7 @@ func (p *Plugin) DiscoveryFilters() []model.MatchFilter {
 				{PropertyPath: "$.metadata.name", PropertyValue: "kube-system-service-accounts"},
 			},
 		},
-	}
+	}...)
 }
 
 // LabelConfig returns the configuration for extracting human-readable labels
@@ -651,5 +737,99 @@ func (p *Plugin) List(ctx context.Context, req *resource.ListRequest) (*resource
 		// discovery error on every pass.
 		return &resource.ListResult{}, nil
 	}
-	return provisioner.List(ctx, req)
+	result, err := provisioner.List(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return collapseHelmOwned(ctx, client, req, result), nil
+}
+
+// ownerLookup returns an owner-reference reader backed by the cluster.
+//
+// Resolves each kind through the client's RESTMapper, so a custom resource kind
+// works the same as a built-in — which matters, because the owners worth finding
+// here are mostly CRs like prometheus-operator's Alertmanager and Prometheus.
+//
+// A kind that cannot be mapped, or an object that has since been deleted, yields
+// no owners rather than an error: both mean "cannot attribute this", and the
+// caller keeps the object either way.
+func ownerLookup(client *transport.Client) helm.OwnerLookup {
+	return func(ctx context.Context, kind, namespace, name string) ([]helm.OwnerRef, error) {
+		gvr, namespaced, ok := client.ResolveKind(kind)
+		if !ok {
+			return nil, nil
+		}
+		ri := client.Dynamic.Resource(gvr)
+		var getter dynamic.ResourceInterface = ri
+		if namespaced && namespace != "" {
+			getter = ri.Namespace(namespace)
+		}
+		obj, err := getter.Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil, nil
+			}
+			return nil, err
+		}
+		refs := obj.GetOwnerReferences()
+		out := make([]helm.OwnerRef, 0, len(refs))
+		for _, r := range refs {
+			out = append(out, helm.OwnerRef{Kind: r.Kind, Name: r.Name})
+		}
+		return out, nil
+	}
+}
+
+// collapseHelmOwned drops objects a Helm release renders, so a chart appears in
+// discovery as the single K8S::Helm::Release that owns it rather than as its
+// several dozen constituent resources.
+//
+// Applied here — the one List routing point — rather than via
+// DiscoveryFilters(). Those filters are static structs returned once at plugin
+// init and cannot consult live Helm state, so the only ownership signal they
+// could express is the `app.kubernetes.io/managed-by: Helm` label, which chart
+// authors are free to omit.
+//
+// A failure to build the inventory leaves the list untouched. Showing chart
+// objects as unmanaged is noisy; hiding real resources because Helm was briefly
+// unreachable would be a silent loss.
+func collapseHelmOwned(
+	ctx context.Context,
+	client *transport.Client,
+	req *resource.ListRequest,
+	result *resource.ListResult,
+) *resource.ListResult {
+	if result == nil || len(result.NativeIDs) == 0 || req.ResourceType == helm.ResourceTypeRelease {
+		return result
+	}
+	log := plugin.LoggerFromContext(ctx)
+	inv, err := helm.InventoryFor(ctx, client.Config)
+	if err != nil {
+		// Degrading quietly is what made this expensive to diagnose: every object
+		// a chart renders surfaces as unmanaged, which reads as the collapse never
+		// having been implemented rather than as one failed Helm call. The list is
+		// still returned untouched — see above — but no longer in silence.
+		log.Warn("helm collapse degraded, chart objects will surface as unmanaged",
+			"resourceType", req.ResourceType,
+			"objects", len(result.NativeIDs),
+			"error", err)
+		return result
+	}
+	before := len(result.NativeIDs)
+	result.NativeIDs = helm.FilterHelmOwned(inv, req.ResourceType, result.NativeIDs)
+	// Then the objects no manifest names but a controller created beneath one:
+	// the Pods behind a Deployment, and the Secrets, ConfigMaps and StatefulSets
+	// an operator generates from a custom resource the chart rendered.
+	result.NativeIDs = helm.FilterControllerOwned(
+		ctx, inv, req.ResourceType, result.NativeIDs, ownerLookup(client),
+	)
+	if inv.Len() == 0 && before > 0 {
+		// An inventory that built without error but holds nothing means no release
+		// was visible. Ordinary on a cluster running no Helm releases, and a silent
+		// collapse failure on one that is — indistinguishable from here, so it is
+		// reported at debug rather than warn.
+		log.Debug("helm collapse found no releases; nothing to hide",
+			"resourceType", req.ResourceType, "objects", before)
+	}
+	return result
 }

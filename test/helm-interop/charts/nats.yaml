@@ -1,0 +1,13 @@
+# nats — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: nats
+repoURL: https://nats-io.github.io/k8s/helm/charts/
+version: 2.14.0
+
+trait: test-hook
+traitObject: "Pod/nats-test-request-reply"
+
+notes: >-
+  Artifact Hub rank 70. Installed bare, with no values
+  overrides, so a failure here is the chart's prerequisites rather than
+  formae's behaviour.

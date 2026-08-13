@@ -1,0 +1,13 @@
+# ollama — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: ollama
+repoURL: https://otwld.github.io/ollama-helm/
+version: 1.69.0
+
+trait: test-hook
+traitObject: "Pod/ollama-test-connection"
+
+notes: >-
+  Artifact Hub rank 83. Installed bare, with no values
+  overrides, so a failure here is the chart's prerequisites rather than
+  formae's behaviour.

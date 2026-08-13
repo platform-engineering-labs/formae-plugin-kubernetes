@@ -1,0 +1,153 @@
+/// ory/kratos via K8S::Helm::Release — a chart the render-and-decompose path
+/// cannot install correctly.
+///
+/// Kratos exercises, in one chart, everything Helm does that a translator has to
+/// reimplement:
+///
+///   - `pre-install, pre-upgrade` hooks at two weights: the ServiceAccount,
+///     Secret, ConfigMap and RBAC at weight 0, then the automigrate Job at
+///     weight 1. The migration must run after its config exists and before the
+///     workload starts.
+///   - `hook-delete-policy: before-hook-creation,hook-succeeded` on the migration
+///     Job, so a completed migration leaves nothing behind and a re-run replaces
+///     the previous Job rather than colliding with it.
+///   - `helm.sh/resource-policy: keep` on the Secret, which deliberately outlives
+///     `helm uninstall`.
+///   - A `test-success` Pod that must NOT be applied as an ordinary resource.
+///
+/// Under `HelmChart.pkl` the migration Job becomes a permanent resource that
+/// never re-runs, the weights are ignored, and the test Pod is applied on every
+/// reconcile. Here Helm handles all of it and formae manages one resource.
+///
+/// Usage:
+///   pkl eval --project-dir examples/ examples/helm/release-kratos.pkl
+///   formae apply --mode reconcile --yes --watch examples/helm/release-kratos.pkl
+///
+/// Confirm Helm owns it, and that formae did not forge the release record:
+///   helm list -n formae-kratos
+///   helm history kratos -n formae-kratos
+///
+/// Confirm discovery collapses the chart:
+///   formae discover --target k8s-local   # one Helm::Release, not ~10 objects
+///
+/// After destroy, the Secret annotated resource-policy=keep survives by design
+/// and reappears as unmanaged:
+///   kubectl get secret kratos -n formae-kratos
+amends "@formae/forma.pkl"
+
+import "@formae/formae.pkl"
+import "@k8s/v1.33/k8s.pkl" as k8s
+import "@k8s/v1.33/core/Namespace.pkl" as ns
+import "@k8s/v1.33/helm/Release.pkl" as helm
+
+/// Minimal identity schema. Kratos refuses to start without one.
+local identitySchema = """
+{
+  "$id": "https://schemas.ory.sh/presets/kratos/identity.email.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Person",
+  "type": "object",
+  "properties": {
+    "traits": {
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "title": "E-Mail",
+          "ory.sh/kratos": {
+            "credentials": { "password": { "identifier": true } },
+            "verification": { "via": "email" },
+            "recovery": { "via": "email" }
+          }
+        }
+      },
+      "required": ["email"],
+      "additionalProperties": false
+    }
+  }
+}
+"""
+
+forma {
+  new formae.Stack {
+    label = "helm-release-kratos"
+    description = "ory/kratos installed through the Helm SDK, hooks included"
+  }
+
+  new formae.Target {
+    label = "k8s-local"
+    config = new k8s.Config {
+      kubernetesVersion = "1.33"
+      auth = new k8s.KubeconfigAuth {}
+    }
+  }
+
+  local appNs = new ns.Namespace {
+    label = "kratos-namespace"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-kratos"
+    }
+  }
+  appNs
+
+  new helm.Release {
+    label = "kratos"
+    metadata {
+      name = "kratos"
+      namespace = appNs.res.name
+    }
+
+    // Bare chart name plus repoURL, so the agent host needs no `helm repo add`.
+    chart = "kratos"
+    repoURL = "https://k8s.ory.sh/helm/charts"
+    version = "0.63.0"
+
+    // The migration hook plus three image pulls exceed the 600s default on a
+    // cold node.
+    timeoutSeconds = 900
+
+    values = new Dynamic {
+      kratos {
+        // sqlite in-process. Point dsn at Postgres for anything real; the
+        // migration hook is what makes switching safe.
+        development = true
+        automigration {
+          enabled = true
+          type = "job"
+        }
+        config {
+          dsn = "memory"
+          secrets {
+            // Bracket syntax is required here, not cosmetic: `default` is a
+            // reserved property on a Pkl `Dynamic` (it supplies the default
+            // value for new members), so `default = ...` is silently swallowed
+            // and the chart receives an empty `secrets` block. Any values key
+            // named `default` needs this form.
+            ["default"] = new Listing { "abcdefghijklmnopqrstuvwxyz123456" }
+          }
+          selfservice {
+            default_browser_return_url = "http://127.0.0.1/"
+            flows {
+              settings {
+                ui_url = "http://127.0.0.1/settings"
+              }
+            }
+          }
+          identity {
+            default_schema_id = "default"
+            schemas = new Listing {
+              new Dynamic {
+                id = "default"
+                url = "file:///etc/config/identity.default.schema.json"
+              }
+            }
+          }
+        }
+        identitySchemas {
+          ["identity.default.schema.json"] = identitySchema
+        }
+      }
+    }
+  }
+}

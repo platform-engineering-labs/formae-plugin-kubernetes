@@ -1,0 +1,4 @@
+message: hello
+# How long the pre-install hook takes. Zero keeps the lifecycle test fast; the
+# crash-recovery tests raise it so they can catch an install still in flight.
+hookSleepSeconds: 0

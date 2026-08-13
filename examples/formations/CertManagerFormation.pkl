@@ -1,6 +1,6 @@
 // CertManagerChart: A native Formae chart for deploying cert-manager.
 //
-// Pure PKL — no Helm, no pkl-reader-helm, no external tools.
+// Pure PKL — no Helm, no external tools.
 //
 // cert-manager is a Kubernetes add-on that automates the management and
 // issuance of TLS certificates. It has three components:

@@ -1,0 +1,13 @@
+# pgadmin4 — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: pgadmin4
+repoURL: https://helm.runix.net/
+version: 1.64.1
+
+trait: test-hook
+traitObject: "Pod/pgadmin4-test-connection"
+
+notes: >-
+  Artifact Hub rank 44. Installed bare, with no values
+  overrides, so a failure here is the chart's prerequisites rather than
+  formae's behaviour.

@@ -1,0 +1,13 @@
+# home-assistant — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: home-assistant
+repoURL: http://pajikos.github.io/home-assistant-helm-chart
+version: 0.3.71
+
+trait: test-hook
+traitObject: "Pod/home-assistant-test-connection"
+
+notes: >-
+  Artifact Hub rank 111. Installed bare. A failure before
+  formae is involved is the chart's prerequisites, not formae's behaviour,
+  and is reported as a skip.

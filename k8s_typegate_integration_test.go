@@ -8,6 +8,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -17,15 +19,24 @@ import (
 // A version-override target config pins the K8s version, so the gate fires
 // without any live cluster call (only a kubeconfig is needed to build the
 // client). MutatingAdmissionPolicy (introducedIn 1.36) is unsupported on 1.33.
-const (
-	gatedType  = "K8S::Admissionregistration::MutatingAdmissionPolicy"
-	gateTarget = `{"Auth":{"Type":"Kubeconfig","Context":"orbstack"},"KubernetesVersion":"1.33"}`
-)
+const gatedType = "K8S::Admissionregistration::MutatingAdmissionPolicy"
+
+// targetConfig builds the target for the cluster under test.
+//
+// The kube context comes from KUBE_CONTEXT — the same variable
+// pkg/resources/testutil already uses — rather than being pinned to one
+// developer's cluster, so the same test runs locally and against CI's kind
+// cluster. Empty means whatever the ambient kubeconfig points at.
+func targetConfig(t *testing.T, extra string) []byte {
+	t.Helper()
+	return []byte(fmt.Sprintf(`{"Auth":{"Type":"Kubeconfig","Context":%q}%s}`,
+		os.Getenv("KUBE_CONTEXT"), extra))
+}
 
 func TestTypeGate_UnsupportedType(t *testing.T) {
 	p := &Plugin{}
 	ctx := context.Background()
-	tc := []byte(gateTarget)
+	tc := targetConfig(t, `,"KubernetesVersion":"1.33"`)
 
 	t.Run("List returns empty", func(t *testing.T) {
 		res, err := p.List(ctx, &resource.ListRequest{ResourceType: gatedType, TargetConfig: tc})
@@ -67,13 +78,15 @@ func TestTypeGate_UnsupportedType(t *testing.T) {
 }
 
 // Live path: no version override, so ResolveVersion calls the cluster's
-// ServerVersion(). orbstack reports ~1.33, so MutatingAdmissionPolicy is gated
-// and List returns empty with no error — the real discovery-spam fix.
+// ServerVersion(). On a cluster below 1.36 MutatingAdmissionPolicy is gated and
+// List returns empty with no error — the real discovery-spam fix. On 1.36 or
+// later the type is served and the list is empty because nothing created one, so
+// the assertion holds either way.
 func TestTypeGate_LiveVersionResolution(t *testing.T) {
 	p := &Plugin{}
 	res, err := p.List(context.Background(), &resource.ListRequest{
 		ResourceType: gatedType,
-		TargetConfig: []byte(`{"Auth":{"Type":"Kubeconfig","Context":"orbstack"}}`),
+		TargetConfig: targetConfig(t, ""),
 	})
 	if err != nil {
 		t.Fatalf("List error (expected empty, no error): %v", err)

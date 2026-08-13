@@ -39,10 +39,3 @@ schema/pkl/VERSION
 /gen-versioned-reflect
 /gen-versioned-testdata
 conformance.log
-
-# Note: schema/pkl/helm/v<X.Y>/ is committed (not ignored).
-# Regen via `make generate-versioned-helm-schemas`; CI enforces
-# parity via `make verify-helm-schemas`.
-
-# Stray codegen binaries.
-schema/pkl-helm/tools/gen-versioned-helm/gen-versioned-helm

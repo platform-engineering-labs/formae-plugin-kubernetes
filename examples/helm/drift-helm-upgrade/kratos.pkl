@@ -1,0 +1,139 @@
+/// Deploy version A with formae, then upgrade to version B with the Helm CLI.
+///
+/// This forma is the *desired state*: it pins chart version A. The demo then
+/// changes the release out from under it with `helm upgrade --version B` and
+/// asks what formae makes of that.
+///
+/// The interesting property is that a `K8S::Helm::Release` is not opaque to drift
+/// detection. `Read` returns the chart version and the user-supplied values from
+/// the release record, so a Helm-side version bump shows up as an ordinary field
+/// diff on `version` — the same machinery as any other resource.
+///
+/// What formae does NOT see is drift *inside* the release: `kubectl edit` on the
+/// chart's Deployment changes nothing in the release record, so it stays
+/// invisible. Helm does not detect that either, which is why `helm diff` exists
+/// as a plugin.
+///
+/// Run it with the script, which asserts each step:
+///   make helm-drift-test
+///
+/// Or by hand — see README.md in this directory.
+amends "@formae/forma.pkl"
+
+import "@formae/formae.pkl"
+import "@k8s/v1.33/k8s.pkl" as k8s
+import "@k8s/v1.33/core/Namespace.pkl" as ns
+import "@k8s/v1.33/helm/Release.pkl" as helm
+
+/// Chart version A — the version formae owns.
+///
+/// The forma stays pinned here for the whole demo. That is the point: the Helm
+/// CLI moves the release to B, and this file never changes, so a reconcile has
+/// something concrete to pull it back to.
+local chartVersionA = "0.62.1"
+
+/// Minimal identity schema. Kratos refuses to start without one.
+local identitySchema = """
+{
+  "$id": "https://schemas.ory.sh/presets/kratos/identity.email.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Person",
+  "type": "object",
+  "properties": {
+    "traits": {
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "title": "E-Mail",
+          "ory.sh/kratos": {
+            "credentials": { "password": { "identifier": true } },
+            "verification": { "via": "email" },
+            "recovery": { "via": "email" }
+          }
+        }
+      },
+      "required": ["email"],
+      "additionalProperties": false
+    }
+  }
+}
+"""
+
+forma {
+  new formae.Stack {
+    label = "helm-drift"
+    description = "Release pinned by formae, mutated by the Helm CLI"
+  }
+
+  new formae.Target {
+    label = "k8s-local"
+    config = new k8s.Config {
+      kubernetesVersion = "1.33"
+      auth = new k8s.KubeconfigAuth {}
+    }
+  }
+
+  local appNs = new ns.Namespace {
+    label = "drift-namespace"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-helm-drift"
+    }
+  }
+  appNs
+
+  new helm.Release {
+    label = "kratos"
+    metadata {
+      name = "kratos"
+      namespace = appNs.res.name
+    }
+
+    chart = "kratos"
+    repoURL = "https://k8s.ory.sh/helm/charts"
+    // The pin that the Helm CLI is about to contradict.
+    version = chartVersionA
+
+    timeoutSeconds = 900
+
+    values = new Dynamic {
+      kratos {
+        development = true
+        automigration {
+          enabled = true
+          type = "job"
+        }
+        config {
+          dsn = "memory"
+          secrets {
+            // Bracket syntax required: `default` is a reserved property on a Pkl
+            // Dynamic, so `default = ...` is silently dropped and kratos starts
+            // with no secrets.
+            ["default"] = new Listing { "abcdefghijklmnopqrstuvwxyz123456" }
+          }
+          selfservice {
+            default_browser_return_url = "http://127.0.0.1/"
+            flows {
+              settings {
+                ui_url = "http://127.0.0.1/settings"
+              }
+            }
+          }
+          identity {
+            default_schema_id = "default"
+            schemas = new Listing {
+              new Dynamic {
+                id = "default"
+                url = "file:///etc/config/identity.default.schema.json"
+              }
+            }
+          }
+        }
+        identitySchemas {
+          ["identity.default.schema.json"] = identitySchema
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,13 @@
+# uptime-kuma — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: uptime-kuma
+repoURL: https://dirsigler.github.io/uptime-kuma-helm
+version: 4.0.0
+
+trait: test-hook
+traitObject: "Pod/uptime-kuma-test-connection"
+
+notes: >-
+  Artifact Hub rank 76. Installed bare, with no values
+  overrides, so a failure here is the chart's prerequisites rather than
+  formae's behaviour.

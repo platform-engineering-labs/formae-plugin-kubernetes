@@ -1,0 +1,54 @@
+/*
+ * Conformance Test: Helm Release (Replace)
+ *
+ * Changes `metadata.name`, which is createOnly, so formae must delete the old
+ * release and create a new one rather than upgrade in place. Helm cannot rename a
+ * release, which is exactly why the field is createOnly.
+ *
+ * This is also the only test that exercises Delete under the orchestrator: it must
+ * wait for the objects to actually go before the create half runs, or the new
+ * release races the old one's teardown.
+ */
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@k8s/v1.25/core/Namespace.pkl" as ns
+import "@k8s/v1.25/helm/Release.pkl" as helm
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  local appNs = new ns.Namespace {
+    label = "test-ns"
+    metadata = new ns.NamespaceMetadata {
+      name = "formae-test-\(v.testRunID)"
+      labels = new Mapping {
+        ["managed-by"] = "formae"
+        ["test-run"] = v.testRunID
+      }
+    }
+  }
+
+  appNs
+
+  new helm.Release {
+    label = "test-helm-release"
+    metadata {
+      // Changed, and createOnly -> delete + create.
+      name = "test-release-\(v.testRunID)-replaced"
+      namespace = appNs.res.name
+    }
+
+    chart = "podinfo"
+    repoURL = "https://stefanprodan.github.io/podinfo"
+    version = "6.7.1"
+
+    values = new Dynamic {
+      replicaCount = 1
+      ui {
+        message = "conformance replace"
+      }
+    }
+  }
+}

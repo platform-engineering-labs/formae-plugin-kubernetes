@@ -3,8 +3,15 @@ name: CI
 on:
   push:
     branches: [main]
+  # Every PR, not just those targeting main. Build, unit tests and lint are cheap
+  # and there is no branch for which they are not worth running — a PR into a
+  # feature branch previously got no checks at all, so a regression could reach
+  # that branch unnoticed and only surface when it was merged onward to main.
+  #
+  # Conformance stays filtered to main (conformance-pr.yml): it is a per-K8s-minor
+  # matrix against live clusters, and the cost is not proportionate on every
+  # feature-branch push.
   pull_request:
-    branches: [main]
   workflow_dispatch:
     inputs:
       run_conformance:
@@ -122,24 +129,6 @@ jobs:
       - name: Verify schema
         run: make verify-schema
 
-  verify-helm:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Set up Go
-        uses: actions/setup-go@v7
-        with:
-          go-version: "1.26"
-
-      - uses: ./.github/actions/setup-pkl-cached
-
-      # Regenerates helm/v*/ from helm/shared/ and fails if the diff
-      # isn't empty — catches stale committed trees in PRs.
-      - name: Verify helm generated trees
-        run: make verify-helm-schemas
-
   # Conformance tests are split across per-K8s-version workflow files
   # (.github/workflows/conformance-v1-XX.yml). Each version is chained
   # via workflow_run (older versions only run after the newer one has
@@ -151,7 +140,7 @@ jobs:
 
   # Notify when build is fixed (was red, now green)
   notify-fixed:
-    needs: [build, test-unit, lint, pkl-validate, verify-schema, verify-helm]
+    needs: [build, test-unit, lint, pkl-validate, verify-schema]
     runs-on: ubuntu-latest
     if: success() && github.event_name == 'push'
     permissions:
@@ -215,7 +204,7 @@ jobs:
 
   # Notify on failure
   notify-failure:
-    needs: [build, test-unit, lint, pkl-validate, verify-schema, verify-helm]
+    needs: [build, test-unit, lint, pkl-validate, verify-schema]
     runs-on: ubuntu-latest
     if: failure() && github.event_name == 'push'
     steps:

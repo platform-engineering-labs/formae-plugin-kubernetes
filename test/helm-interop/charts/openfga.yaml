@@ -1,0 +1,13 @@
+# openfga — generated from the plugin-factory corpus, then free to hand-edit.
+# Selected for the test-hook trait.
+chart: openfga
+repoURL: https://openfga.github.io/helm-charts
+version: 0.3.9
+
+trait: test-hook
+traitObject: "Pod/openfga-test-connection"
+
+notes: >-
+  Artifact Hub rank 237. Installed bare. A failure before
+  formae is involved is the chart's prerequisites, not formae's behaviour,
+  and is reported as a skip.

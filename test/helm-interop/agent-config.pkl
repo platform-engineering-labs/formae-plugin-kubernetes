@@ -1,0 +1,75 @@
+/// Agent configuration for the Helm interop suite.
+///
+/// Installed as a named profile by scripts/run-helm-interop-test.sh, so it never
+/// touches ~/.config/formae/formae.conf.pkl or any profile a human is using.
+///
+/// Its own SQLite file: the suite adopts releases and asserts on inventory
+/// contents, and sharing a datastore with other work makes both flaky.
+amends "formae:/Config.pkl"
+
+agent {
+  datastore {
+    sqlite { filePath = "~/.pel/formae/data/helm-interop-ci.db" }
+  }
+
+  synchronization {
+    enabled = true
+    // The suite waits for formae to notice an out-of-band `helm rollback`, so
+    // sync has to run faster than the test's patience.
+    interval = 30.s
+  }
+
+  discovery {
+    // Load-bearing. Adoption starts from a release formae did not install, so
+    // if discovery is off the release never becomes an adoption candidate and
+    // step 3 waits out its timeout.
+    enabled = true
+    // 20s, not 60s. A cell installs a release and then waits for it to become
+    // an adoption candidate, so the whole scenario is gated on a discovery
+    // cycle landing. At 60s a chart could wait minutes, and metrics-server
+    // timed out at seven of them while its namespace had still not been
+    // enumerated.
+    interval = 20.s
+
+    // Deliberately short. Every extra type is another List per namespace per
+    // cycle, and a cycle that takes minutes is what made discovery the slowest
+    // step in the suite.
+    //
+    // The chart-rendered kinds — Deployment, StatefulSet, Service, ConfigMap,
+    // Secret, ServiceAccount — used to be here so that a release collapsing its
+    // own objects out of discovery would be observable. Nothing asserts that
+    // yet, so they were paying a per-cycle cost for coverage the suite does not
+    // have. Put them back alongside an assertion, not before one.
+    resourceTypesToDiscover = new Listing {
+      // Namespace is here because the release namespaces this suite creates are
+      // unmanaged (the bootstrap forma declares only a target, per PLA-530), and
+      // seeing them is what makes an unexpected leftover visible in the
+      // inventory rather than only in kubectl.
+      "K8S::Core::Namespace"
+      // Release is parentless and listed cluster-wide, so this one entry
+      // enumerates every namespace in a single List. It used to declare
+      // parent = K8S::Core::Namespace with a listParam, which made it a child
+      // and left it undiscoverable inside a namespace formae manages.
+      //
+      // K8S::Helm::Release is the only Helm resource type the plugin registers.
+      // "K8S::Helm::Chart" was listed here too and was never a resource type at
+      // all — the removed HelmChart.pkl was a forma-level abstraction that
+      // decomposed into typed resources, so there was nothing to List.
+      "K8S::Helm::Release"
+    }
+  }
+
+  logging {
+    filePath = "~/.pel/formae/log/helm-interop-ci.log"
+    fileLogLevel = "debug"
+    consoleLogLevel = "info"
+  }
+}
+
+// No telemetry from a test run. The suite installs and tears down dozens of
+// releases per sweep, and none of that is signal anybody wants reported —
+// least of all from CI, where it would be attributed to whoever's credentials
+// the runner happens to hold.
+cli {
+  disableUsageReporting = true
+}

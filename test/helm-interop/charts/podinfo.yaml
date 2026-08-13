@@ -1,0 +1,20 @@
+# podinfo — the control.
+#
+# Small, no hooks, installs bare anywhere, seconds to roll out. Deliberately has
+# no -migrate.yaml sibling: it exercises install, discovery and adoption and
+# stops there, which is what proves the migrate path is genuinely opt-in rather
+# than skipped at runtime.
+#
+# It also keeps the suite honest about hooks. If a chain only ever passes for
+# charts with hooks, the scenario is depending on hook side effects somewhere it
+# should not be.
+chart: podinfo
+repoURL: https://stefanprodan.github.io/podinfo
+version: 6.7.0
+
+trait: no-hooks
+traitObject: ""
+
+notes: >-
+  Control case. Fast enough to be the first thing to run when the harness itself
+  is what you are debugging.

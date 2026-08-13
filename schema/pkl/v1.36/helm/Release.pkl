@@ -1,0 +1,255 @@
+// AUTO-GENERATED — DO NOT EDIT.
+// Source: schema/pkl-main/helm/Release.pkl
+// Regenerate via: make generate-versioned-schemas
+// Edits made directly to this file will be lost on the next regen.
+
+/*
+ * © 2026 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * K8S Plugin Schema - Helm release driven by the Helm SDK.
+ */
+module release
+
+import "@formae/formae.pkl"
+// No field on a release has a shape that depends on the apiserver minor, so
+// this module is copied into every v<X.Y>/ tree unchanged rather than hoisted
+// to the package root. That is not cosmetic: `formae extract` builds its
+// resource-type map by globbing `@k8s/*.pkl` plus `@k8s/v<ver>/**/*.pkl`
+// (formae's ImportsGenerator.pkl), so a resource module at a root-level
+// subdirectory is invisible to it and extract fails with
+// `Cannot find key "K8S::Helm::Release"`.
+import "../k8s.pkl" as k8s
+
+const type = "K8S::Helm::Release"
+
+open class ReleaseResolvable extends formae.Resolvable {
+  hidden type = module.type
+  hidden name: ReleaseResolvable = (this) { property = "metadata.name" }
+  hidden namespace: ReleaseResolvable = (this) { property = "metadata.namespace" }
+}
+
+/// A Helm release, installed and upgraded through the embedded Helm SDK.
+///
+/// Formae manages the *release*; Helm manages the objects the chart renders.
+/// That split is the point. Hooks, hook weights, hook delete policies, CRD
+/// install ordering and revision history are Helm behaviours, and the plugin
+/// gets all of them by calling Helm rather than reimplementing them.
+///
+/// The objects a release renders are hidden from discovery — the release stands
+/// in for them — and listed on [resourceNames] so a collapsed release still
+/// says what it owns. Objects created *downstream* of the chart by controllers
+/// (the Pods behind a Deployment, the Jobs behind a CronJob) are not in the
+/// rendered manifest and are still discovered individually.
+///
+/// This replaces the removed `HelmChart.pkl`, which rendered a chart
+/// client-side and decomposed it into typed formae resources. That gave
+/// per-object state but could not honour hooks at all, so charts carrying them
+/// applied silently wrong. The trade is deliberate: one resource here, and
+/// everything Helm does works.
+///
+/// ## What is not modelled
+///
+/// - `helm rollback` — revert the values here and re-apply instead. Note that
+///   this fires `pre-upgrade` hooks, not `pre-rollback` hooks.
+/// - `helm test` — a CI verb, not desired state.
+/// - Drift *inside* the release. Editing a chart-owned Deployment by hand is
+///   invisible here, exactly as it is invisible to Helm itself.
+/// - Uninstall residue. Objects from the chart's `crds/` directory and any
+///   object annotated `helm.sh/resource-policy: keep` outlive a delete, and
+///   correctly reappear as unmanaged once no release claims them.
+/// Deliberately parentless, despite a release living in a namespace.
+///
+/// A parent with a listParam says two things at once: this resource belongs to
+/// that one, and you must hand me the parent's value before I can enumerate it.
+/// The first is true here, the second is not. Helm lists every release in the
+/// cluster in one call - `list.AllNamespaces = true`, which is exactly what
+/// buildInventory already does - so requiring a namespace per List bought
+/// nothing but a List call per namespace per discovery pass.
+///
+/// The dependency edge does not come from this hint either. `metadata.namespace`
+/// is `(String|formae.Resolvable)`, so a forma writes
+/// `namespace = appNs.res.name` and formae orders on that reference. And a
+/// release cannot exist without a namespace, so the value discovery needs is
+/// always on the resource itself; the parent was never the only way to know it.
+///
+/// Being parentless also keeps this type discoverable in a namespace formae
+/// already manages. Discovery queues a child List only for parents it synced in
+/// that pass, and a managed namespace is maintained by the sync loop instead, so
+/// releases inside one were never listed at all and could never be adopted -
+/// which is backwards, since whoever manages the namespace is the likeliest
+/// person to find a stray `helm install` in it. See PLA-530: the core bug is
+/// real and still affects every other listParam child, but Helm no longer needs
+/// to wait for it.
+@k8s.ResourceHint {
+  type = module.type
+  identifier = "$.metadata.name"
+  discoverable = true
+}
+open class Release extends formae.Resource {
+  hidden parent = this
+  fixed hidden resourceType: String = module.type
+
+  hidden res: ReleaseResolvable = new {
+    label = parent.label
+    stack = parent.stack?.label
+  }
+
+  /// Release name and namespace. Both are immutable: Helm cannot rename a
+  /// release or move it between namespaces, so a change to either has to be a
+  /// replace.
+  ///
+  /// [ReleaseObjectMeta.name] defaults to this resource's `label`, so the common
+  /// case only needs the namespace:
+  ///
+  /// ```
+  /// new helm.Release {
+  ///   label = "kratos"           // the release is named "kratos" too
+  ///   metadata { namespace = appNs.res.name }
+  /// }
+  /// ```
+  ///
+  /// Deliberately the label rather than a Helm-generated name: the release name is
+  /// this resource's identifier (`$.metadata.name`), and Helm's `--generate-name`
+  /// appends a fresh random suffix each time, so it could never be a stable
+  /// identity. Set `name` explicitly when the release must differ from the label.
+  @k8s.FieldHint { required = true }
+  metadata: ReleaseObjectMeta = new { name = parent.label }
+
+  /// The chart's **name**, not a full reference — `"podinfo"`, not
+  /// `"oci://ghcr.io/stefanprodan/charts/podinfo"`. Put the location in
+  /// [repoURL]. A local path is also accepted.
+  ///
+  /// The split is what lets this field survive a round trip. Helm records only
+  /// the chart's name in the release, so a full reference here would be read back
+  /// as the bare name and every apply after the first would be refused as drift.
+  /// A full `oci://` reference is therefore rejected at apply time, with a message
+  /// showing the split to use.
+  ///
+  /// Chart *contents* are still outside the diff: a mutable tag or a re-published
+  /// version changes what installs without changing this field. Pin [version].
+  @k8s.FieldHint {}
+  chart: String?
+
+  /// Where to fetch [chart] from. Either kind of repository works:
+  ///
+  ///   - a classic HTTP repo — `repoURL = "https://k8s.ory.sh/helm/charts"`
+  ///     with `chart = "kratos"`
+  ///   - an OCI registry — `repoURL = "oci://ghcr.io/stefanprodan/charts"`
+  ///     with `chart = "podinfo"`
+  ///
+  /// The plugin handles the difference. An HTTP repo has an index, so Helm resolves
+  /// the bare name against it. An OCI registry has none — `helm pull name --repo
+  /// oci://…` fails outright — so the prefix is joined onto the name instead.
+  ///
+  /// Not needed for a local chart path. Needed for everything else: a bare
+  /// `repo/chart` alias only resolves if someone ran `helm repo add` on the host
+  /// running the agent, which a forma cannot depend on.
+  ///
+  /// Input-only. Helm does not record which repository a release came from, so an
+  /// adopted release arrives without it and it has to be supplied by hand.
+  @k8s.FieldHint {}
+  repoURL: String?
+
+  /// Exact chart version. Leaving this unset resolves to the newest version at
+  /// apply time, which makes the applied result depend on when you applied.
+  @k8s.FieldHint {}
+  version: String?
+
+  /// Chart values, as they would appear in a `values.yaml`. Write them with
+  /// `new Dynamic { ... }` so arbitrary nesting is allowed.
+  ///
+  /// Round-trips against the release's stored config, which holds only the
+  /// user-supplied values — not the chart's defaults merged in — so unset
+  /// chart defaults do not show up as permanent drift.
+  ///
+  /// Typed `Dynamic?` with an explicit null default, not `Mapping<String, Any>`:
+  /// the renderer reads a mapping's value type eagerly and `Any` has no default,
+  /// which fails with "Tried to read property `default` but its value is
+  /// undefined" for every chart that needs no overrides. The removed
+  /// HelmChart.pkl hit the same thing.
+  ///
+  /// One trap worth knowing: a values key literally named `default` must use
+  /// bracket syntax — `["default"] = ...`, not `default = ...`. On a `Dynamic`,
+  /// `default` is a reserved property that supplies the default value for new
+  /// members, so the plain form is silently swallowed and the chart receives an
+  /// empty block. `ory/kratos` has exactly this shape at
+  /// `kratos.config.secrets.default`.
+  @k8s.FieldHint {}
+  values: Dynamic? = null
+
+  /// Create the target namespace if absent, like `helm install
+  /// --create-namespace`. Prefer declaring a `K8S::Core::Namespace` resource
+  /// and referencing it, so formae owns the namespace's lifecycle.
+  @k8s.FieldHint {}
+  createNamespace: Boolean?
+
+  /// Skip installing the chart's `crds/` directory.
+  @k8s.FieldHint {}
+  skipCrds: Boolean?
+
+  /// Skip the chart's hooks entirely.
+  ///
+  /// Setting this gives up the main reason to drive Helm at all. Charts that
+  /// install CRDs or migrate databases in a `pre-install` hook will apply
+  /// incompletely.
+  @k8s.FieldHint {}
+  disableHooks: Boolean?
+
+  /// Roll back automatically if the operation fails.
+  ///
+  /// On upgrade this is a genuine safety net. On a first install there is no
+  /// previous revision to roll back to, so it only adds a purge.
+  @k8s.FieldHint {}
+  atomic: Boolean?
+
+  /// Seconds a single Helm operation may take before it is abandoned. Defaults
+  /// to 600.
+  ///
+  /// This has to cover hook execution: Helm blocks on hook Jobs regardless of
+  /// any wait setting, so a chart with a slow `pre-install` migration needs a
+  /// value above that migration's runtime.
+  @k8s.FieldHint {}
+  timeoutSeconds: Int?
+
+  /// Current Helm revision. Advances by one per install or upgrade.
+  @k8s.FieldHint { hasProviderDefault = true }
+  revision: Int?
+
+  /// Helm release status: `deployed`, `failed`, `pending-install`,
+  /// `pending-upgrade`, `pending-rollback`, `uninstalling`, `superseded`.
+  @k8s.FieldHint { hasProviderDefault = true }
+  status: String?
+
+  /// The chart's `appVersion`, i.e. the version of the application shipped.
+  @k8s.FieldHint { hasProviderDefault = true }
+  appVersion: String?
+
+  /// Objects the release rendered, grouped by `apiVersion/Kind`, each entry
+  /// `namespace/name`. This is what the release manages and what discovery
+  /// hides on its behalf.
+  @k8s.FieldHint { hasProviderDefault = true }
+  resourceNames: Mapping<String, Listing<String>>?
+}
+
+/// Metadata for a Helm release.
+///
+/// Both fields are `createOnly`: Helm has no rename and no namespace move, so
+/// changing either must replace the release rather than mutate it.
+@k8s.SubResourceHint {}
+open class ReleaseObjectMeta extends formae.SubResource {
+  @k8s.FieldHint { required = true; createOnly = true }
+  name: String
+
+  @k8s.FieldHint { required = true; createOnly = true }
+  namespace: (String|formae.Resolvable)
+
+  /// Labels stamped onto the release record, so `helm list -l` can select it.
+  /// Not propagated to the chart's objects.
+  @k8s.FieldHint { hasProviderDefault = true }
+  labels: Mapping<String, String>?
+
+  @k8s.FieldHint { hasProviderDefault = true }
+  annotations: Mapping<String, String>?
+}

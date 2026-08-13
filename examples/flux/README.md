@@ -1,28 +1,22 @@
-# Flux — installed end-to-end with formae (Helm + catch-all)
+# Flux — installed end-to-end with formae (Helm release + catch-all)
 
 Installs the **entire Flux operator** with a single `formae apply` — no kubectl,
-no `flux install`. Demonstrates that `HelmChart` + the `K8S::Custom::Resource`
-catch-all cover a real operator chart: controllers/RBAC/Services map to typed
-resources, and the 14 CRDs the chart ships fall back to the catch-all.
+no `flux install`. Then manages Flux's own custom resources through the
+`K8S::Custom::Resource` catch-all, which is the half of the example that needs
+the CRDs the chart installs.
 
 ## How it works
 
-`flux-helm.pkl` renders `fluxcd-community/flux2` via `HelmChart` at pkl-eval
-time. Each rendered object is dispatched:
-- **typed kinds** (Deployment, ServiceAccount, ClusterRole, Service, Job,
-  NetworkPolicy, Namespace) → typed formae resources,
-- **unsupported kinds** (the 14 `CustomResourceDefinition`s) → `K8S::Custom::Resource`
-  via the `dispatch.mapCustom` fallback.
+`flux-helm.pkl` declares `fluxcd-community/flux2` as one `K8S::Helm::Release`.
+Helm installs the chart's ~40 objects — controllers, RBAC, Services and the 14
+`CustomResourceDefinition`s — in its own order, and formae manages the release.
+The objects are collapsed under it in discovery and listed on the release's
+`resourceNames`.
 
-One `formae apply` then creates all ~40 resources.
+## Prerequisites
 
-## Prerequisites (tooling only)
-
-```bash
-helm repo add fluxcd-community https://fluxcd-community.github.io/helm-charts
-helm repo update
-# pkl-reader-helm must be on PATH (formae registers it automatically)
-```
+None beyond a reachable cluster. The plugin embeds the Helm SDK, so there is no
+`helm repo add` and no reader binary on `PATH`.
 
 ## Install Flux
 
@@ -35,8 +29,9 @@ Verify:
 ```bash
 kubectl get pods -n flux-system
 kubectl get crd | grep fluxcd.io                       # 14 CRDs
+helm list -n flux-system                               # the release formae created
 formae inventory resources --query "stack:flux managed:true" --max-results 100
-#   → typed controllers/RBAC + 14 K8S::Custom::Resource (the CRDs)
+#   → one K8S::Helm::Release plus the Namespace, not ~40 objects
 ```
 
 ## Manage Flux custom resources
@@ -55,6 +50,7 @@ formae destroy --yes examples/flux/flux-helm.pkl
 ```
 
 ## Notes
-- Bump the `@k8s/v1.33/...` imports + `kubernetesVersion` to match your cluster minor.
-- The chart ships its CRDs in `templates/` (not `crds/`), so they render without
-  `--include-crds`.
+- Bump the `@k8s/v1.33/...` imports + `kubernetesVersion` to match your cluster
+  minor.
+- The chart ships its CRDs in `templates/` (not `crds/`), so a `formae destroy`
+  removes them with the release rather than leaving them behind.

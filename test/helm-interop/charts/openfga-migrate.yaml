@@ -1,0 +1,6 @@
+# Opts openfga into upgrade, rollback and reconcile.
+# Adjacent pair from the repo index, not a guess.
+version: 0.3.10
+
+notes: >-
+  0.3.9 -> 0.3.10.

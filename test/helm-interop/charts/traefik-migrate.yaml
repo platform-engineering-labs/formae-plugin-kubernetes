@@ -1,0 +1,6 @@
+# Opts traefik into the rest of the chain: formae upgrade, helm
+# rollback, reconcile. Adjacent pair from the repo index, not a guess.
+version: 41.1.0
+
+notes: >-
+  41.0.2 -> 41.1.0.
