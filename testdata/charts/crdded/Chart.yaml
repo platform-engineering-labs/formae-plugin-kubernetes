@@ -1,0 +1,6 @@
+apiVersion: v2
+name: crdded
+description: Chart shipping a CRD in crds/, for the CRD-then-CR race test (PLA-711).
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

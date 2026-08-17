@@ -10,6 +10,26 @@ formae agent.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A `K8S::Custom::Resource` no longer fails when its CRD arrives late in the
+  same apply** (PLA-711). The apply path already reset the RESTMapper and
+  retried on `no matches for kind`, but the loop gave up after 30s — too short
+  for a `K8S::Helm::Release` that installs CRDs alongside its controller
+  (cert-manager's took ~66s to establish). The wait now defaults to 180s and is
+  a plugin setting on the agent's `formae.conf.pkl` entry:
+
+  ```pkl
+  agent {
+    resourcePlugins {
+      new k8s.PluginConfig { crdEstablishTimeoutSeconds = 300 }
+    }
+  }
+  ```
+
+  A cert-manager Release plus its ClusterIssuers no longer has to be split
+  across two applies.
+
 ### Removed
 
 - **`HelmChart.pkl` and its per-version wrapper trees are gone** — 281 files,

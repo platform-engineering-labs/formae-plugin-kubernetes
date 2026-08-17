@@ -11,4 +11,11 @@ extends "formae:/Config.pkl"
 
 class PluginConfig extends BaseResourcePluginConfig {
     type = "k8s"
+
+    /// How long applying a `K8S::Custom::Resource` waits for its kind to
+    /// become servable when the CRD is created in the same apply — by a
+    /// sibling `CustomResourceDefinition`, or by a `K8S::Helm::Release`
+    /// that installs CRDs. Defaults to 180. Raise it for charts whose
+    /// CRDs land late (cert-manager took ~66s in one observed install).
+    crdEstablishTimeoutSeconds: Int?
 }
