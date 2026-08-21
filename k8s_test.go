@@ -9,7 +9,9 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
 	"github.com/platform-engineering-labs/formae/pkg/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -301,4 +303,16 @@ func TestDiscoveryFilters_ExcludesHelmReleaseStorage(t *testing.T) {
 	if !found {
 		t.Fatal("no DiscoveryFilter excludes Secrets of type helm.sh/release.v1")
 	}
+}
+
+// TestConfigureAppliesCRDEstablishTimeout covers the PLA-711 wiring end of the
+// Go side: the SDK hands the plugin the extra fields from its formae.conf.pkl
+// entry, and the custom-resource establish wait must pick them up.
+func TestConfigureAppliesCRDEstablishTimeout(t *testing.T) {
+	p := &Plugin{}
+	require.Equal(t, config.DefaultCRDEstablishTimeout, config.CRDEstablishTimeout())
+
+	require.NoError(t, p.Configure([]byte(`{"crdEstablishTimeoutSeconds":600}`)))
+	t.Cleanup(func() { _ = p.Configure([]byte(`{"crdEstablishTimeoutSeconds":0}`)) })
+	assert.Equal(t, 10*time.Minute, config.CRDEstablishTimeout())
 }

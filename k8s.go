@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -46,6 +47,16 @@ type Plugin struct{}
 
 // Compile-time check: Plugin must satisfy ResourcePlugin interface.
 var _ plugin.ResourcePlugin = &Plugin{}
+
+// Compile-time check: the plugin takes settings from formae.conf.pkl.
+var _ plugin.Configurable = &Plugin{}
+
+// Configure receives the fields the user set on this plugin's entry in the
+// agent's formae.conf.pkl beyond BaseResourcePluginConfig — schema/Config.pkl's
+// PluginConfig. The SDK calls it once, before the plugin serves anything.
+func (p *Plugin) Configure(cfg json.RawMessage) error {
+	return config.SetSettings(cfg)
+}
 
 // =============================================================================
 // Configuration Methods

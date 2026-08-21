@@ -1,0 +1,29 @@
+# Shipped in crds/, not templates/: Helm installs these outside the release
+# manifest, so the release's readiness check never sees them. That is the
+# widest version of the PLA-711 race — the Release can report Deployed while
+# this kind is still unservable.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: gizmos.example.com
+spec:
+  group: example.com
+  scope: Namespaced
+  names:
+    kind: Gizmo
+    listKind: GizmoList
+    plural: gizmos
+    singular: gizmo
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                size:
+                  type: integer

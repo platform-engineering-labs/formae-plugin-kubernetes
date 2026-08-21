@@ -66,10 +66,13 @@ var _ prov.Provisioner = &CustomResource{}
 // CRD. We retry GVR resolution (each attempt resets the RESTMapper) so the
 // instance Create converges once the CRD is established, instead of failing
 // the whole apply on a transient "no REST mapping" miss.
-const (
-	crdEstablishTimeout = 30 * time.Second
-	crdEstablishBackoff = 500 * time.Millisecond
-)
+//
+// How long that wait is allowed to take is a plugin setting
+// (crdEstablishTimeoutSeconds), because it is not ours to predict: a Helm
+// Release installing CRDs alongside its controller (cert-manager with
+// installCRDs, ~66s observed) only registers the kind once the chart's own
+// install has got that far.
+const crdEstablishBackoff = 500 * time.Millisecond
 
 // parseManifest normalizes incoming property JSON, strips the formae-only
 // formaeId field, and returns the unstructured object.
@@ -115,7 +118,7 @@ func (c *CustomResource) resourceFor(gvr schema.GroupVersionResource, namespaced
 //   - transient apiserver errors — timeout / internal / throttling / already-exists
 func (c *CustomResource) resolveAndApply(ctx context.Context, obj *unstructured.Unstructured) (*unstructured.Unstructured, error) {
 	apiVersion, kind := obj.GetAPIVersion(), obj.GetKind()
-	deadline := time.Now().Add(crdEstablishTimeout)
+	deadline := time.Now().Add(config.CRDEstablishTimeout())
 	for {
 		gvr, namespaced, err := c.Client.ResolveMapping(apiVersion, kind)
 		if err == nil {
