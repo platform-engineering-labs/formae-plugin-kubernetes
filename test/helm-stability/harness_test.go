@@ -46,8 +46,14 @@ var (
 	// listing that separates our agent from anyone else's. Since this file's job
 	// is to send signals, "the only agent running" is not good enough: we kill
 	// the process we started, or nothing.
-	agentProc      *os.Process
-	commandIDRegex = regexp.MustCompile(`id:([A-Za-z0-9]+)`)
+	agentProc *os.Process
+	// The formae CLI prints the submitted command's KSUID in the async notice, and
+	// the wording of that notice is not a contract. It used to read `id:<ksuid>`;
+	// since the CLI split `command status` from `command list` it reads
+	// `formae command status <ksuid>`. Match either, so this suite does not go red
+	// on a copy edit — every test here begins by submitting an apply, so a missed
+	// KSUID fails the whole file before any Helm behaviour is exercised.
+	commandIDRegex = regexp.MustCompile(`(?:id:|formae command status\s+)([A-Za-z0-9]+)`)
 )
 
 // ---------------------------------------------------------------------------
