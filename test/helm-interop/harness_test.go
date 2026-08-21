@@ -488,7 +488,13 @@ func (f *formaeCLI) args(rest ...string) []string {
 	return append([]string{"--profile", f.profile}, rest...)
 }
 
-var commandIDPattern = regexp.MustCompile(`id:([A-Za-z0-9]+)`)
+// The formae CLI prints the submitted command's KSUID in the async notice, and
+// the wording of that notice is not a contract. It used to read `id:<ksuid>`;
+// since the CLI split `command status` from `command list` it reads
+// `formae command status <ksuid>`. Match either, so this suite does not go red
+// on a copy edit — every test here begins by submitting an apply, so a missed
+// KSUID fails the whole file before any Helm behaviour is exercised.
+var commandIDPattern = regexp.MustCompile(`(?:id:|formae command status\s+)([A-Za-z0-9]+)`)
 
 // applyAttempts bounds the retries for a rejected apply. Six with quadratic
 // backoff spans about four minutes, which covers a sync of the largest chart in
