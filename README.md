@@ -170,12 +170,14 @@ chart renders, so hooks, hook weights, CRD install ordering and revision history
 all work — and `helm list`, `helm history` and `helm rollback` see the release.
 
 ```pkl
-import "@k8s/v<X.Y>/helm/Release.pkl" as helm
+import "@k8s/helm/Release.pkl" as helm
 ```
 
-The version segment matches the Target's `kubernetesVersion`, as with every
-other schema import. No `pkl-reader-helm` on `PATH` and no `helm repo add`: the
-plugin embeds the SDK and nothing is rendered at Pkl-eval time.
+No version segment, unlike every other schema import: no field on a release has
+a shape that depends on the apiserver minor, so this module ships once at the
+package root instead of in each `v<X.Y>/` tree. No `pkl-reader-helm` on `PATH`
+and no `helm repo add` either: the plugin embeds the SDK and nothing is rendered
+at Pkl-eval time.
 
 See [`examples/helm/`](examples/helm/) for runnable formae and the drift and
 adoption scenarios.
@@ -214,20 +216,22 @@ test commands, and per-provider tear-down steps.
 
 ### Helm charts
 
-The [examples/helm/](examples/helm/) directory uses the `@k8s/helm` wrappers
-to render Helm charts into typed K8s resources.
+The [examples/helm/](examples/helm/) directory installs charts as
+`K8S::Helm::Release` resources via `@k8s/helm/Release.pkl`.
 
 | File | What it deploys |
 |---|---|
-| `nginx-v1.31.pkl` | bitnami/nginx, 2 replicas, ClusterIP service |
-| `nginx-v1.34.pkl` | same, pinned to the latest supported minor |
-| `memcached-v1.31.pkl` | bitnami/memcached standalone |
-| `postgresql-v1.31.pkl` | bitnami/postgresql primary-only |
+| `release-nginx.pkl` | bitnami/nginx from an OCI registry |
+| `release-kratos.pkl` | ory/kratos from an HTTP repo, with values |
+| `drift-helm-upgrade/` | formae deploys, `helm upgrade` drifts it, formae reconciles |
+| `adopt-and-rollback/` | adopt a `helm install`, upgrade with formae, roll back with Helm |
+| `immutable-field-upgrade/` | a chart upgrade no tool can perform, refused the same way by formae and by Helm |
 
 ```bash
-pkl eval examples/helm/nginx-v1.31.pkl --project-dir examples/helm/
-formae apply examples/helm/nginx-v1.31.pkl --mode reconcile --yes
-formae destroy examples/helm/nginx-v1.31.pkl --yes
+pkl project resolve examples/
+pkl eval examples/helm/release-nginx.pkl --project-dir examples/
+formae apply examples/helm/release-nginx.pkl --mode reconcile --yes
+formae destroy examples/helm/release-nginx.pkl --yes
 ```
 
 ## Targets

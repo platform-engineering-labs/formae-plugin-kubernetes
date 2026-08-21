@@ -66,7 +66,13 @@ var pklProjectRewrites = func(_ string) []struct{ Old, New string } {
 
 // fixtureSchemaImportRE matches `import "@k8s/<group>/<X>.pkl"` style
 // references that target an api-group subdirectory.
-var fixtureSchemaImportRE = regexp.MustCompile(`(import\s+"@k8s/)([a-z][a-z0-9_-]*\/)`)
+var fixtureSchemaImportRE = regexp.MustCompile(`(import\s+"@k8s/)([a-z][a-z0-9_-]*)(\/)`)
+
+// versionIndependentDirs are schema subtrees emitted once at the generated
+// package root rather than per K8s version, so a fixture import of one must
+// stay unprefixed (`@k8s/helm/Release.pkl`, not `@k8s/v1.33/helm/Release.pkl`).
+// Keep in sync with versionIndependentDirs in tools/gen-versioned-reflect.
+var versionIndependentDirs = map[string]bool{"helm": true}
 
 // fixtureSubresourcesImportRE matches `import "@k8s/k8s-subresources.pkl"`
 // (with or without an `as <alias>` suffix) — the master tree's
@@ -89,6 +95,7 @@ var fixtureK8sRootImportRE = regexp.MustCompile(`(import\s+"@k8s/)k8s\.pkl(")`)
 // subtree:
 //
 //	import "@k8s/core/Pod.pkl"                       ->  import "@k8s/v1.30/core/Pod.pkl"
+//	import "@k8s/helm/Release.pkl"                   ->  unchanged (version-independent)
 //	import "@k8s/k8s-subresources.pkl" as k8s        ->  import "@k8s/v1.30/k8s.pkl" as k8s
 //	import "@k8s/k8s.pkl" as foo                     ->  import "@k8s/v1.30/k8s.pkl" as foo
 //	import "@k8s/k8s.pkl"                            ->  import "@k8s/v1.30/k8s.pkl"
@@ -107,7 +114,13 @@ func rewriteFixtureSchemaImports(path, version string) error {
 	if err != nil {
 		return err
 	}
-	rewritten := fixtureSchemaImportRE.ReplaceAll(data, []byte(fmt.Sprintf(`${1}v%s/${2}`, version)))
+	rewritten := fixtureSchemaImportRE.ReplaceAllFunc(data, func(m []byte) []byte {
+		g := fixtureSchemaImportRE.FindSubmatch(m)
+		if versionIndependentDirs[string(g[2])] {
+			return m
+		}
+		return fmt.Appendf(nil, `%sv%s/%s%s`, g[1], version, g[2], g[3])
+	})
 	rewritten = fixtureSubresourcesImportRE.ReplaceAll(rewritten, []byte(fmt.Sprintf(`${1}v%s/k8s.pkl${2}`, version)))
 	rewritten = fixtureK8sRootImportWithAliasRE.ReplaceAll(rewritten, []byte(fmt.Sprintf(`${1}v%s/k8s.pkl${2}${3}`, version)))
 	rewritten = fixtureK8sRootImportRE.ReplaceAll(rewritten, []byte(fmt.Sprintf(`${1}v%s/k8s.pkl${2}`, version)))

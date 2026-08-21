@@ -42,15 +42,15 @@ examples/
 │   ├── gke.pkl                # GKE Sandbox
 │   └── eks.pkl                # S3 (Mountpoint CSI) + gVisor
 ├── formations/                 # Native Pkl charts (no Helm)
-└── helm/                       # Helm: K8S::Helm::Release, and the older bridge
+└── helm/                       # Helm: K8S::Helm::Release + drift/adopt scenarios
 ```
 
 ## Resolving Pkl deps
 
 Every subdirectory ships its own `PklProject` declaring the Pkl deps it
 needs (`@formae`, `@k8s`, optional cloud plugins, `@apps`, `@clusters`).
-Helm wrappers live under `@k8s/helm/v<X.Y>/`, so no separate dep is
-required.
+`K8S::Helm::Release` lives at `@k8s/helm/Release.pkl` — one copy at the
+package root, not per K8s version — so no separate dep is required.
 
 **Before evaluating any example, resolve its Pkl deps.** `PklProject.deps.json`
 is git-ignored and must be regenerated on a fresh clone (and any time a
