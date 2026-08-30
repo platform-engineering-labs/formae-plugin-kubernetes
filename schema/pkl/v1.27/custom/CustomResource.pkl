@@ -71,7 +71,11 @@ open class CustomResource extends k8s.Resource {
   /// is intentionally untyped (escape-hatch model — no per-field validation).
   /// `Any` (not just `Dynamic`) so it accepts both hand-authored Dynamic
   /// literals and typed objects produced by Helm chart rendering.
-  @k8s.FieldHint {}
+  /// Atomic: formae has no schema knowledge inside an `Any` body, so
+  /// whole-value replacement is the only update it can stand behind.
+  /// preserveEmptyValues: empty members are configuration here (an empty
+  /// object selects a variant by key presence), never rendering noise.
+  @k8s.FieldHint { updateMethod = "Atomic"; preserveEmptyValues = true }
   spec: Any?
 
   /// Composite identity, byte-identical to prov.CustomResourceID in Go:
