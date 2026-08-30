@@ -1,0 +1,293 @@
+{
+  "_comment": "Disposition of every hasProviderDefault schema annotation. Checked by TestProviderDefaultDispositionsManifest: each annotation needs a row, stale rows fail, and disposition \"keep\" needs a pin (\"documentation\" or \"fixture:<path>\"). \"pending\" means the audit has not reached the field yet.",
+  "dispositions": [
+    {
+      "key": "admissionregistration/MutatingAdmissionPolicy.pkl#MatchResources.matchPolicy",
+      "disposition": "pending"
+    },
+    {
+      "key": "admissionregistration/MutatingAdmissionPolicy.pkl#MutatingAdmissionPolicySpec.failurePolicy",
+      "disposition": "pending"
+    },
+    {
+      "key": "admissionregistration/MutatingAdmissionPolicy.pkl#MutatingAdmissionPolicySpec.reinvocationPolicy",
+      "disposition": "pending"
+    },
+    {
+      "key": "admissionregistration/MutatingWebhookConfiguration.pkl#MutatingWebhook.matchPolicy",
+      "disposition": "pending"
+    },
+    {
+      "key": "admissionregistration/MutatingWebhookConfiguration.pkl#MutatingWebhook.reinvocationPolicy",
+      "disposition": "pending"
+    },
+    {
+      "key": "admissionregistration/MutatingWebhookConfiguration.pkl#MutatingWebhook.timeoutSeconds",
+      "disposition": "pending"
+    },
+    {
+      "key": "admissionregistration/ValidatingWebhookConfiguration.pkl#ValidatingWebhook.matchPolicy",
+      "disposition": "pending"
+    },
+    {
+      "key": "admissionregistration/ValidatingWebhookConfiguration.pkl#ValidatingWebhook.timeoutSeconds",
+      "disposition": "pending"
+    },
+    {
+      "key": "apps/DaemonSet.pkl#DaemonSetSpec.revisionHistoryLimit",
+      "disposition": "pending"
+    },
+    {
+      "key": "apps/DaemonSet.pkl#DaemonSetSpec.updateStrategy",
+      "disposition": "pending"
+    },
+    {
+      "key": "apps/Deployment.pkl#DeploymentSpec.progressDeadlineSeconds",
+      "disposition": "pending"
+    },
+    {
+      "key": "apps/Deployment.pkl#DeploymentSpec.revisionHistoryLimit",
+      "disposition": "pending"
+    },
+    {
+      "key": "apps/Deployment.pkl#DeploymentSpec.strategy",
+      "disposition": "pending"
+    },
+    {
+      "key": "apps/Deployment.pkl#DeploymentStrategy.rollingUpdate",
+      "disposition": "pending"
+    },
+    {
+      "key": "apps/StatefulSet.pkl#StatefulSetSpec.persistentVolumeClaimRetentionPolicy",
+      "disposition": "pending"
+    },
+    {
+      "key": "apps/StatefulSet.pkl#StatefulSetSpec.podManagementPolicy",
+      "disposition": "pending"
+    },
+    {
+      "key": "apps/StatefulSet.pkl#StatefulSetSpec.revisionHistoryLimit",
+      "disposition": "pending"
+    },
+    {
+      "key": "apps/StatefulSet.pkl#StatefulSetSpec.updateStrategy",
+      "disposition": "pending"
+    },
+    {
+      "key": "batch/CronJob.pkl#CronJobSpec.concurrencyPolicy",
+      "disposition": "pending"
+    },
+    {
+      "key": "batch/CronJob.pkl#CronJobSpec.failedJobsHistoryLimit",
+      "disposition": "pending"
+    },
+    {
+      "key": "batch/CronJob.pkl#CronJobSpec.successfulJobsHistoryLimit",
+      "disposition": "pending"
+    },
+    {
+      "key": "batch/CronJob.pkl#CronJobSpec.suspend",
+      "disposition": "pending"
+    },
+    {
+      "key": "core/PersistentVolumeClaim.pkl#PersistentVolumeClaimSpec.storageClassName",
+      "disposition": "pending"
+    },
+    {
+      "key": "core/PersistentVolumeClaim.pkl#PersistentVolumeClaimSpec.volumeMode",
+      "disposition": "pending"
+    },
+    {
+      "key": "core/Secret.pkl#Secret.decodedData",
+      "disposition": "pending"
+    },
+    {
+      "key": "core/Service.pkl#ServicePort.protocol",
+      "disposition": "pending"
+    },
+    {
+      "key": "core/Service.pkl#ServiceSpec.internalTrafficPolicy",
+      "disposition": "pending"
+    },
+    {
+      "key": "core/Service.pkl#ServiceSpec.ipFamilyPolicy",
+      "disposition": "pending"
+    },
+    {
+      "key": "core/Service.pkl#ServiceSpec.selector",
+      "disposition": "pending"
+    },
+    {
+      "key": "core/Service.pkl#ServiceSpec.sessionAffinity",
+      "disposition": "pending"
+    },
+    {
+      "key": "core/Service.pkl#ServiceSpec.type",
+      "disposition": "pending"
+    },
+    {
+      "key": "helm/Release.pkl#Release.appVersion",
+      "disposition": "pending"
+    },
+    {
+      "key": "helm/Release.pkl#Release.resourceNames",
+      "disposition": "pending"
+    },
+    {
+      "key": "helm/Release.pkl#Release.revision",
+      "disposition": "pending"
+    },
+    {
+      "key": "helm/Release.pkl#Release.status",
+      "disposition": "pending"
+    },
+    {
+      "key": "helm/Release.pkl#ReleaseObjectMeta.annotations",
+      "disposition": "pending"
+    },
+    {
+      "key": "helm/Release.pkl#ReleaseObjectMeta.labels",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#ConfigMapVolumeSource.defaultMode",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#Container.imagePullPolicy",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#Container.resources",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#Container.terminationMessagePath",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#Container.terminationMessagePolicy",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#ContainerPort.protocol",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#DownwardAPIVolumeSource.defaultMode",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#HostPathVolumeSource.type",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#JobSpec.backoffLimit",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#JobSpec.completionMode",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#JobSpec.completions",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#JobSpec.manualSelector",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#JobSpec.parallelism",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#JobSpec.podReplacementPolicy",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#JobSpec.suspend",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#LabelSelector.matchLabels",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#ObjectFieldSelector.apiVersion",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#PodSpec.dnsPolicy",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#PodSpec.restartPolicy",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#PodSpec.schedulerName",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#PodSpec.securityContext",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#PodSpec.terminationGracePeriodSeconds",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#ProjectedVolumeSource.defaultMode",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#SecretVolumeSource.defaultMode",
+      "disposition": "pending"
+    },
+    {
+      "key": "k8s-subresources.pkl#Toleration.operator",
+      "disposition": "pending"
+    },
+    {
+      "key": "shared.pkl#NamespacedObjectMeta.annotations",
+      "disposition": "pending"
+    },
+    {
+      "key": "shared.pkl#NamespacedObjectMeta.labels",
+      "disposition": "pending"
+    },
+    {
+      "key": "shared.pkl#ObjectMeta.annotations",
+      "disposition": "pending"
+    },
+    {
+      "key": "shared.pkl#ObjectMeta.labels",
+      "disposition": "pending"
+    },
+    {
+      "key": "storage/CSIDriver.pkl#CSIDriverSpec.fsGroupPolicy",
+      "disposition": "pending"
+    },
+    {
+      "key": "storage/CSIDriver.pkl#CSIDriverSpec.requiresRepublish",
+      "disposition": "pending"
+    },
+    {
+      "key": "storage/CSIDriver.pkl#CSIDriverSpec.seLinuxMount",
+      "disposition": "pending"
+    },
+    {
+      "key": "storage/CSIDriver.pkl#CSIDriverSpec.storageCapacity",
+      "disposition": "pending"
+    },
+    {
+      "key": "storage/CSIDriver.pkl#CSIDriverSpec.volumeLifecycleModes",
+      "disposition": "pending"
+    },
+    {
+      "key": "storage/StorageClass.pkl#StorageClass.reclaimPolicy",
+      "disposition": "pending"
+    }
+  ]
+}
