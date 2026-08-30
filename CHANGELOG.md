@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Install with `sudo formae plugin install k8s` on the host that runs the
 formae agent.
 
-## [Unreleased]
+## [0.1.10]
 
 Requires formae >= 0.89.0 for the custom resource spec fidelity below; on an
 older agent the spec keeps today's behavior.
