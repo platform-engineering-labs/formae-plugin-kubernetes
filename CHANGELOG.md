@@ -13,7 +13,7 @@ formae agent.
 ### Fixed
 
 - **A `K8S::Custom::Resource` no longer fails when its CRD arrives late in the
-  same apply** (PLA-711). The apply path already reset the RESTMapper and
+  same apply**. The apply path already reset the RESTMapper and
   retried on `no matches for kind`, but the loop gave up after 30s — too short
   for a `K8S::Helm::Release` that installs CRDs alongside its controller
   (cert-manager's took ~66s to establish). The wait now defaults to 180s and is
@@ -29,6 +29,68 @@ formae agent.
 
   A cert-manager Release plus its ClusterIssuers no longer has to be split
   across two applies.
+
+- **A live uninstall is no longer reported as abandoned.** `Delete` started its
+  Helm uninstall without registering it in the in-flight registry, and
+  "a release record this plugin owns with no operation behind it" is exactly how
+  an abandoned uninstall is recognised. So the first `Status` poll — 20 seconds
+  after `Delete` under the default `statusCheckInterval` — declared every
+  uninstall slower than that abandoned, with a recoverable error code that asks
+  the agent to re-drive `Delete`, starting a second concurrent uninstall of the
+  same release. Slower than 20s is ordinary: a `pre-delete` hook, or `Wait=true`
+  sitting through a Pod's `terminationGracePeriodSeconds`.
+
+  Only podinfo-sized charts escaped it, which is why the conformance destroy step
+  passed throughout: its record is purged before the first poll. No test chart in
+  the repo declares a delete hook, and the kratos scenarios call
+  `formae destroy` from a `trap EXIT` cleanup that swallows failures.
+
+- **A release whose objects never become ready now fails instead of polling
+  forever.** Under `Wait=false` Helm records `deployed` as soon as the apiserver
+  accepts the manifests, and that record never changes again — so a Pod stuck in
+  `ImagePullBackOff` from a typo'd tag, or one no node has room for, left `Status`
+  answering `InProgress` for eternity. Nothing above caught it either: the agent
+  fails an operation when a plugin goes *silent*, never because it keeps
+  reporting progress, and there is no cap on how long an operation may run. The
+  readiness wait is now bounded by the timeout recorded on the release, the same
+  clock that already bounds a pending release, and the failure names the object
+  that never came up. An operation this process is still running is exempt, so a
+  slow hook is never cut short.
+
+- **An uninstall is bounded by the release's own timeout**, not the package
+  default. A release given `timeoutSeconds = 1800` had its uninstall cut off at
+  600s while the stalled-release verdict waited twice 1800s before saying so,
+  leaving the command `InProgress` for the best part of an hour on work nothing
+  was doing.
+
+- **Upgrading a chart with subcharts no longer fails to render.** Re-applying the
+  deployed version reuses the chart stored in the release record instead of
+  fetching it, but `chart.Chart.dependencies` is unexported and carries no JSON
+  tag (`helm/pkg/chart/chart.go:56`), so Helm's own storage drops every subchart
+  on the way in — while `Metadata.Dependencies`, which is serialized, goes on
+  listing them. Rendering that remnant failed on any helper a dependency defines,
+  which for an ory chart is the whole templates directory:
+
+  ```
+  template: no template "ory.extraEnvContainsEnvName" associated with template "gotpl"
+  ```
+
+  Such a chart is re-fetched now — but only when there is somewhere to fetch
+  from. An adopted release has no `repoURL`, because Helm never records where a
+  chart came from, so insisting on a fetch there would fail every upgrade of an
+  adopted subchart chart outright. With nothing to fetch from, the incomplete
+  stored chart is used anyway: rendering it may well succeed, and when a dropped
+  subchart really is needed Helm names the template it cannot find. Trading a
+  possible failure for a certain one is not an improvement.
+
+  The no-op check that stops a re-driven `Create` re-running hooks is unaffected —
+  it compares a version and a set of values and renders nothing, so an incomplete
+  stored chart tells it nothing.
+
+- **The plugin's own release labels no longer leak into resource state.**
+  `formae.dev/managed` — and now `formae.dev/timeout-seconds` — were reported
+  back in `metadata.labels`, which put them into `formae extract` output and made
+  them read as drift against a forma that never declared them.
 
 ### Removed
 
@@ -254,10 +316,6 @@ formae agent.
   objects a chart *renders*, and a release Secret appears in no manifest. Only the
   secret driver is covered, which is the one this plugin uses.
 
-- `examples/rollout-safety/` — one folder per case (paused Deployment,
-  `OnDelete` StatefulSet, partitioned StatefulSet, HPA coexistence), each with
-  `create.pkl`/`update.pkl` and the old-vs-new plugin behavior in the header.
-
 - **CI runs the `integration` tests against a kind cluster**
   (`.github/workflows/integration-pr.yml`). Nothing ran them before: they were
   green only on whichever developer's machine last touched them, and several had
@@ -299,69 +357,59 @@ formae agent.
   with two objects of one kind is affected, so this is the difference between a
   release being upgradable through formae and not.
 
+### Changed
+
+- **`K8S::Helm::Release` moved to `@k8s/helm/Release.pkl` — one copy, not
+  sixteen.** The module shipped in every `v<X.Y>/` tree as 16 byte-identical
+  copies; no field on a Helm release has a shape that depends on the apiserver
+  minor, so it now ships once at the package root.
+
+  **Breaking for the import path only:**
+
+  ```pkl
+  import "@k8s/v1.33/helm/Release.pkl" as helm   // before
+  import "@k8s/helm/Release.pkl" as helm         // after
+  ```
+
+  Nothing else changes — same type, same fields, same state. Every other schema
+  import keeps its `v<X.Y>/` segment.
+
+  This needs formae >= 0.89.0. The hoist was tried and reverted once because
+  `formae extract` globbed only `@k8s/*.pkl` plus `@k8s/v<ver>/**/*.pkl`, so a
+  resource module in a root-level subdirectory was invisible to it and extract
+  died with `Cannot find key "K8S::Helm::Release"`. formae#584 widened the glob
+  to cover version-independent subtrees, which is what makes this possible.
+
+  `tools/gen-versioned-reflect` grew a `versionIndependentDirs` set for this and
+  rejects a `@K8sVersion` gate inside one: with no per-version copy left there is
+  nothing to filter, and the gate would otherwise be silently ignored.
+
+## [0.1.10]
+
+Requires formae >= 0.89.0 for the custom resource spec fidelity below; on an
+older agent the spec keeps today's behavior.
+
+### Changed
+
+- **A custom resource's `spec` now updates as one whole value.** Changing any
+  part of the spec sends the complete document to the apiserver in a single
+  replacement, the way `kubectl apply` of the full manifest behaves, instead
+  of a series of per-field edits formae computed from a document whose grammar
+  it cannot know. `minFormaeVersion` is raised to 0.89.0 accordingly.
+
 ### Fixed
 
-- **A live uninstall is no longer reported as abandoned.** `Delete` started its
-  Helm uninstall without registering it in the in-flight registry, and
-  "a release record this plugin owns with no operation behind it" is exactly how
-  an abandoned uninstall is recognised. So the first `Status` poll — 20 seconds
-  after `Delete` under the default `statusCheckInterval` — declared every
-  uninstall slower than that abandoned, with a recoverable error code that asks
-  the agent to re-drive `Delete`, starting a second concurrent uninstall of the
-  same release. Slower than 20s is ordinary: a `pre-delete` hook, or `Wait=true`
-  sitting through a Pod's `terminationGracePeriodSeconds`.
-
-  Only podinfo-sized charts escaped it, which is why the conformance destroy step
-  passed throughout: its record is purged before the first poll. No test chart in
-  the repo declares a delete hook, and the kratos scenarios call
-  `formae destroy` from a `trap EXIT` cleanup that swallows failures.
-
-- **A release whose objects never become ready now fails instead of polling
-  forever.** Under `Wait=false` Helm records `deployed` as soon as the apiserver
-  accepts the manifests, and that record never changes again — so a Pod stuck in
-  `ImagePullBackOff` from a typo'd tag, or one no node has room for, left `Status`
-  answering `InProgress` for eternity. Nothing above caught it either: the agent
-  fails an operation when a plugin goes *silent*, never because it keeps
-  reporting progress, and there is no cap on how long an operation may run. The
-  readiness wait is now bounded by the timeout recorded on the release, the same
-  clock that already bounds a pending release, and the failure names the object
-  that never came up. An operation this process is still running is exempt, so a
-  slow hook is never cut short.
-
-- **An uninstall is bounded by the release's own timeout**, not the package
-  default. A release given `timeoutSeconds = 1800` had its uninstall cut off at
-  600s while the stalled-release verdict waited twice 1800s before saying so,
-  leaving the command `InProgress` for the best part of an hour on work nothing
-  was doing.
-
-- **Upgrading a chart with subcharts no longer fails to render.** Re-applying the
-  deployed version reuses the chart stored in the release record instead of
-  fetching it, but `chart.Chart.dependencies` is unexported and carries no JSON
-  tag (`helm/pkg/chart/chart.go:56`), so Helm's own storage drops every subchart
-  on the way in — while `Metadata.Dependencies`, which is serialized, goes on
-  listing them. Rendering that remnant failed on any helper a dependency defines,
-  which for an ory chart is the whole templates directory:
-
-  ```
-  template: no template "ory.extraEnvContainsEnvName" associated with template "gotpl"
-  ```
-
-  Such a chart is re-fetched now — but only when there is somewhere to fetch
-  from. An adopted release has no `repoURL`, because Helm never records where a
-  chart came from, so insisting on a fetch there would fail every upgrade of an
-  adopted subchart chart outright. With nothing to fetch from, the incomplete
-  stored chart is used anyway: rendering it may well succeed, and when a dropped
-  subchart really is needed Helm names the template it cannot find. Trading a
-  possible failure for a certain one is not an improvement.
-
-  The no-op check that stops a re-driven `Create` re-running hooks is unaffected —
-  it compares a version and a set of values and renders nothing, so an incomplete
-  stored chart tells it nothing.
-
-- **The plugin's own release labels no longer leak into resource state.**
-  `formae.dev/managed` — and now `formae.dev/timeout-seconds` — were reported
-  back in `metadata.labels`, which put them into `formae extract` output and made
-  them read as drift against a forma that never declared them.
+- **Empty objects and lists in a custom resource `spec` reach the cluster
+  exactly as written.** For many custom resources an empty member is itself
+  the configuration: a cert-manager `ClusterIssuer` selects the selfSigned
+  issuer type with `selfSigned = new Dynamic {}`. Previously formae cleaned
+  empty objects and lists out of the spec before writing, so the apiserver
+  received an empty spec and admission webhooks rejected it, and adding a
+  placeholder inside the empty member did not help because the cleanup
+  collapsed it again. The spec is now preserved byte for byte. A custom
+  resource that already lost empty members this way is repaired by the next
+  apply, and a placeholder value added to work around the old behavior can be
+  removed.
 
 - **Paused Deployments settle instead of polling forever.** A `Deployment` with
   `spec.paused: true` never converges its replica counts — the controller stops
@@ -398,44 +446,27 @@ formae agent.
 
 ### Changed
 
-- **`K8S::Helm::Release` moved to `@k8s/helm/Release.pkl` — one copy, not
-  sixteen.** The module shipped in every `v<X.Y>/` tree as 16 byte-identical
-  copies; no field on a Helm release has a shape that depends on the apiserver
-  minor, so it now ships once at the package root.
-
-  **Breaking for the import path only:**
-
-  ```pkl
-  import "@k8s/v1.33/helm/Release.pkl" as helm   // before
-  import "@k8s/helm/Release.pkl" as helm         // after
-  ```
-
-  Nothing else changes — same type, same fields, same state. Every other schema
-  import keeps its `v<X.Y>/` segment.
-
-  This needs formae >= 0.89.0. The hoist was tried and reverted once because
-  `formae extract` globbed only `@k8s/*.pkl` plus `@k8s/v<ver>/**/*.pkl`, so a
-  resource module in a root-level subdirectory was invisible to it and extract
-  died with `Cannot find key "K8S::Helm::Release"`. formae#584 widened the glob
-  to cover version-independent subtrees, which is what makes this possible.
-
-  `tools/gen-versioned-reflect` grew a `versionIndependentDirs` set for this and
-  rejects a `@K8sVersion` gate inside one: with no per-version copy left there is
-  nothing to filter, and the gate would otherwise be silently ignored.
-
 - **Rollout progress is visible while an operation runs.** The plugin blanked
   `StatusMessage` on every non-`Failure` result, so the per-resource `reason` row
   stayed empty during a rollout. Provisioner messages now pass through on
   `InProgress` (e.g. `replicas: 2/3 ready`) and are blanked only on terminal
   `Success`, where a lingering message is just noise.
-
-## [0.1.10]
-
-### Changed
-
 - Drop the removed `--watch` flag from the example commands in the README,
   CONTRIBUTING, the helm/flux/crossplane/bookstore/custom-resource docs, and
   the example file headers. `formae apply`/`destroy` are submit-then-poll.
+
+### Added
+
+- `K8S::Core::Secret` adopts formae's first-class map-shaped secret types. A
+  Secret's value can now be referenced one key at a time with
+  `secret.res.secretValue.at("key")`, resolved live at the plugin-call
+  boundary so a consumer such as a target credential picks it up without an
+  agent restart. The decoded value is hashed at rest and excluded from drift
+  detection. Requires formae 0.89.0 or later; `minFormaeVersion` is raised to
+  0.89.0.
+- `examples/rollout-safety/` — one folder per case (paused Deployment,
+  `OnDelete` StatefulSet, partitioned StatefulSet, HPA coexistence), each with
+  `create.pkl`/`update.pkl` and the old-vs-new plugin behavior in the header.
 
 ## [0.1.9]
 
