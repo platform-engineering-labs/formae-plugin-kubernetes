@@ -10,7 +10,30 @@ formae agent.
 
 ## [Unreleased]
 
+Requires formae >= 0.89.0 for the custom resource spec fidelity below; on an
+older agent the spec keeps today's behavior.
+
+### Changed
+
+- **A custom resource's `spec` now updates as one whole value.** Changing any
+  part of the spec sends the complete document to the apiserver in a single
+  replacement, the way `kubectl apply` of the full manifest behaves, instead
+  of a series of per-field edits formae computed from a document whose grammar
+  it cannot know. `minFormaeVersion` is raised to 0.89.0 accordingly.
+
 ### Fixed
+
+- **Empty objects and lists in a custom resource `spec` reach the cluster
+  exactly as written.** For many custom resources an empty member is itself
+  the configuration: a cert-manager `ClusterIssuer` selects the selfSigned
+  issuer type with `selfSigned = new Dynamic {}`. Previously formae cleaned
+  empty objects and lists out of the spec before writing, so the apiserver
+  received an empty spec and admission webhooks rejected it, and adding a
+  placeholder inside the empty member did not help because the cleanup
+  collapsed it again. The spec is now preserved byte for byte. A custom
+  resource that already lost empty members this way is repaired by the next
+  apply, and a placeholder value added to work around the old behavior can be
+  removed.
 
 - **Paused Deployments settle instead of polling forever.** A `Deployment` with
   `spec.paused: true` never converges its replica counts — the controller stops
