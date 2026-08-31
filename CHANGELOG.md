@@ -15,8 +15,11 @@ formae agent.
 - Every `hasProviderDefault` schema annotation now carries a recorded
   disposition in `schema/provider-default-dispositions.json`, enforced by a
   unit test: new annotations fail CI until classified, and rows for removed
-  fields fail as stale. All current annotations start as `pending`;
-  classifications land per field as the provider-default audit reaches them.
+  fields fail as stale. Object metadata `labels` and `annotations` are recorded
+  as `co-owned`, because Kubernetes writes into both alongside the user; every
+  other annotation starts as `pending`, and classifications land per field as
+  the provider-default audit reaches them.
+
 ### Fixed
 
 - **A `K8S::Custom::Resource` no longer fails when its CRD arrives late in the
