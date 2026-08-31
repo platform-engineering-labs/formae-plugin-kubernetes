@@ -251,19 +251,19 @@
     },
     {
       "key": "shared.pkl#NamespacedObjectMeta.annotations",
-      "disposition": "pending"
+      "disposition": "co-owned"
     },
     {
       "key": "shared.pkl#NamespacedObjectMeta.labels",
-      "disposition": "pending"
+      "disposition": "co-owned"
     },
     {
       "key": "shared.pkl#ObjectMeta.annotations",
-      "disposition": "pending"
+      "disposition": "co-owned"
     },
     {
       "key": "shared.pkl#ObjectMeta.labels",
-      "disposition": "pending"
+      "disposition": "co-owned"
     },
     {
       "key": "storage/CSIDriver.pkl#CSIDriverSpec.fsGroupPolicy",
