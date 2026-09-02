@@ -196,7 +196,20 @@ jobs:
           FORMAE_BINARY: /tmp/formae/formae
           FORMAE_TEST_RUN_ID: nightly-main-${{ github.run_id }}-${{ github.run_attempt }}
           FORMAE_TEST_TESTDATA_DIR: testdata/generated/v1.35/shared
+          FORMAE_TEST_PROVIDER_DEFAULT_OBSERVATIONS: /tmp/provider-default-observations.json
         run: make conformance-test-crud-run conformance-test-discovery-run TEST=${{ matrix.test-case }} PARALLEL=1
+
+      # The omit-and-observe records for hasProviderDefault fields. Uploaded even
+      # when the case fails: a field the provider populates that the schema does
+      # not annotate is reported as a comparison failure, so a red case carries
+      # exactly the observation worth reading.
+      - name: Upload provider-default observations
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: provider-default-observations-${{ matrix.test-case }}
+          path: /tmp/provider-default-observations.json
+          if-no-files-found: ignore
 
   # Helm stability: kills the agent and the plugin mid-install and asserts a
   # release is never left holding Helm's pending lock. Separate from conformance
