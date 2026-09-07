@@ -12,6 +12,10 @@ formae agent.
 
 ### Changed
 
+- CI evaluates every forma under `examples/` (`scripts/eval-examples.sh`, 34
+  files). The `pkl-validate` job only ever evaluated `formae-plugin.pkl`, so
+  schema drift in a plugin dependency could break an example for months without
+  a red check.
 - Every `hasProviderDefault` schema annotation now carries a recorded
   disposition in `schema/provider-default-dispositions.json`, enforced by a
   unit test: new annotations fail CI until classified, and rows for removed
@@ -21,6 +25,17 @@ formae agent.
   the provider-default audit reaches them.
 
 ### Fixed
+
+- **The `examples/lgtm-observability/` formae evaluate again.** All five
+  (`local`, `aws`, `azure`, `gcp`, `oci`) set `username`/`password` on the
+  Grafana Target's `Config`, which the published grafana schema
+  (`grafana@0.1.3`, the pinned dependency) has never defined — `pkl eval`
+  failed with `Cannot find property 'username' in object of type
+  'grafana#Config'`. The Target now authenticates with the agent's
+  `GRAFANA_AUTH` env var, which is what `examples/lgtm-observability/README.md`
+  already documented. Sourcing the password from the managed
+  `lgtm-grafana-admin` Secret needs a `Config.auth` block; that lands when a
+  grafana schema carrying it is published to the hub.
 
 - **A `K8S::Custom::Resource` no longer fails when its CRD arrives late in the
   same apply**. The apply path already reset the RESTMapper and

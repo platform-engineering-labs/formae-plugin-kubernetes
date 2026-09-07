@@ -22,8 +22,10 @@ description {
     cluster endpoint; the Grafana Target's URL is a $ref on the Grafana
     Service's LoadBalancer ingress URL. No hardcoded endpoints.
 
-    No GRAFANA_AUTH needed: the Grafana Target sources its admin password live
-    from the managed lgtm-grafana-admin Secret via secret.res.secretValue.at().
+    Export GRAFANA_AUTH before starting the agent — it must match the password
+    baked into the managed lgtm-grafana-admin Secret (see README.md):
+
+      GRAFANA_AUTH=admin:admin-change-me formae agent start
 
     Apply (--enable-demo-traffic runs synthetic telemetry through telemetrygen):
 
@@ -68,10 +70,10 @@ local grafanaTarget: formae.Target = new {
   namespace = "GRAFANA"
   config = new grafana.Config {
     url = lgtm.grafanaSvc.res.lbIngressUrl
-    // Basic-auth sourced live from the managed lgtm-grafana-admin Secret via
-    // the map accessor — no GRAFANA_AUTH env var, no agent restart to rotate.
-    username = "admin"
-    password = lgtm.grafanaAdminSecret.res.secretValue.at("admin-password")
+    // Auth comes from the agent's GRAFANA_AUTH env var. grafana@0.1.6 has no
+    // Config.auth block, so the password cannot be sourced from the managed
+    // lgtm-grafana-admin Secret yet; switch to `auth = new grafana.BasicAuth`
+    // once a grafana schema with Config.auth is published to the hub.
   }
 }
 

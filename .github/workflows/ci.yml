@@ -103,6 +103,17 @@ jobs:
           pkl eval formae-plugin.pkl --format json > /dev/null
           echo "Manifest validated successfully"
 
+  eval-examples:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-pkl-cached
+
+      - name: Evaluate every forma under examples/
+        run: ./scripts/eval-examples.sh
+
   verify-schema:
     runs-on: ubuntu-latest
     steps:
@@ -140,7 +151,7 @@ jobs:
 
   # Notify when build is fixed (was red, now green)
   notify-fixed:
-    needs: [build, test-unit, lint, pkl-validate, verify-schema]
+    needs: [build, test-unit, lint, pkl-validate, eval-examples, verify-schema]
     runs-on: ubuntu-latest
     if: success() && github.event_name == 'push'
     permissions:
@@ -204,7 +215,7 @@ jobs:
 
   # Notify on failure
   notify-failure:
-    needs: [build, test-unit, lint, pkl-validate, verify-schema]
+    needs: [build, test-unit, lint, pkl-validate, eval-examples, verify-schema]
     runs-on: ubuntu-latest
     if: failure() && github.event_name == 'push'
     steps:
