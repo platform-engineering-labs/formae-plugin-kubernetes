@@ -13,7 +13,7 @@ require (
 	github.com/platform-engineering-labs/formae/pkg/plugin v0.4.1
 	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.2.6
 	github.com/stretchr/testify v1.12.1
-	github.com/theory/jsonpath v0.10.2
+	github.com/theory/jsonpath v0.12.1
 	github.com/tidwall/gjson v1.19.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.22.0
