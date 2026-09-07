@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Install with `sudo formae plugin install k8s` on the host that runs the
 formae agent.
 
-## [Unreleased]
+## [0.1.11]
 
 ### Changed
 
@@ -306,49 +306,12 @@ formae agent.
   `Read` cannot reconstruct `repoURL` and it has to be supplied by hand. `oci://`
   references are self-describing and unaffected.
 
-- **Conformance test coverage for `K8S::Helm::Release`.** `testdata/main/shared/helmrelease{,-update,-replace}.pkl`
-  put the resource through the same 24-step CRUD suite and 7-step discovery suite
-  every other resource type runs: create, extract round-trip, sync idempotency,
-  update, replace via a `createOnly` change, destroy, and out-of-band delete
-  detection. Uses podinfo — two objects, no hooks — so the cycle stays quick; the
-  hook and adoption behaviour that needs a heavy chart is covered by the
-  `helm-drift-test` and `helm-adopt-test` scripts against ory/kratos.
-
-  `make conformance-test` gains an opt-in `K8S_MINOR` parameter that scopes the
-  run to one generated testdata tree, matching what `conformance-version.yml` does
-  in CI. Unset, the runner walks all of `testdata/` — `main/` plus every generated
-  `v1.XX/` tree — so each case runs ~17 times and a filtered run looks like a hang.
-
 - **Helm's release storage no longer surfaces in discovery.** Every revision of
   every release is a Secret of type `helm.sh/release.v1`, so one release at the
   default `MaxHistory` showed up as ten unmanaged Secrets. Excluded via
   `DiscoveryFilters()` rather than the release inventory: that inventory hides
   objects a chart *renders*, and a release Secret appears in no manifest. Only the
   secret driver is covered, which is the one this plugin uses.
-
-- **CI runs the `integration` tests against a kind cluster**
-  (`.github/workflows/integration-pr.yml`). Nothing ran them before: they were
-  green only on whichever developer's machine last touched them, and several had
-  been red for months against behaviour that had since changed — which is how a
-  live uninstall being reported as abandoned reached a release branch. They need
-  no formae binary and no agent, only an apiserver, so kind is the whole
-  environment.
-
-  Every package is included bar three: `apps`, `batch` and `core` still expect
-  `Create`/`Delete` to return `Success` where the plugin returns `InProgress`
-  (9 assertions), and un-rotting them is separate work. `test/` keeps its own
-  workflows, which need an agent.
-
-  Three things had to change for the suite to be runnable anywhere but the
-  machine that wrote it. The stability tests now use their own namespace instead
-  of the lifecycle test's, which that test deletes in cleanup — every test
-  declared after it failed with `namespace is being terminated`. The kube context
-  comes from `KUBE_CONTEXT`, which `pkg/resources/testutil` already read but
-  defaulted to one developer's `orbstack`, so 20 tests failed with
-  `context "orbstack" does not exist`. And the inventory herd test installs the
-  release it needs instead of assuming the cluster holds one: it had been passing
-  on the residue earlier runs leave behind, and on a fresh cluster every caller
-  correctly returned an empty inventory.
 
 - **Chart-owned objects are collapsed in discovery.** Objects a Helm release
   renders no longer surface as unmanaged alongside the release that owns them.

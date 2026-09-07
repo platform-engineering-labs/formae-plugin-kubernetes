@@ -5,7 +5,7 @@
  */
 
 name = "k8s"
-version = "0.1.9"
+version = "0.1.11"
 namespace = "K8S"
 summary = "Kubernetes resource plugin"
 description = "Kubernetes resource plugin for Formae"

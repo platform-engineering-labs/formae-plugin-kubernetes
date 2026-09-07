@@ -26,7 +26,7 @@ lockstep with the highest supported minor.
 
 ## Supported Resources
 
-This plugin supports **38 Kubernetes resource types** across 15 API groups,
+This plugin supports **39 Kubernetes resource types** across 16 API groups,
 plus a generic catch-all for arbitrary custom resources.
 
 | API Group | Resource Type | Description |
@@ -69,6 +69,7 @@ plus a generic catch-all for arbitrary custom resources.
 | Flow Control | `K8S::Flowcontrol::FlowSchema` | Classifies API requests into priority levels (APF). |
 | Flow Control | `K8S::Flowcontrol::PriorityLevelConfiguration` | Concurrency limits per priority level (APF). |
 | Node | `K8S::Node::RuntimeClass` | Selects the container runtime configuration for pods. |
+| Helm | `K8S::Helm::Release` | A Helm chart installed as one resource, applied by the embedded Helm SDK. |
 
 `MutatingAdmissionPolicy` reached GA in K8s 1.36 (KEP-3962) and is only
 present in the `v1.36+` schema trees; it cannot be referenced when
