@@ -9,9 +9,9 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.35
 	github.com/oracle/oci-go-sdk/v65 v65.124.0
 	github.com/ovh/go-ovh v1.9.0
-	github.com/platform-engineering-labs/formae/pkg/model v0.1.27
-	github.com/platform-engineering-labs/formae/pkg/plugin v0.4.1
-	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.2.6
+	github.com/platform-engineering-labs/formae/pkg/model v0.1.28
+	github.com/platform-engineering-labs/formae/pkg/plugin v0.4.2
+	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.2.7
 	github.com/stretchr/testify v1.12.1
 	github.com/theory/jsonpath v0.12.1
 	github.com/tidwall/gjson v1.19.0
@@ -134,6 +134,7 @@ require (
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/platform-engineering-labs/formae/pkg/api/model v0.1.1 // indirect
+	github.com/platform-engineering-labs/formae/pkg/credential v0.1.0 // indirect
 	github.com/platform-engineering-labs/orbital v0.1.36 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
