@@ -15,7 +15,7 @@ require (
 	github.com/stretchr/testify v1.12.1
 	github.com/theory/jsonpath v0.12.1
 	github.com/tidwall/gjson v1.19.0
-	golang.org/x/oauth2 v0.36.0
+	golang.org/x/oauth2 v0.37.0
 	golang.org/x/sync v0.22.0
 	helm.sh/helm/v3 v3.21.4
 	k8s.io/api v0.37.0
