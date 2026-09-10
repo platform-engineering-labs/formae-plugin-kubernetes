@@ -404,9 +404,10 @@ func TestAKSBareFqdnResolvesToHTTPS(t *testing.T) {
 	}
 }
 
-// TestMissingRequiredAuthFields: an omitted identifier must be named, not
-// carried through as an empty string into a signed request.
-func TestMissingRequiredAuthFields(t *testing.T) {
+// TestMissingRequiredIdentifiers: a field the provider cannot work without,
+// whatever else is set, must be named rather than carried through empty into
+// a signed request.
+func TestMissingRequiredIdentifiers(t *testing.T) {
 	cases := []struct {
 		name  string
 		raw   string
@@ -414,18 +415,8 @@ func TestMissingRequiredAuthFields(t *testing.T) {
 	}{
 		{
 			"EKS without cluster name",
-			`{"Auth":{"Type":"EKS","Endpoint":"https://ABC.gr7.eu-central-1.eks.amazonaws.com","CertificateAuthority":"Y2E="}}`,
+			`{"Auth":{"Type":"EKS","Endpoint":"https://e","CertificateAuthority":"Y2E="}}`,
 			"ClusterName",
-		},
-		{
-			"GKE without certificate authority",
-			`{"Auth":{"Type":"GKE","Endpoint":"10.0.0.1"}}`,
-			"CertificateAuthority",
-		},
-		{
-			"AKS without endpoint",
-			`{"Auth":{"Type":"AKS","CertificateAuthority":"Y2E=","ResourceGroup":"rg","ClusterName":"c"}}`,
-			"Endpoint",
 		},
 		{
 			"OVH without service name",
@@ -437,6 +428,54 @@ func TestMissingRequiredAuthFields(t *testing.T) {
 			`{"Auth":{"Type":"OCI","Endpoint":"https://e","CertificateAuthority":"Y2E="}}`,
 			"ClusterOcid",
 		},
+		{
+			// OCI is the one cloud with no lookup, so it still has to be told.
+			"OCI without certificate authority",
+			`{"Auth":{"Type":"OCI","Endpoint":"https://e","ClusterOcid":"ocid1.cluster.oc1..x"}}`,
+			"CertificateAuthority",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := config.FromTargetConfig([]byte(tc.raw))
+			if err != nil {
+				t.Fatalf("FromTargetConfig: %v", err)
+			}
+			if _, err = cfg.ToK8sConfig(); err == nil {
+				t.Fatal("expected an error for the missing field, got none")
+			} else if !strings.Contains(err.Error(), tc.field) {
+				t.Errorf("error should name %q, got %q", tc.field, err.Error())
+			}
+		})
+	}
+}
+
+// TestDerivationNeedsIdentity: with the endpoint and CA left out, the plugin
+// looks them up — and cannot, without enough of the cluster's identity to
+// ask. The error has to say which field is missing and that stating the
+// endpoint and CA is the other way out, because neither is obvious from a
+// cloud SDK error.
+func TestDerivationNeedsIdentity(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+		want []string
+	}{
+		{
+			"EKS without a region",
+			`{"Auth":{"Type":"EKS","ClusterName":"c"}}`,
+			[]string{"Region", "CertificateAuthority"},
+		},
+		{
+			"GKE without project, location or cluster",
+			`{"Auth":{"Type":"GKE"}}`,
+			[]string{"ProjectId", "CertificateAuthority"},
+		},
+		{
+			"AKS without resource group or cluster",
+			`{"Auth":{"Type":"AKS","SubscriptionId":"sub"}}`,
+			[]string{"ResourceGroup", "CertificateAuthority"},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -446,10 +485,63 @@ func TestMissingRequiredAuthFields(t *testing.T) {
 			}
 			_, err = cfg.ToK8sConfig()
 			if err == nil {
-				t.Fatal("expected an error for the missing field, got none")
+				t.Fatal("expected an error, got none")
 			}
-			if !strings.Contains(err.Error(), tc.field) {
-				t.Errorf("error should name %q, got %q", tc.field, err.Error())
+			for _, want := range tc.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error should mention %q, got %q", want, err.Error())
+				}
+			}
+		})
+	}
+}
+
+// TestExplicitConnectionDetailsSkipLookup: a target that states both fields
+// must never reach for the cloud. This test has no cloud credentials and no
+// network, so a lookup would fail — success is the proof it short-circuited.
+// That is the contract an air-gapped or custom-endpoint cluster relies on.
+func TestExplicitConnectionDetailsSkipLookup(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+		host string
+	}{
+		{
+			"EKS",
+			`{"Auth":{"Type":"EKS","Endpoint":"https://private.example","CertificateAuthority":"Y2E=","ClusterName":"c","Region":"eu-central-1"}}`,
+			"https://private.example",
+		},
+		{
+			"GKE",
+			`{"Auth":{"Type":"GKE","Endpoint":"https://10.0.0.1","CertificateAuthority":"Y2E=","ProjectId":"p","Location":"l","ClusterName":"c"}}`,
+			"https://10.0.0.1",
+		},
+		{
+			"AKS",
+			`{"Auth":{"Type":"AKS","Endpoint":"https://private.azmk8s.io","CertificateAuthority":"Y2E=","ResourceGroup":"rg","ClusterName":"c"}}`,
+			"https://private.azmk8s.io",
+		},
+		{
+			"OVH",
+			`{"Auth":{"Type":"OVH","Endpoint":"https://ovh.example","CertificateAuthority":"Y2E=","ServiceName":"s","ClusterId":"c"}}`,
+			"https://ovh.example",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := config.FromTargetConfig([]byte(tc.raw))
+			if err != nil {
+				t.Fatalf("FromTargetConfig: %v", err)
+			}
+			restCfg, err := cfg.ToK8sConfig()
+			if err != nil {
+				t.Fatalf("ToK8sConfig reached for the cloud instead of using the stated values: %v", err)
+			}
+			if restCfg.Host != tc.host {
+				t.Errorf("Host = %q, want the stated endpoint %q", restCfg.Host, tc.host)
+			}
+			if string(restCfg.TLSClientConfig.CAData) != "ca" {
+				t.Errorf("CAData = %q, want the stated CA", string(restCfg.TLSClientConfig.CAData))
 			}
 		})
 	}

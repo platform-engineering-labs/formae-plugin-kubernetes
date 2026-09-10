@@ -1,16 +1,17 @@
 /// Phase 2 of the Azure connect matrix: connect to an AKS cluster that
 /// already exists, from its own stack, in its own apply.
 ///
-///   formae apply --mode reconcile --yes examples/connect-matrix/azure-connect.pkl
+/// The target names the cluster and nothing else. Azure does not put the CA
+/// on the ManagedCluster resource at all, so the plugin reads it from the
+/// credentials endpoint — user credentials first, admin as a fallback — and
+/// takes only the server URL and CA from that kubeconfig. The token still
+/// comes from the agent's own Azure identity.
 ///
-///   discovered cluster:
-///     ... --prop cluster-stack=unmanaged --prop cluster-label=<discovered label> \
-///         --prop resource-group-label=<discovered rg label>
+///   formae apply --mode reconcile --yes examples/connect-matrix/azure-connect.pkl \
+///     --prop resource-group=<rg> --prop cluster-name=<name>
 amends "@formae/forma.pkl"
 
 import "@formae/formae.pkl"
-import "@azure/containerservice/managedcluster.pkl" as mc
-import "@azure/resources/resourcegroup.pkl" as rg
 import "@k8s/v1.34/k8s.pkl" as k8s
 import "@k8s/v1.34/core/Namespace.pkl" as ns
 
@@ -18,29 +19,29 @@ description {
   text = """
     Connect to an existing AKS cluster from a separate stack.
 
-    Requires either examples/connect-matrix/azure-cluster.pkl applied first,
-    or an AKS cluster formae has discovered — and, either way, an AKS RBAC
-    role assignment for the principal the agent runs as. Creates one probe
-    namespace and nothing else.
+    Needs Microsoft.ContainerService/managedClusters/listClusterUserCredential/action,
+    and an AKS RBAC role assignment for the principal the agent runs as.
+    Creates one probe namespace and nothing else.
     """
   confirm = true
 }
 
 properties {
-  // Stack holding the AKS cluster. Use 'unmanaged' for a discovered cluster.
-  clusterStack = new formae.Prop {
-    flag = "cluster-stack"
-    default = "connect-matrix-azure-cluster"
+  // Subscription holding the cluster. Falls back to the agent's own
+  // AZURE_SUBSCRIPTION_ID when left unset.
+  subscriptionId = new formae.Prop {
+    flag = "subscription-id"
+    default = read?("env:AZURE_SUBSCRIPTION_ID") ?? ""
   }
-  // Resource label of the AKS cluster inside that stack.
-  clusterLabel = new formae.Prop {
-    flag = "cluster-label"
-    default = "aks-cluster"
+  // Resource group holding the cluster.
+  resourceGroup = new formae.Prop {
+    flag = "resource-group"
+    default = "aks-connect-matrix-rg"
   }
-  // Resource label of the cluster's resource group inside that stack.
-  resourceGroupLabel = new formae.Prop {
-    flag = "resource-group-label"
-    default = "aks-rg"
+  // Name of the AKS cluster to connect to.
+  clusterName = new formae.Prop {
+    flag = "cluster-name"
+    default = "aks-connect-matrix"
   }
   // Cluster minor version. Selects the K8s Pkl schema subtree.
   kubernetesVersion = new formae.Prop {
@@ -49,21 +50,9 @@ properties {
   }
 }
 
-// Cross-stack references. `stack` MUST be set: forma.pkl's renderer fills a
-// null stack from a resource in THIS forma, and neither of these is here.
-local clusterRef = new mc.ManagedClusterResolvable {
-  label = properties.clusterLabel.value
-  stack = properties.clusterStack.value
-}
-
-local resourceGroupRef = new rg.ResourceGroupResolvable {
-  label = properties.resourceGroupLabel.value
-  stack = properties.clusterStack.value
-}
-
 local stack: formae.Stack = new {
   label = "connect-matrix-azure-connect"
-  description = "Connect matrix (Azure): K8s target + probe, resolved across stacks."
+  description = "Connect matrix (Azure): K8s target + probe, connection details derived."
 }
 
 local k8sTarget: formae.Target = new {
@@ -71,13 +60,9 @@ local k8sTarget: formae.Target = new {
   config = new k8s.Config {
     kubernetesVersion = properties.kubernetesVersion.value
     auth = new k8s.AKSAuth {
-      // `fqdn` is a bare hostname. The plugin assigns Endpoint to
-      // rest.Config.Host verbatim and client-go supplies the https scheme
-      // because a CA bundle is set.
-      endpoint = clusterRef.fqdn
-      certificateAuthority = clusterRef.certificateAuthority
-      resourceGroup = resourceGroupRef.name
-      clusterName = clusterRef.name
+      subscriptionId = properties.subscriptionId.value
+      resourceGroup = properties.resourceGroup.value
+      clusterName = properties.clusterName.value
     }
   }
 }

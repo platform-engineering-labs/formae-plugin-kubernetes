@@ -34,18 +34,20 @@ const tokenFetchTimeout = 10 * time.Second
 // CachedTokenSource. Scope is optional and overrides DefaultAKSScope for
 // clusters running a custom AAD integration.
 type Provider struct {
-	ResourceGroup string
-	ClusterName   string
-	Scope         string
+	SubscriptionID string
+	ResourceGroup  string
+	ClusterName    string
+	Scope          string
 }
 
 // NewProvider creates an AKS auth provider. Scope defaults to DefaultAKSScope
 // when empty.
-func NewProvider(resourceGroup, clusterName, scope string) *Provider {
+func NewProvider(subscriptionID, resourceGroup, clusterName, scope string) *Provider {
 	return &Provider{
-		ResourceGroup: resourceGroup,
-		ClusterName:   clusterName,
-		Scope:         scope,
+		SubscriptionID: subscriptionID,
+		ResourceGroup:  resourceGroup,
+		ClusterName:    clusterName,
+		Scope:          scope,
 	}
 }
 
