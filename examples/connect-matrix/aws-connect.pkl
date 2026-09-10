@@ -1,26 +1,19 @@
 /// Phase 2 of the AWS connect matrix: connect to an EKS cluster that already
 /// exists, from its own stack, in its own apply.
 ///
-/// This is the file under test. It never creates the cluster — it names one,
-/// by (stack, label), and asks formae to resolve the endpoint, CA bundle and
-/// cluster name out of that other stack's state.
+/// The target names the cluster and nothing else. The plugin reads the
+/// endpoint and CA off the EKS control plane with `eks:DescribeCluster`, so
+/// there is nothing here to reference out of another stack — which is what
+/// makes the same file work against a cluster formae created, a cluster
+/// formae discovered, and a cluster formae has never seen.
 ///
-/// Two sources of truth are supported by the same two props:
+///   formae apply --mode reconcile --yes examples/connect-matrix/aws-connect.pkl \
+///     --prop cluster-name=<name> --prop region=<region>
 ///
-///   formae-created cluster (aws-cluster.pkl was applied first):
-///     formae apply --mode reconcile --yes examples/connect-matrix/aws-connect.pkl
-///
-///   cluster formae only discovered (it existed before formae did):
-///     formae apply --mode reconcile --yes examples/connect-matrix/aws-connect.pkl \
-///       --prop cluster-stack=unmanaged --prop cluster-label=<label discovery assigned>
-///
-/// Success is one namespace appearing in the cluster. If the target cannot
-/// authenticate, that namespace is the thing that fails, and the plugin error
-/// says which half of the config did not survive the trip.
+/// Success is one namespace appearing in the cluster.
 amends "@formae/forma.pkl"
 
 import "@formae/formae.pkl"
-import "@aws/eks/ekscluster.pkl"
 import "@k8s/v1.34/k8s.pkl" as k8s
 import "@k8s/v1.34/core/Namespace.pkl" as ns
 
@@ -28,23 +21,24 @@ description {
   text = """
     Connect to an existing EKS cluster from a separate stack.
 
-    Requires either examples/connect-matrix/aws-cluster.pkl applied first, or
-    an EKS cluster formae has discovered. Creates one probe namespace and
+    Needs eks:DescribeCluster on the cluster, and an access entry mapping the
+    agent's role into Kubernetes RBAC. Creates one probe namespace and
     nothing else.
     """
   confirm = true
 }
 
 properties {
-  // Stack holding the EKS cluster. Use 'unmanaged' for a discovered cluster.
-  clusterStack = new formae.Prop {
-    flag = "cluster-stack"
-    default = "connect-matrix-aws-cluster"
+  // Name of the EKS cluster to connect to.
+  clusterName = new formae.Prop {
+    flag = "cluster-name"
+    default = "eks-connect-matrix"
   }
-  // Resource label of the EKS cluster inside that stack.
-  clusterLabel = new formae.Prop {
-    flag = "cluster-label"
-    default = "eks-cluster"
+  // Region the cluster lives in. Required: it is how the plugin finds the
+  // cluster, and it scopes the STS token.
+  region = new formae.Prop {
+    flag = "region"
+    default = read?("env:AWS_REGION") ?? "eu-central-1"
   }
   // Cluster minor version. Selects the K8s Pkl schema subtree.
   kubernetesVersion = new formae.Prop {
@@ -53,16 +47,9 @@ properties {
   }
 }
 
-// A cross-stack reference. `stack` MUST be set: forma.pkl's renderer fills a
-// null stack from a resource in THIS forma, and there is no cluster here.
-local clusterRef = new ekscluster.ClusterResolvable {
-  label = properties.clusterLabel.value
-  stack = properties.clusterStack.value
-}
-
 local stack: formae.Stack = new {
   label = "connect-matrix-aws-connect"
-  description = "Connect matrix (AWS): K8s target + probe, resolved across stacks."
+  description = "Connect matrix (AWS): K8s target + probe, connection details derived."
 }
 
 local k8sTarget: formae.Target = new {
@@ -70,11 +57,8 @@ local k8sTarget: formae.Target = new {
   config = new k8s.Config {
     kubernetesVersion = properties.kubernetesVersion.value
     auth = new k8s.EKSAuth {
-      endpoint = clusterRef.endpoint
-      certificateAuthority = clusterRef.certificateAuthorityData
-      // Region is omitted on purpose: the plugin derives it from the endpoint
-      // host (pkg/config/config.go, eks.RegionFromEndpoint).
-      clusterName = clusterRef.name
+      clusterName = properties.clusterName.value
+      region = properties.region.value
     }
   }
 }

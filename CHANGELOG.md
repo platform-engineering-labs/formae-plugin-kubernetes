@@ -12,6 +12,33 @@ formae agent.
 
 ### Added
 
+- **Cloud targets derive their own connection details.** A Kubernetes target
+  against EKS, GKE, AKS or OVH now only has to name the cluster: the plugin
+  reads the API server endpoint and CA bundle from the cloud
+  (`eks:DescribeCluster`, `container.clusters.get`, the AKS credentials
+  endpoint, the kubeconfig OVH already returns for the token). `Endpoint` and
+  `CertificateAuthority` become optional on those four auth types, and an
+  explicitly stated value always wins, so an air-gapped cluster, a custom
+  endpoint or anything formae does not model keeps working unchanged. OKE is
+  unchanged: OCI cluster lookup is not implemented, so `OCIAuth` still
+  requires both.
+
+  This removes the copy. An endpoint that moves or a CA that rotates no
+  longer leaves a target holding a stale value, and a discovered AKS cluster
+  whose CA came back empty (`ListClusterAdminCredentials` denied, or
+  `disableLocalAccounts` set) no longer produces a target that cannot
+  connect: the AKS lookup prefers the lower-privilege
+  `ListClusterUserCredentials`, falls back to admin, and reports a real error
+  naming the permission when neither works.
+
+  It also takes references off the critical path for the hosted flow. A
+  cluster name and a region are literals a human already has, so connecting
+  to a cluster in another stack needs no cross-stack reference at all.
+
+- **`AKSAuth` gained `subscriptionId`**, falling back to the agent's
+  `AZURE_SUBSCRIPTION_ID`. A hosted agent can span subscriptions, so the
+  cluster lookup cannot assume the ambient one.
+
 - **`GKEAuth` can name its cluster.** The Pkl class exposed only `endpoint`
   and `certificateAuthority`, while `GKEAuthConfig` read `ProjectId`,
   `Location` and `ClusterName` and `CacheKey` composed all three. Nothing

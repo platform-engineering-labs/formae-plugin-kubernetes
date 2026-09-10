@@ -11,8 +11,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/auth"
 	ovhclient "github.com/ovh/go-ovh/ovh"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/auth"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -53,19 +53,22 @@ type kubeconfigResponse struct {
 	Content string `json:"content"`
 }
 
-func (s *tokenSource) Token(ctx context.Context) (string, time.Time, error) {
+// fetchKubeconfig POSTs for a fresh kubeconfig and parses it. Both the token
+// path and the connection-details path need the same document, so they share
+// one call rather than each spelling out the request.
+func fetchKubeconfig(ctx context.Context, serviceName, clusterID string) (*rest.Config, error) {
 	ctx, cancel := context.WithTimeout(ctx, tokenFetchTimeout)
 	defer cancel()
 
 	client, err := ovhclient.NewDefaultClient()
 	if err != nil {
-		return "", time.Time{}, fmt.Errorf("failed to create OVH client: %w", err)
+		return nil, fmt.Errorf("failed to create OVH client: %w", err)
 	}
 
 	var resp kubeconfigResponse
-	endpoint := fmt.Sprintf("/cloud/project/%s/kube/%s/kubeconfig", s.serviceName, s.clusterID)
+	endpoint := fmt.Sprintf("/cloud/project/%s/kube/%s/kubeconfig", serviceName, clusterID)
 	if err := client.PostWithContext(ctx, endpoint, nil, &resp); err != nil {
-		return "", time.Time{}, fmt.Errorf("failed to get OVH kubeconfig: %w", err)
+		return nil, fmt.Errorf("failed to get OVH kubeconfig: %w", err)
 	}
 
 	decoded, err := base64.StdEncoding.DecodeString(resp.Content)
@@ -76,7 +79,15 @@ func (s *tokenSource) Token(ctx context.Context) (string, time.Time, error) {
 
 	kc, err := clientcmd.RESTConfigFromKubeConfig(decoded)
 	if err != nil {
-		return "", time.Time{}, fmt.Errorf("failed to parse OVH kubeconfig: %w", err)
+		return nil, fmt.Errorf("failed to parse OVH kubeconfig: %w", err)
+	}
+	return kc, nil
+}
+
+func (s *tokenSource) Token(ctx context.Context) (string, time.Time, error) {
+	kc, err := fetchKubeconfig(ctx, s.serviceName, s.clusterID)
+	if err != nil {
+		return "", time.Time{}, err
 	}
 
 	// OVH kubeconfigs embed a bearer token

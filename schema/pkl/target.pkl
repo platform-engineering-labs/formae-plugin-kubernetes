@@ -82,64 +82,89 @@ class KubeconfigAuth extends Auth {
 }
 
 /// AWS EKS auth via STS presigned token.
+///
+/// Name the cluster and its region and the plugin reads the endpoint and CA
+/// off the EKS control plane (`eks:DescribeCluster`). Set them yourself only
+/// to override what the cloud reports.
 class EKSAuth extends Auth {
   fixed type = "EKS"
-  hidden endpoint: (String|formae.Resolvable)
-  hidden certificateAuthority: (String|formae.Resolvable)
   hidden clusterName: (String|formae.Resolvable)
   hidden region: (String|formae.Resolvable)?
-  fixed Endpoint: (String|formae.Resolvable) = endpoint
-  fixed CertificateAuthority: (String|formae.Resolvable) = certificateAuthority
+  hidden endpoint: (String|formae.Resolvable)?
+  hidden certificateAuthority: (String|formae.Resolvable)?
   fixed ClusterName: (String|formae.Resolvable) = clusterName
   fixed Region: (String|formae.Resolvable)? = region
+  fixed Endpoint: (String|formae.Resolvable)? = endpoint
+  fixed CertificateAuthority: (String|formae.Resolvable)? = certificateAuthority
 }
 
 /// Google GKE auth via OAuth2 access token.
-/// ProjectId, Location and ClusterName are optional but recommended:
-/// together they identify a cluster within Google Cloud, and the plugin
-/// keys its token cache on them. Omit all three and two targets are told
-/// apart by their endpoint alone.
+/// Google GKE auth via OAuth2 access token.
+///
+/// ProjectId, Location and ClusterName identify the cluster within Google
+/// Cloud: the plugin reads the endpoint and CA off the GKE control plane
+/// (`container.clusters.get`) and keys its token cache on the same three.
+/// Set the endpoint and CA yourself only to override what the cloud reports.
 class GKEAuth extends Auth {
   fixed type = "GKE"
-  hidden endpoint: (String|formae.Resolvable)
-  hidden certificateAuthority: (String|formae.Resolvable)
   hidden projectId: (String|formae.Resolvable)?
   hidden location: (String|formae.Resolvable)?
   hidden clusterName: (String|formae.Resolvable)?
-  fixed Endpoint: (String|formae.Resolvable) = endpoint
-  fixed CertificateAuthority: (String|formae.Resolvable) = certificateAuthority
+  hidden endpoint: (String|formae.Resolvable)?
+  hidden certificateAuthority: (String|formae.Resolvable)?
   fixed ProjectId: (String|formae.Resolvable)? = projectId
   fixed Location: (String|formae.Resolvable)? = location
   fixed ClusterName: (String|formae.Resolvable)? = clusterName
+  fixed Endpoint: (String|formae.Resolvable)? = endpoint
+  fixed CertificateAuthority: (String|formae.Resolvable)? = certificateAuthority
 }
 
 /// Azure AKS auth via Azure AD token.
+///
+/// Name the resource group and cluster and the plugin reads the endpoint and
+/// CA off Azure. The CA is not on the ManagedCluster resource at all, so it
+/// comes from the credentials endpoint: user credentials first (AAD-based,
+/// needs only `listClusterUserCredential/action`, survives
+/// `disableLocalAccounts`), admin credentials as a fallback. Only the server
+/// URL and CA are taken from that kubeconfig; the token still comes from the
+/// agent's own Azure identity.
+///
+/// SubscriptionId falls back to the agent's `AZURE_SUBSCRIPTION_ID`.
 class AKSAuth extends Auth {
   fixed type = "AKS"
-  hidden endpoint: (String|formae.Resolvable)
-  hidden certificateAuthority: (String|formae.Resolvable)
+  hidden subscriptionId: (String|formae.Resolvable)?
   hidden resourceGroup: (String|formae.Resolvable)?
   hidden clusterName: (String|formae.Resolvable)?
-  fixed Endpoint: (String|formae.Resolvable) = endpoint
-  fixed CertificateAuthority: (String|formae.Resolvable) = certificateAuthority
+  hidden endpoint: (String|formae.Resolvable)?
+  hidden certificateAuthority: (String|formae.Resolvable)?
+  fixed SubscriptionId: (String|formae.Resolvable)? = subscriptionId
   fixed ResourceGroup: (String|formae.Resolvable)? = resourceGroup
   fixed ClusterName: (String|formae.Resolvable)? = clusterName
+  fixed Endpoint: (String|formae.Resolvable)? = endpoint
+  fixed CertificateAuthority: (String|formae.Resolvable)? = certificateAuthority
 }
 
 /// OVH Managed K8S auth.
+///
+/// The plugin already POSTs for a kubeconfig on every token mint, so naming
+/// the service and cluster is enough: the endpoint and CA come out of the
+/// same document. Set them yourself only to override it.
 class OVHAuth extends Auth {
   fixed type = "OVH"
-  hidden endpoint: (String|formae.Resolvable)
-  hidden certificateAuthority: (String|formae.Resolvable)
   hidden serviceName: (String|formae.Resolvable)
   hidden clusterId: (String|formae.Resolvable)
-  fixed Endpoint: (String|formae.Resolvable) = endpoint
-  fixed CertificateAuthority: (String|formae.Resolvable) = certificateAuthority
+  hidden endpoint: (String|formae.Resolvable)?
+  hidden certificateAuthority: (String|formae.Resolvable)?
   fixed ServiceName: (String|formae.Resolvable) = serviceName
   fixed ClusterId: (String|formae.Resolvable) = clusterId
+  fixed Endpoint: (String|formae.Resolvable)? = endpoint
+  fixed CertificateAuthority: (String|formae.Resolvable)? = certificateAuthority
 }
 
 /// Oracle OKE auth via OCI session token.
+///
+/// The only cloud auth type that still requires the endpoint and CA to be
+/// stated: OKE cluster lookup is not implemented yet.
 class OCIAuth extends Auth {
   fixed type = "OCI"
   hidden endpoint: (String|formae.Resolvable)
