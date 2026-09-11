@@ -25,6 +25,14 @@ The cluster files reuse the existing `@clusters/<cloud>.pkl` modules function
 by function, minus the Kubernetes parts, so there is no second copy of the
 VPC/IAM/networking wiring to keep in sync.
 
+## `kubernetesVersion` is optional
+
+These files set it, because they import a pinned `@k8s/v1.34/` tree and an
+extract should render back into the same one. Omit it and the plugin asks the
+cluster instead. Either way the field gate follows what the cluster reports,
+never the declaration: a forma cannot talk a gate into accepting a field the
+cluster does not have.
+
 ## Running it
 
 ### Scenario A: formae creates the cluster
