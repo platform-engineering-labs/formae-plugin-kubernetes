@@ -1,0 +1,52 @@
+/// Phase 1 of the AWS connect matrix: stand up an EKS cluster and NOTHING else.
+///
+/// Deliberately omits the Kubernetes target. The whole point of this pair is
+/// that connecting happens in a second, separate apply — the way hosted
+/// formae has to do it, where the cluster already exists (or was just
+/// discovered) by the time anyone asks for a K8s target against it.
+///
+///   formae apply --mode reconcile --yes examples/connect-matrix/aws-cluster.pkl
+///
+/// Teardown (run AFTER aws-connect.pkl has been destroyed):
+///   formae destroy --on-dependents=cascade --yes examples/connect-matrix/aws-cluster.pkl
+amends "@formae/forma.pkl"
+
+import "@formae/formae.pkl"
+import "@clusters/aws.pkl" as cluster
+
+description {
+  text = """
+    EKS cluster only — no Kubernetes target.
+
+    Pairs with examples/connect-matrix/aws-connect.pkl, which connects to this
+    cluster from a separate stack in a separate apply.
+    """
+  confirm = true
+}
+
+// Shared with aws-connect.pkl. Changing it here means changing it there.
+local slug = "connect-matrix"
+
+local stack: formae.Stack = new {
+  label = "connect-matrix-aws-cluster"
+  description = "Connect matrix (AWS): cluster-side resources only."
+}
+
+forma {
+  stack
+
+  // Everything cluster.resources() lists EXCEPT autoEbsStorageClass, which is
+  // a K8s resource and would drag a K8s target into this forma.
+  cluster.awsTarget(slug)
+  cluster.nvpc(slug)
+  cluster.igw(slug)
+  cluster.attachIgw(slug)
+  ...cluster.subnets(slug)
+  cluster.routeTable(slug)
+  cluster.publicRoute(slug)
+  ...cluster.subnetAssocs(slug)
+  ...cluster.securityGroups(slug)
+  cluster.clusterRole(slug)
+  cluster.nodeRole(slug)
+  cluster.eksClusterRes(slug)
+}

@@ -10,6 +10,24 @@ formae agent.
 
 ## [0.1.11]
 
+### Added
+
+- **`GKEAuth` can name its cluster.** The Pkl class exposed only `endpoint`
+  and `certificateAuthority`, while `GKEAuthConfig` read `ProjectId`,
+  `Location` and `ClusterName` and `CacheKey` composed all three. Nothing
+  could set them, so the Go fields were dead and every GKE target keyed its
+  token cache as `GKE|<endpoint>|||`, telling two clusters apart by network
+  address alone. The three fields are now optional on `GKEAuth`, and
+  `examples/clusters/gcp.pkl` sets them.
+- **`examples/connect-matrix/`** — a cluster/connect file pair per cloud
+  (AWS, GCP, Azure) that applies the cluster in one forma and the Kubernetes
+  target in a separate one, which is how a hosted agent has to do it when the
+  cluster already exists or was discovered. Every shipped example emits
+  cluster and target together, so that path had no coverage. The README
+  carries the per-cloud matrix, the three scenarios (formae creates it, it
+  already exists, discover then adopt then connect) and what each cloud's
+  discovery does and does not persist.
+
 ### Changed
 
 - CI evaluates every forma under `examples/` (`scripts/eval-examples.sh`, 34
@@ -25,6 +43,23 @@ formae agent.
   the provider-default audit reaches them.
 
 ### Fixed
+
+- **A target config carrying an unresolved reference now fails by name.**
+  formae replaces every reference it resolves with the scalar value before a
+  plugin sees it, and passes the ones it could not resolve through
+  structurally intact with no `$value`. The plugin's `ResolvedString` read
+  `$value` out of such an envelope, found nothing, and produced `""` — an EKS
+  token minted with an empty `x-k8s-aws-id`, an AKS token against an empty
+  resource group, and a 401 from the API server naming none of it. The type
+  is gone; every auth field is a plain `string` again, and `FromTargetConfig`
+  rejects an Auth block still carrying a `$res`/`$ref` object, naming every
+  offending field at once.
+- **A cloud auth block missing a required identifier is rejected.** An EKS
+  config without `ClusterName` was accepted all the way through and signed
+  with an empty `x-k8s-aws-id`. Every cloud auth type now checks the fields
+  its provider cannot work without, matching what the Pkl schema already
+  marks non-optional, and reports them together:
+  `EKS auth config missing required field(s): ClusterName`.
 
 - **The `examples/lgtm-observability/` formae evaluate again.** All five
   (`local`, `aws`, `azure`, `gcp`, `oci`) set `username`/`password` on the
