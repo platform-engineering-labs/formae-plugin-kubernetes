@@ -580,7 +580,8 @@ func (f *formaeCLI) applyOnce(mode, forma string) (state string, message string)
 	// as a harness error made the guard doing its job look like the test
 	// falling over — which is how "the guard never fires on reconcile" got
 	// believed for a while. It fires; nothing was listening.
-	if strings.Contains(out, "rejected because") || strings.Contains(out, "modified since the last reconcile") {
+	if strings.Contains(out, "rejected because") || strings.Contains(out, "modified since the last reconcile") ||
+		strings.Contains(out, "Reconcile needs drift decisions") {
 		return "Rejected", strings.TrimSpace(firstMeaningfulLine(out))
 	}
 
