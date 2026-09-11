@@ -37,6 +37,11 @@ file serve all three scenarios below, and it is why none of them needs a
 cross-stack reference: a cluster name and a region are literals a human
 already has, from the console or from `formae resources`.
 
+`kubernetesVersion` is optional the same way: these files set it because
+they import a pinned `@k8s/v1.34/` tree and an extract should render back
+into the same one. Omit it and the plugin asks the cluster. Either way the
+field gate follows the cluster, never the declaration.
+
 Stating `endpoint` and `certificateAuthority` explicitly still works and
 always wins — that is the path for an air-gapped cluster, a custom endpoint,
 or anything formae does not model. `examples/clusters/*.pkl` take that path,

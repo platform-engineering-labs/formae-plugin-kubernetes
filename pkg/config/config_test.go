@@ -546,3 +546,42 @@ func TestExplicitConnectionDetailsSkipLookup(t *testing.T) {
 		})
 	}
 }
+
+// A forma may omit kubernetesVersion entirely. The Pkl side then drops the
+// ApiVersion key rather than emitting "v" or null, so formae's schema
+// resolver sees no version instead of a malformed one, and the plugin asks
+// the cluster.
+func TestDeclaredK8sVersion(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{
+			"declared",
+			`{"ApiVersion":"v1.34","Auth":{"Type":"EKS","ClusterName":"c","Region":"r"}}`,
+			"1.34",
+		},
+		{
+			"omitted",
+			`{"Auth":{"Type":"EKS","ClusterName":"c","Region":"r"}}`,
+			"",
+		},
+		{
+			"malformed is treated as absent, not as an error",
+			`{"ApiVersion":"v","Auth":{"Type":"EKS","ClusterName":"c","Region":"r"}}`,
+			"",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := config.FromTargetConfig([]byte(tc.raw))
+			if err != nil {
+				t.Fatalf("FromTargetConfig: %v", err)
+			}
+			if got := config.DeclaredK8sVersion(cfg); got != tc.want {
+				t.Errorf("DeclaredK8sVersion = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

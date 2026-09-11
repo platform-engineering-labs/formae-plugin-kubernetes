@@ -82,3 +82,65 @@ func TestResolveVersion_RecoversAfterTransientError(t *testing.T) {
 		t.Fatal("successful resolve should now be cached")
 	}
 }
+
+// A version declared in a forma must NOT become the gate version. It names the
+// schema tree the forma was written against; the gate has to follow the
+// cluster, or a forma could talk a field gate into accepting a field the
+// cluster does not have.
+func TestResolveVersion_DeclaredVersionDoesNotOverrideGate(t *testing.T) {
+	t.Setenv(config.EnvK8sVersion, "")
+	cs, err := kubernetes.NewForConfig(&rest.Config{Host: "http://127.0.0.1:1"})
+	if err != nil {
+		t.Fatalf("build clientset: %v", err)
+	}
+	// ApiVersion says 1.34; there is no cluster to ask, so resolution must
+	// fail rather than quietly using the declared value.
+	c := &Client{Clientset: cs, Config: &config.Config{ApiVersion: "v1.34"}}
+
+	if v, err := c.ResolveVersion(context.Background()); err == nil {
+		t.Fatalf("declared version was used as the gate version (got %q); it must only name the schema tree", v)
+	}
+}
+
+// The escape hatch still works, and is distinct from the declared version: it
+// exists for dry runs and offline planning, where there is no cluster to ask.
+func TestResolveVersion_EscapeHatchStillOverrides(t *testing.T) {
+	c := &Client{Config: &config.Config{
+		KubernetesVersion: "1.30",
+		ApiVersion:        "v1.34",
+	}}
+	v, err := c.ResolveVersion(context.Background())
+	if err != nil || v != "1.30" {
+		t.Fatalf("ResolveVersion = (%q, %v), want (1.30, nil)", v, err)
+	}
+}
+
+// Drift safety. Resolving a version must not touch the target config: the
+// value lives in memory for the life of the client and never becomes part of
+// what formae compares a forma against. A cluster upgrading between two
+// applies is a fact about the cluster, not a change to the forma.
+func TestResolveVersion_LeavesTargetConfigUntouched(t *testing.T) {
+	raw := []byte(`{"Auth":{"Type":"EKS","Endpoint":"https://e","CertificateAuthority":"Y2E=","ClusterName":"c","Region":"eu-central-1"}}`)
+	before := string(raw)
+
+	cfg, err := config.FromTargetConfig(raw)
+	if err != nil {
+		t.Fatalf("FromTargetConfig: %v", err)
+	}
+	if declared := config.DeclaredK8sVersion(cfg); declared != "" {
+		t.Errorf("a config with no kubernetesVersion declared %q", declared)
+	}
+
+	c := &Client{Config: cfg}
+	c.Config.KubernetesVersion = "1.33" // stand in for a resolved value
+	if _, err := c.ResolveVersion(context.Background()); err != nil {
+		t.Fatalf("ResolveVersion: %v", err)
+	}
+
+	if string(raw) != before {
+		t.Errorf("target config was mutated:\n before %s\n after  %s", before, string(raw))
+	}
+	if cfg.ApiVersion != "" {
+		t.Errorf("ApiVersion was populated from the resolved version (%q); it must stay as the forma wrote it", cfg.ApiVersion)
+	}
+}
