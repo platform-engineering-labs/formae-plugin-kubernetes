@@ -12,6 +12,29 @@ formae agent.
 
 ### Added
 
+- **`kubernetesVersion` is optional on a Kubernetes target.** Omit it and the
+  plugin asks the cluster (`Discovery().ServerVersion()`), which is what
+  field-gate checks already used: a version stated in a forma never fed the
+  gate, and still does not — a forma cannot talk a gate into accepting a
+  field the cluster does not have. Set it to pin the schema subtree an
+  extract renders into, normally matching the `@k8s/v<X.Y>/` tree the forma
+  imports.
+
+  Omitting it changes nothing that formae compares: the resolved version
+  lives in memory for the life of the client and is never written back into
+  the target config, so a cluster upgrading between two applies stays a fact
+  about the cluster rather than drift against the forma. When unset, the Pkl
+  Config drops the `ApiVersion` key entirely rather than emitting `"v"` or
+  null, so formae's schema resolver sees no version instead of a malformed
+  one and falls back to the highest tree the installed plugin ships.
+
+  A forma that declares a different minor than the cluster reports now says
+  so once per client, with the version to re-author against. It is a warning,
+  not a failure: clusters upgrade on their own schedule, and refusing an
+  apply over a minor would be worse than the skew. Until now the symptom was
+  a field the forma sets that the cluster silently ignores, which points at
+  nothing.
+
 - **Cloud targets derive their own connection details.** A Kubernetes target
   against EKS, GKE, AKS or OVH now only has to name the cluster: the plugin
   reads the API server endpoint and CA bundle from the cloud

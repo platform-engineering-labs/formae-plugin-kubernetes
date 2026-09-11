@@ -32,13 +32,34 @@ import (
 type Config struct {
 	Auth json.RawMessage `json:"Auth"`
 
-	// KubernetesVersion is an optional override for the cluster's reported
+	// KubernetesVersion is an escape hatch for the cluster's reported
 	// version, in MAJOR.MINOR form (e.g., "1.32"). When unset, the plugin
-	// auto-detects via Discovery().ServerVersion(). The override is consumed
-	// by the @K8sVersion field-gate preflight check; it does not change which
-	// API endpoints are called. Useful for dry-run, offline planning, or
-	// pinning to a lower version for portability.
+	// auto-detects via Discovery().ServerVersion(). It is consumed by the
+	// @K8sVersion field-gate preflight check; it does not change which API
+	// endpoints are called. Useful for dry-run and offline planning, where
+	// there is no cluster to ask.
+	//
+	// The Pkl Config does not emit this key: a version stated in a forma
+	// arrives as ApiVersion below and deliberately does not feed the gate.
+	// This one is set on the target config directly, or via
+	// FORMAE_K8S_VERSION.
 	KubernetesVersion string `json:"KubernetesVersion,omitempty"`
+
+	// ApiVersion is the schema subtree the forma was authored against
+	// ("v1.34"), derived by the Pkl Config from `kubernetesVersion`. formae
+	// reads it to pick the schema tree an extract renders into.
+	//
+	// It is read here only to compare against what the cluster reports, so
+	// skew is named rather than surfacing as fields that silently do
+	// nothing. It is never used as the gate version: a forma cannot talk a
+	// field gate into accepting something the cluster does not have, and a
+	// forma that omits it keeps working, because the gate was already
+	// asking the cluster.
+	//
+	// Empty when the forma omits `kubernetesVersion` — the Pkl side drops
+	// the key rather than emitting "v" or null, so formae's resolver sees
+	// no version rather than a malformed one.
+	ApiVersion string `json:"ApiVersion,omitempty"`
 
 	// Parsed auth config — populated by FromTargetConfig
 	authType string
