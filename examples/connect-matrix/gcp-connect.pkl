@@ -11,6 +11,7 @@ import "@formae/formae.pkl"
 import "@gcp/container/cluster.pkl"
 import "@k8s/v1.34/k8s.pkl" as k8s
 import "@k8s/v1.34/core/Namespace.pkl" as ns
+import "@k8s/v1.34/core/Pod.pkl" as pod
 
 description {
   text = """
@@ -33,6 +34,11 @@ properties {
   clusterLabel = new formae.Prop {
     flag = "cluster-label"
     default = "gke-cluster"
+  }
+  // Name of the GKE cluster.
+  clusterName = new formae.Prop {
+    flag = "cluster-name"
+    default = "gke-connect-matrix"
   }
   // Cluster minor version. Selects the K8s Pkl schema subtree.
   kubernetesVersion = new formae.Prop {
@@ -75,8 +81,20 @@ local k8sTarget: formae.Target = new {
       certificateAuthority = clusterRef.clusterCaCertificate
       projectId = properties.project.value
       location = properties.location.value
-      clusterName = clusterRef.name
+      // Deliberately a literal, not clusterRef.name: the pinned gcp@0.1.7
+      // schema declares this resolvable as property "Name", while the stored
+      // resource carries lowercase "name", so the reference resolves to
+      // nothing and the target fails to create. Fixed in the gcp plugin
+      // since (v0.1.13 declares "name"); this pin has not caught up.
+      clusterName = properties.clusterName.value
     }
+  }
+}
+
+local probeNamespace = new ns.Namespace {
+  label = "connect-probe"
+  metadata = new ns.NamespaceMetadata {
+    name = "formae-connect-probe"
   }
 }
 
@@ -84,10 +102,29 @@ forma {
   stack
   k8sTarget
 
-  new ns.Namespace {
-    label = "connect-probe"
-    metadata = new ns.NamespaceMetadata {
-      name = "formae-connect-probe"
+  probeNamespace
+
+  // The namespace proves the target authenticates. The pod proves the cluster
+  // accepts work: a namespace lands even on a cluster with no schedulable
+  // nodes, so on its own it says less than it looks like it does.
+  new pod.Pod {
+    label = "connect-probe-hello"
+    metadata = new k8s.NamespacedObjectMeta {
+      name = "hello-world"
+      // By reference, not by name: this is the dependency edge that makes
+      // formae create the namespace first. With a plain string the pod
+      // races the namespace and fails with `namespaces "..." not found`.
+      namespace = probeNamespace.res.name
+    }
+    spec = new k8s.PodSpec {
+      restartPolicy = "Never"
+      containers {
+        new k8s.Container {
+          name = "hello"
+          image = "public.ecr.aws/docker/library/busybox:1.36"
+          command { "sh"; "-c"; "echo hello from formae; sleep 3600" }
+        }
+      }
     }
   }
 }

@@ -51,11 +51,11 @@ produced:
 
 ```sh
 formae apply --mode reconcile --yes examples/connect-matrix/aws-connect.pkl \
-  --prop cluster-stack=unmanaged \
-  --prop cluster-label=<label discovery assigned>
+  --cluster-stack=unmanaged \
+  --cluster-label=<label discovery assigned>
 ```
 
-Azure additionally takes `--prop resource-group-label=<label>`, because
+Azure additionally takes `--resource-group-label=<label>`, because
 `AKSAuth` needs the resource group as well as the cluster.
 
 ### Scenario C: discover, adopt, then connect
@@ -73,8 +73,8 @@ formae resources --query 'type:AWS::EKS::Cluster'
 
 # 3. connect against the discovered resource, wherever it landed
 formae apply --mode reconcile --yes examples/connect-matrix/aws-connect.pkl \
-  --prop cluster-stack=unmanaged \
-  --prop cluster-label=<label from step 2>
+  --cluster-stack=unmanaged \
+  --cluster-label=<label from step 2>
 ```
 
 Discovery does not merely record identity: it runs a sync changeset through
