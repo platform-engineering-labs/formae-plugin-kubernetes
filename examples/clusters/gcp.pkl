@@ -242,6 +242,11 @@ function target(slug: String): formae.Target = new formae.Target {
     auth = new k8s.GKEAuth {
       endpoint = gkeCluster(slug).res.endpoint
       certificateAuthority = gkeCluster(slug).res.clusterCaCertificate
+      // Cluster identity for the plugin's token cache. Without these three
+      // two GKE targets are told apart by their endpoint alone.
+      projectId = knobs.project.value
+      location = knobs.zone.value
+      clusterName = gkeCluster(slug).res.name
     }
   }
 }

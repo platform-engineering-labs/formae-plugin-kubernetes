@@ -1,0 +1,42 @@
+/// Phase 1 of the Azure connect matrix: stand up an AKS cluster and NOTHING
+/// else.
+///
+///   formae apply --mode reconcile --yes examples/connect-matrix/azure-cluster.pkl
+///
+/// Teardown (run AFTER azure-connect.pkl has been destroyed):
+///   formae destroy --on-dependents=cascade --yes examples/connect-matrix/azure-cluster.pkl
+amends "@formae/forma.pkl"
+
+import "@formae/formae.pkl"
+import "@clusters/azure.pkl" as cluster
+
+description {
+  text = """
+    AKS cluster only — no Kubernetes target.
+
+    Pairs with examples/connect-matrix/azure-connect.pkl, which connects to
+    this cluster from a separate stack in a separate apply. The AKS RBAC role
+    assignment stays here: it is an Azure resource, and it is what makes the
+    connect apply able to authenticate at all.
+    """
+  confirm = true
+}
+
+// Shared with azure-connect.pkl. Changing it here means changing it there.
+local slug = "connect-matrix"
+
+local stack: formae.Stack = new {
+  label = "connect-matrix-azure-cluster"
+  description = "Connect matrix (Azure): cluster-side resources only."
+}
+
+forma {
+  stack
+
+  cluster.azureTarget(slug)
+  cluster.resourceGroup(slug)
+  cluster.virtualNetwork(slug)
+  cluster.aksSubnet(slug)
+  cluster.aksCluster(slug)
+  cluster.roleAssignment(slug)
+}

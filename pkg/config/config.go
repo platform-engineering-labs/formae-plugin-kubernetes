@@ -5,11 +5,14 @@
 package config
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"k8s.io/client-go/rest"
@@ -52,51 +55,15 @@ type KubeconfigAuthConfig struct {
 	Kubeconfig string `json:"Kubeconfig,omitempty"`
 }
 
-// ResolvedString unmarshals either a plain JSON string or a formae
-// resolvable envelope ({"$ref":..., "$value":"..."} or
-// {"$res":true, "$value":"..."}) into a flat string. Targets created
-// from a Forma's $ref reach plugins with the envelope shape; the K8s
-// plugin's auth parsing previously expected the bare string and failed
-// to construct a client when the envelope leaked through.
-type ResolvedString string
-
-// UnmarshalJSON accepts either a quoted string or an object with a
-// "$value" key (the formae resolvable envelope).
-func (rs *ResolvedString) UnmarshalJSON(data []byte) error {
-	if len(data) == 0 {
-		*rs = ""
-		return nil
-	}
-	if data[0] == '"' {
-		var s string
-		if err := json.Unmarshal(data, &s); err != nil {
-			return err
-		}
-		*rs = ResolvedString(s)
-		return nil
-	}
-	if data[0] == '{' {
-		var envelope struct {
-			Value string `json:"$value"`
-		}
-		if err := json.Unmarshal(data, &envelope); err != nil {
-			return err
-		}
-		*rs = ResolvedString(envelope.Value)
-		return nil
-	}
-	return fmt.Errorf("ResolvedString: unsupported JSON shape: %s", string(data))
-}
-
-// String returns the resolved value as a plain string.
-func (rs ResolvedString) String() string { return string(rs) }
-
-// CloudAuthConfig holds fields common to all cloud auth types. Endpoint
-// and CertificateAuthority are ResolvedString so they accept both literal
-// strings and formae resolvable envelopes.
+// CloudAuthConfig holds fields common to all cloud auth types.
+//
+// Every field here is a plain string. formae flattens a resolved reference
+// to its scalar before the config reaches a plugin
+// (resolver.ConvertToPluginFormat), so an envelope arriving here means the
+// reference did NOT resolve — see guardNoUnflattenedReferences.
 type CloudAuthConfig struct {
-	Endpoint             ResolvedString `json:"Endpoint"`
-	CertificateAuthority ResolvedString `json:"CertificateAuthority"`
+	Endpoint             string `json:"Endpoint"`
+	CertificateAuthority string `json:"CertificateAuthority"`
 }
 
 // EKSAuthConfig holds EKS-specific auth fields.
@@ -167,10 +134,66 @@ func FromTargetConfig(targetConfig []byte) (*Config, error) {
 	if header.Type == "" {
 		return nil, fmt.Errorf("target config Auth block missing required Type field")
 	}
+	if err := guardNoUnflattenedReferences(cfg.Auth); err != nil {
+		return nil, err
+	}
+
 	cfg.authType = header.Type
 	cfg.authRaw = cfg.Auth
 
 	return &cfg, nil
+}
+
+// guardNoUnflattenedReferences rejects an Auth block that still carries a
+// formae reference envelope ({"$res":true,...} / {"$ref":...}) in place of a
+// scalar.
+//
+// formae resolves references and replaces each one with its scalar value
+// before the config reaches a plugin (internal/metastructure/resolver:
+// toPluginFormat). A reference it could NOT resolve is left structurally
+// intact and passed through unchanged, with no $value. So an envelope
+// arriving here is never a value the plugin should unwrap — it is a
+// resolution that failed upstream, and unwrapping it yields an empty
+// string: an EKS token minted with an empty cluster name, an AKS token
+// with no resource group, and a 401 from the API server that names none of
+// this.
+//
+// Fail here instead, naming the field and the reference, so the cause is
+// legible at config-parse time.
+func guardNoUnflattenedReferences(auth json.RawMessage) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(auth, &fields); err != nil {
+		return nil // shape errors are the caller's to report
+	}
+	names := make([]string, 0, len(fields))
+	for name, raw := range fields {
+		trimmed := bytes.TrimSpace(raw)
+		if len(trimmed) == 0 || trimmed[0] != '{' {
+			continue
+		}
+		var envelope struct {
+			Res *bool   `json:"$res"`
+			Ref *string `json:"$ref"`
+		}
+		if err := json.Unmarshal(trimmed, &envelope); err != nil {
+			continue
+		}
+		if envelope.Res == nil && envelope.Ref == nil {
+			continue
+		}
+		names = append(names, name)
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	sort.Strings(names)
+	return fmt.Errorf(
+		"target config Auth carries unresolved formae reference(s) in %s: "+
+			"formae flattens a resolved reference to its value before the plugin sees it, "+
+			"so this reference did not resolve — check that the referenced resource exists "+
+			"in the stack the reference names",
+		strings.Join(names, ", "),
+	)
 }
 
 // AuthType returns the auth strategy type string.
@@ -315,13 +338,13 @@ func (c *Config) buildCloudConfig(providerFn func() (auth.AuthProvider, *CloudAu
 		return nil, err
 	}
 
-	caData, err := base64.StdEncoding.DecodeString(string(cloud.CertificateAuthority))
+	caData, err := base64.StdEncoding.DecodeString(cloud.CertificateAuthority)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode certificate authority: %w", err)
 	}
 
 	cfg := &rest.Config{
-		Host: string(cloud.Endpoint),
+		Host: cloud.Endpoint,
 		TLSClientConfig: rest.TLSClientConfig{
 			CAData: caData,
 		},
@@ -342,14 +365,41 @@ func (c *Config) buildCloudConfig(providerFn func() (auth.AuthProvider, *CloudAu
 	return cfg, nil
 }
 
+// requireAuthFields rejects a cloud auth block missing a value the provider
+// cannot work without. Without this an omitted ClusterName reaches STS as an
+// empty x-k8s-aws-id header and the API server answers with a bare 401 that
+// names nothing. The Pkl schema already marks these non-optional; this is the
+// same contract enforced against configs that did not come from Pkl.
+func requireAuthFields(authType string, fields map[string]string) error {
+	missing := make([]string, 0, len(fields))
+	for name, value := range fields {
+		if value == "" {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	sort.Strings(missing)
+	return fmt.Errorf("%s auth config missing required field(s): %s",
+		authType, strings.Join(missing, ", "))
+}
+
 func (c *Config) newEKSProvider() (auth.AuthProvider, *CloudAuthConfig, error) {
 	var ac EKSAuthConfig
 	if err := json.Unmarshal(c.authRaw, &ac); err != nil {
 		return nil, nil, fmt.Errorf("failed to parse EKS auth config: %w", err)
 	}
+	if err := requireAuthFields("EKS", map[string]string{
+		"Endpoint":             ac.Endpoint,
+		"CertificateAuthority": ac.CertificateAuthority,
+		"ClusterName":          ac.ClusterName,
+	}); err != nil {
+		return nil, nil, err
+	}
 	region := ac.Region
 	if region == "" {
-		region = eks.RegionFromEndpoint(string(ac.Endpoint))
+		region = eks.RegionFromEndpoint(ac.Endpoint)
 	}
 	return eks.NewProvider(ac.ClusterName, region), &ac.CloudAuthConfig, nil
 }
@@ -359,6 +409,12 @@ func (c *Config) newGKEProvider() (auth.AuthProvider, *CloudAuthConfig, error) {
 	if err := json.Unmarshal(c.authRaw, &ac); err != nil {
 		return nil, nil, fmt.Errorf("failed to parse GKE auth config: %w", err)
 	}
+	if err := requireAuthFields("GKE", map[string]string{
+		"Endpoint":             ac.Endpoint,
+		"CertificateAuthority": ac.CertificateAuthority,
+	}); err != nil {
+		return nil, nil, err
+	}
 	return gke.NewProvider(ac.ProjectID, ac.Location, ac.ClusterName), &ac.CloudAuthConfig, nil
 }
 
@@ -366,6 +422,12 @@ func (c *Config) newAKSProvider() (auth.AuthProvider, *CloudAuthConfig, error) {
 	var ac AKSAuthConfig
 	if err := json.Unmarshal(c.authRaw, &ac); err != nil {
 		return nil, nil, fmt.Errorf("failed to parse AKS auth config: %w", err)
+	}
+	if err := requireAuthFields("AKS", map[string]string{
+		"Endpoint":             ac.Endpoint,
+		"CertificateAuthority": ac.CertificateAuthority,
+	}); err != nil {
+		return nil, nil, err
 	}
 	return aks.NewProvider(ac.ResourceGroup, ac.ClusterName, ac.Scope), &ac.CloudAuthConfig, nil
 }
@@ -375,6 +437,14 @@ func (c *Config) newOVHProvider() (auth.AuthProvider, *CloudAuthConfig, error) {
 	if err := json.Unmarshal(c.authRaw, &ac); err != nil {
 		return nil, nil, fmt.Errorf("failed to parse OVH auth config: %w", err)
 	}
+	if err := requireAuthFields("OVH", map[string]string{
+		"Endpoint":             ac.Endpoint,
+		"CertificateAuthority": ac.CertificateAuthority,
+		"ServiceName":          ac.ServiceName,
+		"ClusterId":            ac.ClusterID,
+	}); err != nil {
+		return nil, nil, err
+	}
 	return ovh.NewProvider(ac.ServiceName, ac.ClusterID), &ac.CloudAuthConfig, nil
 }
 
@@ -382,6 +452,13 @@ func (c *Config) newOCIProvider() (auth.AuthProvider, *CloudAuthConfig, error) {
 	var ac OCIAuthConfig
 	if err := json.Unmarshal(c.authRaw, &ac); err != nil {
 		return nil, nil, fmt.Errorf("failed to parse OCI auth config: %w", err)
+	}
+	if err := requireAuthFields("OCI", map[string]string{
+		"Endpoint":             ac.Endpoint,
+		"CertificateAuthority": ac.CertificateAuthority,
+		"ClusterOcid":          ac.ClusterOCID,
+	}); err != nil {
+		return nil, nil, err
 	}
 	return oci.NewProvider(ac.ClusterOCID, ac.Region), &ac.CloudAuthConfig, nil
 }

@@ -1,0 +1,29 @@
+/// Scenario C, step 1: the control plane knows the clouds and nothing else.
+///
+/// No cluster, no Kubernetes target, no resources — just the two cloud
+/// targets an agent needs before it can discover anything. Applying this
+/// against an empty datastore reproduces what a hosted installation looks
+/// like the moment a customer finishes connecting their accounts.
+///
+///   formae apply --mode reconcile --yes examples/connect-matrix/cloud-targets-only.pkl
+amends "@formae/forma.pkl"
+
+import "@formae/formae.pkl"
+import "@clusters/aws.pkl" as awscluster
+import "@clusters/azure.pkl" as azcluster
+
+description {
+  text = """
+    Cloud targets only — the starting point for discover-then-connect.
+    """
+  confirm = true
+}
+
+local slug = "connect-matrix"
+
+// No Stack: a forma that declares one with no resources in it is rejected
+// with EmptyStackRejected. Targets alone need no stack.
+forma {
+  awscluster.awsTarget(slug)
+  azcluster.azureTarget(slug)
+}
