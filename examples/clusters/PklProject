@@ -12,10 +12,10 @@ dependencies {
     uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.89.0"
   }
   ["aws"] {
-    uri = "package://hub.platform.engineering/plugins/aws/schema/pkl/aws/aws@0.1.7"
+    uri = "package://hub.platform.engineering/plugins/aws/schema/pkl/aws/aws@0.1.14"
   }
   ["azure"] {
-    uri = "package://hub.platform.engineering/plugins/azure/schema/pkl/azure/azure@0.1.3"
+    uri = "package://hub.platform.engineering/plugins/azure/schema/pkl/azure/azure@0.1.10"
   }
   ["gcp"] {
     uri = "package://hub.platform.engineering/plugins/gcp/schema/pkl/gcp/gcp@0.1.7"
