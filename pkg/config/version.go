@@ -50,6 +50,21 @@ func ResolveK8sVersion(ctx context.Context, cfg *Config, disc discovery.Discover
 	return NormalizeK8sVersion(info.Major + "." + info.Minor)
 }
 
+// DeclaredK8sVersion returns the MAJOR.MINOR version a forma declared via
+// `kubernetesVersion`, or "" when it declared none. Unlike ResolveK8sVersion
+// this never asks the cluster and never falls back: it reports what the
+// author wrote, so a caller can compare the two and name the difference.
+func DeclaredK8sVersion(cfg *Config) string {
+	if cfg == nil || cfg.ApiVersion == "" {
+		return ""
+	}
+	v, err := NormalizeK8sVersion(cfg.ApiVersion)
+	if err != nil {
+		return ""
+	}
+	return v
+}
+
 // NormalizeK8sVersion strips a leading "v", trims a "+" suffix (used by GKE
 // and other distros), and reduces "1.32.5" or "1.32+" to "1.32".
 func NormalizeK8sVersion(v string) (string, error) {

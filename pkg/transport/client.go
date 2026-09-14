@@ -10,10 +10,11 @@ import (
 	"sync"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
+	"github.com/platform-engineering-labs/formae/pkg/plugin"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/dynamic"
 	memory "k8s.io/client-go/discovery/cached/memory"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
@@ -107,9 +108,36 @@ func (c *Client) ResolveVersion(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	c.warnOnVersionSkew(ctx, v)
 	c.version = v
 	c.versionSet = true
 	return v, nil
+}
+
+// warnOnVersionSkew reports a forma authored against one K8s minor talking to
+// a cluster running another.
+//
+// Skew is not fatal and must not be: a cluster upgrades on its own schedule,
+// and refusing to apply over a minor would be worse than the skew. But it is
+// invisible without this — the symptom is a field the forma sets that the
+// cluster silently ignores, or a resource type extract renders into the wrong
+// schema tree, neither of which points back at the version.
+//
+// Nothing is written anywhere. The resolved version lives in memory for the
+// life of this client and never reaches the target config, so a cluster
+// upgrade cannot turn into drift against the forma.
+func (c *Client) warnOnVersionSkew(ctx context.Context, resolved string) {
+	declared := config.DeclaredK8sVersion(c.Config)
+	if declared == "" || declared == resolved {
+		return
+	}
+	plugin.LoggerFromContext(ctx).Warn(
+		"forma declares a different Kubernetes version than the cluster reports",
+		"declared", declared,
+		"cluster", resolved,
+		"hint", "field gates follow the cluster; re-author against @k8s/v"+resolved+
+			" so extract renders into the matching schema tree",
+	)
 }
 
 // ResolveMapping maps an apiVersion+kind to its GVR and namespaced scope using

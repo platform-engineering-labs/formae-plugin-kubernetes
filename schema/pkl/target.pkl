@@ -44,12 +44,21 @@ open class Config {
   hidden auth: Auth
 
   /// Kubernetes minor version of the target cluster, e.g. "1.27".
-  /// Required so formae picks the right schema subtree at extract
-  /// time. Users set this; the convention key `ApiVersion` is derived
-  /// and emitted to the marshaled Config JSON, where formae's
-  /// schema-version resolver reads it.
+  ///
+  /// Optional. Set it to pin the schema subtree formae extracts into —
+  /// normally the same minor as the `@k8s/v<X.Y>/` tree this forma
+  /// imports. The convention key `ApiVersion` is derived from it and read
+  /// by formae's schema-version resolver.
+  ///
+  /// Leave it unset and the plugin asks the cluster
+  /// (`Discovery().ServerVersion()`), which is what field-gate checks use
+  /// either way: a declared version never overrides what the cluster
+  /// reports, so it cannot be used to talk a gate into accepting a field
+  /// the cluster does not have. The derived value is held in memory for
+  /// the life of the client and never written back into this config, so
+  /// omitting it cannot produce drift.
   @formae.ConfigFieldHint { createOnly = false }
-  hidden kubernetesVersion: KubernetesMinorVersion
+  hidden kubernetesVersion: KubernetesMinorVersion?
 
   fixed Type: String = type
   fixed Auth: Auth = auth
@@ -57,7 +66,12 @@ open class Config {
   /// Convention key. Formae's schema-version resolver scans
   /// target.Config JSON for `ApiVersion`; the K8s plugin derives it
   /// from `kubernetesVersion` so users never type the `v` prefix.
-  fixed ApiVersion: String = "v\(kubernetesVersion)"
+  ///
+  /// Absent when `kubernetesVersion` is unset — not an empty string, which
+  /// the resolver would read as a version. formae then falls back to the
+  /// highest schema tree the installed plugin ships.
+  fixed ApiVersion: String? =
+    if (kubernetesVersion == null) null else "v\(kubernetesVersion)"
 }
 
 // =============================================================================
