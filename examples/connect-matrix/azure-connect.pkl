@@ -9,8 +9,6 @@
 amends "@formae/forma.pkl"
 
 import "@formae/formae.pkl"
-import "@azure/containerservice/managedcluster.pkl" as mc
-import "@azure/resources/resourcegroup.pkl" as rg
 import "@k8s/v1.34/k8s.pkl" as k8s
 import "@k8s/v1.34/core/Namespace.pkl" as ns
 import "@k8s/v1.34/core/Pod.pkl" as pod
@@ -28,38 +26,27 @@ description {
 }
 
 properties {
-  // Stack holding the AKS cluster. Use 'unmanaged' for a discovered cluster.
-  clusterStack = new formae.Prop {
-    flag = "cluster-stack"
-    default = "connect-matrix-azure-cluster"
+  // Subscription holding the cluster. Falls back to the agent's own
+  // AZURE_SUBSCRIPTION_ID when left unset.
+  subscriptionId = new formae.Prop {
+    flag = "subscription-id"
+    default = read?("env:AZURE_SUBSCRIPTION_ID") ?? ""
   }
-  // Resource label of the AKS cluster inside that stack.
-  clusterLabel = new formae.Prop {
-    flag = "cluster-label"
-    default = "aks-cluster"
+  // Resource group holding the cluster.
+  resourceGroup = new formae.Prop {
+    flag = "resource-group"
+    default = "aks-connect-matrix-rg"
   }
-  // Resource label of the cluster's resource group inside that stack.
-  resourceGroupLabel = new formae.Prop {
-    flag = "resource-group-label"
-    default = "aks-rg"
+  // Name of the AKS cluster to connect to.
+  clusterName = new formae.Prop {
+    flag = "cluster-name"
+    default = "aks-connect-matrix"
   }
   // Cluster minor version. Selects the K8s Pkl schema subtree.
   kubernetesVersion = new formae.Prop {
     flag = "kubernetes-version"
     default = "1.34"
   }
-}
-
-// Cross-stack references. `stack` MUST be set: forma.pkl's renderer fills a
-// null stack from a resource in THIS forma, and neither of these is here.
-local clusterRef = new mc.ManagedClusterResolvable {
-  label = properties.clusterLabel.value
-  stack = properties.clusterStack.value
-}
-
-local resourceGroupRef = new rg.ResourceGroupResolvable {
-  label = properties.resourceGroupLabel.value
-  stack = properties.clusterStack.value
 }
 
 local stack: formae.Stack = new {
@@ -72,13 +59,13 @@ local k8sTarget: formae.Target = new {
   config = new k8s.Config {
     kubernetesVersion = properties.kubernetesVersion.value
     auth = new k8s.AKSAuth {
-      // `fqdn` is a bare hostname. The plugin assigns Endpoint to
-      // rest.Config.Host verbatim and client-go supplies the https scheme
-      // because a CA bundle is set.
-      endpoint = clusterRef.fqdn
-      certificateAuthority = clusterRef.certificateAuthority
-      resourceGroup = resourceGroupRef.name
-      clusterName = clusterRef.name
+      // Name the cluster; the plugin reads the endpoint and CA from Azure.
+      // Nothing is referenced out of the cluster's stack, so this file works
+      // unchanged against a cluster formae created, one it discovered, and one
+      // it has never seen.
+      subscriptionId = properties.subscriptionId.value
+      resourceGroup = properties.resourceGroup.value
+      clusterName = properties.clusterName.value
     }
   }
 }

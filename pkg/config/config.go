@@ -6,6 +6,7 @@ package config
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -78,9 +79,10 @@ type EKSAuthConfig struct {
 // custom AAD integration.
 type AKSAuthConfig struct {
 	CloudAuthConfig
-	ResourceGroup string `json:"ResourceGroup,omitempty"`
-	ClusterName   string `json:"ClusterName,omitempty"`
-	Scope         string `json:"Scope,omitempty"`
+	SubscriptionID string `json:"SubscriptionId,omitempty"`
+	ResourceGroup  string `json:"ResourceGroup,omitempty"`
+	ClusterName    string `json:"ClusterName,omitempty"`
+	Scope          string `json:"Scope,omitempty"`
 }
 
 // GKEAuthConfig holds GKE-specific auth fields. ProjectID, Location, and
@@ -252,7 +254,7 @@ func (c *Config) CacheKey() (string, error) {
 		if err := json.Unmarshal(c.authRaw, &ac); err != nil {
 			return "", fmt.Errorf("CacheKey: parse AKS auth: %w", err)
 		}
-		return fmt.Sprintf("AKS|%s|%s|%s|%s", ac.Endpoint, ac.ResourceGroup, ac.ClusterName, ac.Scope), nil
+		return fmt.Sprintf("AKS|%s|%s|%s|%s|%s", ac.Endpoint, ac.SubscriptionID, ac.ResourceGroup, ac.ClusterName, ac.Scope), nil
 	case "OVH":
 		var ac OVHAuthConfig
 		if err := json.Unmarshal(c.authRaw, &ac); err != nil {
@@ -332,19 +334,67 @@ func (c *Config) buildKubeconfigConfig() (*rest.Config, error) {
 	return cfg, nil
 }
 
+// connectionDetails resolves the API server endpoint and CA bundle.
+//
+// Whatever the target states wins, which is what an air-gapped cluster, a
+// custom endpoint, or anything formae does not model relies on. Only when a
+// field is absent does a provider that implements auth.ClusterDescriber get
+// asked to look it up; every other auth type requires both fields as before.
+func (c *Config) connectionDetails(provider auth.AuthProvider, cloud *CloudAuthConfig) (string, []byte, error) {
+	endpoint := cloud.Endpoint
+
+	var caData []byte
+	if cloud.CertificateAuthority != "" {
+		decoded, err := base64.StdEncoding.DecodeString(cloud.CertificateAuthority)
+		if err != nil {
+			return "", nil, fmt.Errorf("failed to decode certificate authority: %w", err)
+		}
+		caData = decoded
+	}
+
+	if endpoint != "" && len(caData) > 0 {
+		return endpoint, caData, nil
+	}
+
+	describer, ok := provider.(auth.ClusterDescriber)
+	if !ok {
+		return "", nil, requireAuthFields(c.authType, map[string]string{
+			"Endpoint":             cloud.Endpoint,
+			"CertificateAuthority": cloud.CertificateAuthority,
+		})
+	}
+
+	derivedEndpoint, derivedCA, err := describer.DescribeCluster(context.Background())
+	if err != nil {
+		return "", nil, err
+	}
+	if endpoint == "" {
+		endpoint = derivedEndpoint
+	}
+	if len(caData) == 0 {
+		caData = derivedCA
+	}
+	if endpoint == "" || len(caData) == 0 {
+		return "", nil, fmt.Errorf(
+			"%s auth: the cloud returned no endpoint or certificate authority for this cluster",
+			c.authType)
+	}
+	return endpoint, caData, nil
+}
+
 func (c *Config) buildCloudConfig(providerFn func() (auth.AuthProvider, *CloudAuthConfig, error)) (*rest.Config, error) {
 	provider, cloud, err := providerFn()
 	if err != nil {
 		return nil, err
 	}
 
-	caData, err := base64.StdEncoding.DecodeString(cloud.CertificateAuthority)
+	endpoint, caData, err := c.connectionDetails(provider, cloud)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode certificate authority: %w", err)
+		return nil, err
 	}
 
 	cfg := &rest.Config{
-		Host: cloud.Endpoint,
+		Host: endpoint,
 		TLSClientConfig: rest.TLSClientConfig{
 			CAData: caData,
 		},
@@ -423,13 +473,11 @@ func (c *Config) newAKSProvider() (auth.AuthProvider, *CloudAuthConfig, error) {
 	if err := json.Unmarshal(c.authRaw, &ac); err != nil {
 		return nil, nil, fmt.Errorf("failed to parse AKS auth config: %w", err)
 	}
-	if err := requireAuthFields("AKS", map[string]string{
-		"Endpoint":             ac.Endpoint,
-		"CertificateAuthority": ac.CertificateAuthority,
-	}); err != nil {
-		return nil, nil, err
-	}
-	return aks.NewProvider(ac.ResourceGroup, ac.ClusterName, ac.Scope), &ac.CloudAuthConfig, nil
+	// Endpoint and CertificateAuthority are deliberately absent here: AKS can
+	// look both up, so requiring them would defeat the point. What it cannot
+	// look anything up without is the cluster's identity, and that is enforced
+	// in DescribeCluster where the error can say which field is missing.
+	return aks.NewProvider(ac.SubscriptionID, ac.ResourceGroup, ac.ClusterName, ac.Scope), &ac.CloudAuthConfig, nil
 }
 
 func (c *Config) newOVHProvider() (auth.AuthProvider, *CloudAuthConfig, error) {

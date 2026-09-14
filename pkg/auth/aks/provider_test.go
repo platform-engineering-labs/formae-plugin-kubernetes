@@ -14,7 +14,7 @@ import (
 )
 
 func TestAKSProvider_CarriesClusterIdentity(t *testing.T) {
-	p := aks.NewProvider("rg-prod", "aks-prod", "")
+	p := aks.NewProvider("sub", "rg-prod", "aks-prod", "")
 	if p.ResourceGroup != "rg-prod" {
 		t.Errorf("ResourceGroup = %q, want rg-prod", p.ResourceGroup)
 	}
@@ -27,7 +27,7 @@ func TestAKSProvider_DefaultScope(t *testing.T) {
 	// Empty Scope is expected to fall through to DefaultAKSScope at
 	// token-request time. We only assert the field is preserved as empty
 	// on construction; the default is applied in ConfigureTransport.
-	p := aks.NewProvider("rg", "c", "")
+	p := aks.NewProvider("sub", "rg", "c", "")
 	if p.Scope != "" {
 		t.Errorf("Scope should default to empty (resolved later), got %q", p.Scope)
 	}
@@ -35,14 +35,14 @@ func TestAKSProvider_DefaultScope(t *testing.T) {
 
 func TestAKSProvider_ScopeOverride(t *testing.T) {
 	const custom = "api://custom-aad-app/.default"
-	p := aks.NewProvider("rg", "c", custom)
+	p := aks.NewProvider("sub", "rg", "c", custom)
 	if p.Scope != custom {
 		t.Errorf("Scope = %q, want %q", p.Scope, custom)
 	}
 }
 
 func TestAKSProvider_ConfigureTransport_SetsWrapTransport(t *testing.T) {
-	provider := aks.NewProvider("rg", "c", "")
+	provider := aks.NewProvider("sub", "rg", "c", "")
 	cfg := &rest.Config{}
 	if err := provider.ConfigureTransport(cfg); err != nil {
 		t.Fatalf("ConfigureTransport: %v", err)
