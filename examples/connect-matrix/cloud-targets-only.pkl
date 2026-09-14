@@ -11,6 +11,7 @@ amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
 import "@clusters/aws.pkl" as awscluster
 import "@clusters/azure.pkl" as azcluster
+import "@clusters/gcp.pkl" as gcpcluster
 
 description {
   text = """
@@ -26,4 +27,5 @@ local slug = "connect-matrix"
 forma {
   awscluster.awsTarget(slug)
   azcluster.azureTarget(slug)
+  gcpcluster.gcpTarget(slug)
 }
