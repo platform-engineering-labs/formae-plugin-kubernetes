@@ -8,6 +8,6 @@ dependencies {
     uri = "package://hub.platform.engineering/plugins/k8s/schema/pkl/k8s/k8s@0.1.6"
   }
   ["aws"] {
-    uri = "package://hub.platform.engineering/plugins/aws/schema/pkl/aws/aws@0.1.7"
+    uri = "package://hub.platform.engineering/plugins/aws/schema/pkl/aws/aws@0.1.14"
   }
 }
