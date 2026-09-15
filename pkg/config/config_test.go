@@ -423,11 +423,6 @@ func TestMissingRequiredAuthFields(t *testing.T) {
 			"CertificateAuthority",
 		},
 		{
-			"AKS without endpoint",
-			`{"Auth":{"Type":"AKS","CertificateAuthority":"Y2E=","ResourceGroup":"rg","ClusterName":"c"}}`,
-			"Endpoint",
-		},
-		{
 			"OVH without service name",
 			`{"Auth":{"Type":"OVH","Endpoint":"https://e","CertificateAuthority":"Y2E=","ClusterId":"c"}}`,
 			"ServiceName",
@@ -450,6 +445,78 @@ func TestMissingRequiredAuthFields(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tc.field) {
 				t.Errorf("error should name %q, got %q", tc.field, err.Error())
+			}
+		})
+	}
+}
+
+// AKS is the one auth type that can look its own connection details up, so it
+// is the one type that does not demand them. Azure does not put the CA on the
+// ManagedCluster resource at all: the azure plugin synthesizes it during Read
+// from ListClusterAdminCredentials and swallows every error, so a discovered
+// cluster can carry an empty CA whenever that call is denied or the cluster
+// sets disableLocalAccounts. Reading it at connect time is the difference
+// between a real error and a silent 401.
+func TestAKSDerivesConnectionDetails(t *testing.T) {
+	t.Run("identity is required, and the error says what to do instead", func(t *testing.T) {
+		cfg, err := config.FromTargetConfig([]byte(
+			`{"Auth":{"Type":"AKS","SubscriptionId":"sub"}}`))
+		if err != nil {
+			t.Fatalf("FromTargetConfig: %v", err)
+		}
+		_, err = cfg.ToK8sConfig()
+		if err == nil {
+			t.Fatal("expected an error: there is nothing to look the cluster up with")
+		}
+		for _, want := range []string{"ResourceGroup", "ClusterName", "CertificateAuthority"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error should mention %q, got %q", want, err.Error())
+			}
+		}
+	})
+
+	t.Run("stated values win and never reach the cloud", func(t *testing.T) {
+		// No Azure credentials and no network here, so a lookup would fail.
+		// Passing is the proof that it short-circuited, which is the contract
+		// an air-gapped or custom-endpoint cluster depends on.
+		cfg, err := config.FromTargetConfig([]byte(
+			`{"Auth":{"Type":"AKS","Endpoint":"https://private.azmk8s.io",` +
+				`"CertificateAuthority":"Y2E=","ResourceGroup":"rg","ClusterName":"c"}}`))
+		if err != nil {
+			t.Fatalf("FromTargetConfig: %v", err)
+		}
+		restCfg, err := cfg.ToK8sConfig()
+		if err != nil {
+			t.Fatalf("reached for the cloud instead of using the stated values: %v", err)
+		}
+		if restCfg.Host != "https://private.azmk8s.io" {
+			t.Errorf("Host = %q, want the stated endpoint", restCfg.Host)
+		}
+	})
+}
+
+// Every other cloud auth type still requires both fields: none of them can look
+// anything up, and silently accepting a blank endpoint would be worse than the
+// error.
+func TestNonAKSCloudAuthStillRequiresEndpointAndCA(t *testing.T) {
+	cases := map[string]string{
+		"EKS": `{"Auth":{"Type":"EKS","ClusterName":"c","Region":"r"}}`,
+		"GKE": `{"Auth":{"Type":"GKE","ProjectId":"p","Location":"l","ClusterName":"c"}}`,
+		"OVH": `{"Auth":{"Type":"OVH","ServiceName":"s","ClusterId":"c"}}`,
+		"OCI": `{"Auth":{"Type":"OCI","ClusterOcid":"o","Region":"r"}}`,
+	}
+	for name, raw := range cases {
+		t.Run(name, func(t *testing.T) {
+			cfg, err := config.FromTargetConfig([]byte(raw))
+			if err != nil {
+				t.Fatalf("FromTargetConfig: %v", err)
+			}
+			_, err = cfg.ToK8sConfig()
+			if err == nil {
+				t.Fatal("expected an error for the missing endpoint and CA")
+			}
+			if !strings.Contains(err.Error(), "Endpoint") {
+				t.Errorf("error should name Endpoint, got %q", err.Error())
 			}
 		})
 	}

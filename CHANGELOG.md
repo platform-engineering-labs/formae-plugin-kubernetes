@@ -12,6 +12,30 @@ formae agent.
 
 ### Added
 
+- **AKS targets can name their cluster instead of describing it.** `endpoint`
+  and `certificateAuthority` are now optional on `AKSAuth`: give it a resource
+  group and cluster name and the plugin reads both from Azure. Stating them
+  still works and always wins, which is the path for a private endpoint or
+  anything formae does not model. `subscriptionId` is new, falling back to the
+  agent's `AZURE_SUBSCRIPTION_ID`, because a hosted agent can span
+  subscriptions.
+
+  AKS is the only cloud auth type that does this, and the reason is specific to
+  Azure: the CA is not on the ManagedCluster resource at all. It is reachable
+  only through the credentials endpoints, which the azure plugin calls during
+  Read and which silently yields nothing when the call is denied or the cluster
+  sets `disableLocalAccounts`. A discovered cluster then carries an empty CA
+  with no indication why, and the failure surfaces later as a bare 401. Reading
+  it at connect time makes that a real error naming the permission to grant.
+  The lookup prefers `ListClusterUserCredentials` (AAD-based, needs only
+  `listClusterUserCredential/action`, survives `disableLocalAccounts`) and
+  falls back to admin; only the server URL and CA are taken from the returned
+  kubeconfig, and the token still comes from the agent's own Azure identity.
+
+  EKS, GKE, OVH and OKE are unchanged and still require both fields. Their
+  endpoints and CAs are already on the resources formae discovers, so there is
+  nothing to repair and no reason to spend an API call or a permission on it.
+
 - **`GKEAuth` can name its cluster.** The Pkl class exposed only `endpoint`
   and `certificateAuthority`, while `GKEAuthConfig` read `ProjectId`,
   `Location` and `ClusterName` and `CacheKey` composed all three. Nothing
