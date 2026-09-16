@@ -12,7 +12,7 @@ require (
 	github.com/ovh/go-ovh v1.9.0
 	github.com/platform-engineering-labs/formae/pkg/model v0.1.28
 	github.com/platform-engineering-labs/formae/pkg/plugin v0.4.2
-	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.2.7
+	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.2.8
 	github.com/stretchr/testify v1.12.1
 	github.com/theory/jsonpath v0.12.1
 	github.com/tidwall/gjson v1.19.0
