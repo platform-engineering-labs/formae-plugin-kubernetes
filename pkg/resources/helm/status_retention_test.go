@@ -42,7 +42,7 @@ func TestStatusTransientRecoveryRetainsReaderUntilOutcomeObserved(t *testing.T) 
 			defer unblock()
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			r := testRelease(t, cfg)
+			r := testReleaseForConfig(t, cfg)
 			scope, err := resolveFlightScope(ctx, r.Client)
 			if err != nil {
 				t.Fatal(err)

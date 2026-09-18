@@ -97,7 +97,7 @@ func TestClusterIdentityDenialPreventsHelmMutation(t *testing.T) {
 	}))
 	defer server.Close()
 	cfg := fixtureKubeconfig(t, server)
-	r := testRelease(t, cfg)
+	r := testReleaseForConfig(t, cfg)
 	_, err := r.Create(context.Background(), &resource.CreateRequest{Properties: []byte(`{"metadata":{"name":"release","namespace":"ns"},"chart":"./missing"}`)})
 	if err == nil || !strings.Contains(err.Error(), "kube-system") {
 		t.Fatalf("identity denial not actionable: %v", err)
@@ -127,7 +127,7 @@ func TestStatusTerminalRecordWaitsForWorkerOutcome(t *testing.T) {
 			identity, _, _ := flightIdentity(context.Background(), cfg)
 			f := inflight{op: opDelete, revision: 1, generation: uuid.NewString(), authFingerprint: identity, deadline: time.Now().Add(time.Minute)}
 			reserveFlight(scope, "ns", "release", f)
-			r := testRelease(t, cfg)
+			r := testReleaseForConfig(t, cfg)
 			req := &resource.StatusRequest{RequestID: flightRequestID("ns", "release", &f)}
 			results := make(chan *resource.StatusResult, 1)
 			errs := make(chan error, 1)
@@ -172,7 +172,7 @@ func TestStatusRecoveryReservesBeforeStorageInspection(t *testing.T) {
 	}
 	done := make(chan error, 1)
 	go func() {
-		_, err := (testRelease(t, cfg)).Status(context.Background(), &resource.StatusRequest{RequestID: "ns/release@1:install"})
+		_, err := (testReleaseForConfig(t, cfg)).Status(context.Background(), &resource.StatusRequest{RequestID: "ns/release@1:install"})
 		done <- err
 	}()
 	<-entered
@@ -213,7 +213,7 @@ func TestSynchronousTemplateFailureDoesNotBlockCorrectedApply(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(chart, "templates", "fail.yaml"), []byte(`{{ fail .Values.message }}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	r := testRelease(t, cfg)
+	r := testReleaseForConfig(t, cfg)
 	for _, message := range []string{"original-template-error", "corrected-worker-ran"} {
 		raw, _ := json.Marshal(map[string]any{"metadata": map[string]string{"name": "release", "namespace": "ns"}, "chart": chart, "values": map[string]string{"message": message}})
 		result, err := r.Create(context.Background(), &resource.CreateRequest{Properties: raw})
@@ -292,7 +292,7 @@ func TestConcurrentStatusCannotReleaseRecoveryOwnershipEarly(t *testing.T) {
 	identity, _, _ := flightIdentity(context.Background(), cfg)
 	f := inflight{op: opDelete, revision: 1, generation: uuid.NewString(), authFingerprint: identity, finished: true}
 	reserveFlight(scope, "ns", "release", f)
-	r := testRelease(t, cfg)
+	r := testReleaseForConfig(t, cfg)
 	req := &resource.StatusRequest{RequestID: flightRequestID("ns", "release", &f)}
 	done := make(chan error, 1)
 	go func() { _, err := r.Status(context.Background(), req); done <- err }()
@@ -335,7 +335,7 @@ func TestRetentionCleanupWaitsForStatusReader(t *testing.T) {
 	reserveFlight(scope, "ns", "release", f)
 	done := make(chan error, 1)
 	go func() {
-		_, err := (testRelease(t, cfg)).Status(context.Background(), &resource.StatusRequest{RequestID: flightRequestID("ns", "release", &f)})
+		_, err := (testReleaseForConfig(t, cfg)).Status(context.Background(), &resource.StatusRequest{RequestID: flightRequestID("ns", "release", &f)})
 		done <- err
 	}()
 	<-entered
@@ -417,7 +417,7 @@ func TestStatusDeadlineFailureRetainsUnfinishedFlight(t *testing.T) {
 			if _, ok := reserveFlight(scope, "ns", "release", f); !ok {
 				t.Fatal("reserve unfinished worker")
 			}
-			r := testRelease(t, cfg)
+			r := testReleaseForConfig(t, cfg)
 			req := &resource.StatusRequest{RequestID: flightRequestID("ns", "release", &f)}
 			// Cancellation deliberately does not complete the worker. Repeated polls
 			// must give a bounded verdict even when no release record exists yet.

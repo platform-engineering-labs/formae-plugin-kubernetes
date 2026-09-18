@@ -75,7 +75,7 @@ func TestPreRecordStatusAndTerminalOutcome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := testRelease(t, cfg)
+	r := testReleaseForConfig(t, cfg)
 	f := inflight{op: opInstall, revision: 1, generation: "39c24d1d-3815-4817-9242-4032be46601b", deadline: time.Now().Add(time.Minute)}
 	identity, _, err := flightIdentity(context.Background(), cfg)
 	if err != nil {

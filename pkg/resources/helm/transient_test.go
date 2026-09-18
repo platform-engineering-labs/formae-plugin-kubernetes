@@ -23,7 +23,7 @@ func TestTransientUIDStatusDoesNotTouchUnidentifiedFlight(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "unavailable", 500) }))
 	defer server.Close()
 	cfg := fixtureKubeconfig(t, server)
-	r := testRelease(t, cfg)
+	r := testReleaseForConfig(t, cfg)
 	b, _ := testBridge(t)
 	identity, _, _ := flightIdentity(context.Background(), cfg)
 	f := inflight{authFingerprint: identity, op: opInstall, revision: 1, generation: uuid.NewString(), bridge: b, deadline: time.Now().Add(time.Hour)}

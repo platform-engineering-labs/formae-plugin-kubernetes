@@ -17,7 +17,7 @@ func resolveTestFlightScope(ctx context.Context, cfg *config.Config) (string, er
 	return resolveFlightScope(ctx, client)
 }
 
-func testRelease(t *testing.T, cfg *config.Config) *Release {
+func testReleaseForConfig(t *testing.T, cfg *config.Config) *Release {
 	t.Helper()
 	client, err := transport.NewClient(context.Background(), cfg)
 	if err != nil {

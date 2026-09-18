@@ -11,8 +11,9 @@ name: Helm Interop (PR)
 # create, which is the whole adoption story.
 #
 # Self-contained rather than reusing nightly's job: nightly tests against a
-# formae binary built from a chosen branch and shared across matrix jobs, this
-# builds from main the way conformance-version.yml does.
+# formae binary built from a chosen branch and shared across matrix jobs, while
+# this pins the exact compatible core revision. After the core PR lands, bump
+# FORMAE_REF to its main merge SHA alongside the plugin dependency repin.
 #
 # Runs the whole set, split across parallel jobs.
 #
@@ -66,6 +67,12 @@ jobs:
   helm-interop:
     needs: discover-charts
     runs-on: ubuntu-latest
+    env:
+      # The plugin imports the bounded OIDC operation API pinned in go.mod.
+      # Keep the binary and local SDK replacements on the exact compatible
+      # core revision; bump this intentionally when interop needs newer core
+      # behavior. Floating main can predate symbols during stacked PRs.
+      FORMAE_REF: e067184313ff5d38b11e4bd11985733d17d65e5f
     strategy:
       matrix:
         group: ${{ fromJson(needs.discover-charts.outputs.groups) }}
@@ -87,13 +94,19 @@ jobs:
           node_image: "kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
 
       - name: Build formae
-        # From main rather than a release: the suite drives extract, adopt and
-        # discovery, and leans on fixes that land there before they ship. The
+        # From the exact compatible core revision rather than a release: the
+        # suite drives extract, adopt and discovery, and leans on fixes that
+        # land there before they ship. The
         # version stamped in resolves the plugin's PKL formae dep against
         # package://...formae@<X.Y.Z>, so it has to match a published schema —
         # hence the canonical version stripped from the latest tag.
         run: |
-          git clone --branch main --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          set -euo pipefail
+          git init /tmp/formae
+          git -C /tmp/formae remote add origin https://github.com/platform-engineering-labs/formae.git
+          git -C /tmp/formae fetch --depth 1 origin "$FORMAE_REF"
+          git -C /tmp/formae checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/formae rev-parse HEAD)" = "$FORMAE_REF"
           cd /tmp/formae
           git fetch --tags
           LATEST_TAG=$(git tag -l "[0-9]*" --sort=-version:refname | head -1)
