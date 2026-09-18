@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
+	"github.com/platform-engineering-labs/formae/pkg/plugin"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/release"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -164,7 +165,7 @@ func (i *Inventory) Len() int {
 func buildInventory(ctx context.Context, cfg *config.Config) (*Inventory, error) {
 	// Namespace "" plus AllNamespaces: the storage driver needs a namespace to
 	// construct its client, but the list itself spans the cluster.
-	conf, err := newActionConfig(cfg, "")
+	conf, err := newActionConfig(ctx, cfg, "")
 	if err != nil {
 		return nil, err
 	}
@@ -275,13 +276,15 @@ func splitYAMLDocs(manifest string) []string {
 const inventoryTTL = 30 * time.Second
 
 type inventoryEntry struct {
-	inv     *Inventory
-	fetched time.Time
+	clusterKey string
+	inv        *Inventory
+	fetched    time.Time
 }
 
 var (
-	invMu    sync.Mutex
-	invCache = map[string]inventoryEntry{}
+	invMu         sync.Mutex
+	invCache      = map[string]inventoryEntry{}
+	invGeneration uint64
 )
 
 // cachedInventory returns the release inventory for a target, rebuilding it when
@@ -293,13 +296,21 @@ var (
 // hundreds of KB. Uncached this would be two orders of magnitude more work per
 // pass.
 func cachedInventory(ctx context.Context, cfg *config.Config) (*Inventory, error) {
-	key, err := cfg.CacheKey()
+	key, cacheable, err := inventoryCacheKey(ctx, cfg, plugin.OidcOperationMetadata)
 	if err != nil {
 		return nil, err
 	}
 
+	if !cacheable {
+		return buildInventory(ctx, cfg)
+	}
+	clusterKey, err := cfg.ClusterKey()
+	if err != nil {
+		return nil, err
+	}
 	invMu.Lock()
 	entry, ok := invCache[key]
+	generation := invGeneration
 	invMu.Unlock()
 	if ok && time.Since(entry.fetched) < inventoryTTL {
 		return entry.inv, nil
@@ -311,22 +322,43 @@ func cachedInventory(ctx context.Context, cfg *config.Config) (*Inventory, error
 	}
 
 	invMu.Lock()
-	invCache[key] = inventoryEntry{inv: inv, fetched: time.Now()}
+	if generation == invGeneration {
+		invCache[key] = inventoryEntry{inv: inv, fetched: time.Now(), clusterKey: clusterKey}
+	}
 	invMu.Unlock()
 	return inv, nil
 }
 
-// invalidateInventory drops the cached inventory for a target. Called after this
+// invalidateInventory drops all cached inventories. Called after this
 // plugin installs, upgrades or uninstalls a release so the next discovery pass
 // reflects the change without waiting out the TTL.
-func invalidateInventory(cfg *config.Config) {
-	key, err := cfg.CacheKey()
-	if err != nil {
-		return
-	}
+// Inventory reads need no cluster-global UID permission. Since selector aliases
+// may name one cluster, mutation conservatively invalidates all data-only entries.
+func invalidateInventory(_ *config.Config) {
 	invMu.Lock()
-	delete(invCache, key)
+	invGeneration++
+	invCache = make(map[string]inventoryEntry)
 	invMu.Unlock()
+}
+
+// inventoryCacheKey never consults broker identity for legacy auth. Metadata
+// absence disables OIDC reuse because the same target can be re-paired.
+func inventoryCacheKey(ctx context.Context, cfg *config.Config, metadata func(context.Context) (plugin.OidcOperationInfo, bool)) (string, bool, error) {
+	if err := cfg.CheckRuntime(ctx); err != nil {
+		return "", false, err
+	}
+	key, err := cfg.AuthFingerprint()
+	if err != nil {
+		return "", false, err
+	}
+	if cfg.UsesOidc() {
+		info, ok := metadata(ctx)
+		if !ok || info.BindingID == "" {
+			return "", false, nil
+		}
+		key += "|" + info.BindingID
+	}
+	return key, true, nil
 }
 
 // releaseIsPending reports whether a release is mid-operation according to Helm.

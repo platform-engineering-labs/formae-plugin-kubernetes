@@ -23,6 +23,23 @@ type Settings struct {
 	// by a K8S::Helm::Release that installs CRDs. Zero or unset means
 	// DefaultCRDEstablishTimeout.
 	CRDEstablishTimeoutSeconds int `json:"crdEstablishTimeoutSeconds"`
+
+	// AllowedAuthMethods restricts target authentication at the operator
+	// boundary. Empty preserves self-hosted legacy compatibility.
+	AllowedAuthMethods []string `json:"allowedAuthMethods"`
+}
+
+var supportedAuthMethods = map[string]struct{}{
+	"EKS:Oidc":         {},
+	"AKS:Oidc":         {},
+	"GKE:Oidc":         {},
+	"Oidc":             {},
+	"EKS:DefaultChain": {},
+	"AKS:DefaultChain": {},
+	"GKE:ADC":          {},
+	"Kubeconfig":       {},
+	"OVH":              {},
+	"OCI":              {},
 }
 
 // DefaultCRDEstablishTimeout is used when no crdEstablishTimeoutSeconds is set.
@@ -40,15 +57,41 @@ var settings atomic.Pointer[Settings]
 // SetSettings records the plugin-wide settings. Called from Plugin.Configure
 // with the JSON the SDK decodes out of FORMAE_PLUGIN_CONFIG.
 func SetSettings(raw json.RawMessage) error {
+	s, err := ParseSettings(raw)
+	if err != nil {
+		return err
+	}
 	if len(raw) == 0 || string(raw) == "null" {
 		return nil
 	}
-	var s Settings
-	if err := json.Unmarshal(raw, &s); err != nil {
-		return fmt.Errorf("parse k8s plugin config: %w", err)
-	}
-	settings.Store(&s)
+	// Authentication policy belongs to the Plugin instance. Only the legacy
+	// CRD timeout remains in this package-global compatibility path.
+	settings.Store(&Settings{CRDEstablishTimeoutSeconds: s.CRDEstablishTimeoutSeconds})
 	return nil
+}
+
+// ParseSettings validates plugin settings without storing instance-owned auth
+// policy in package-global state.
+func ParseSettings(raw json.RawMessage) (Settings, error) {
+	var s Settings
+	if len(raw) == 0 || string(raw) == "null" {
+		return s, nil
+	}
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return Settings{}, fmt.Errorf("parse k8s plugin config: %w", err)
+	}
+	seen := make(map[string]struct{}, len(s.AllowedAuthMethods))
+	for _, method := range s.AllowedAuthMethods {
+		if _, supported := supportedAuthMethods[method]; !supported {
+			return Settings{}, fmt.Errorf("parse k8s plugin config: allowedAuthMethods contains unsupported value %q", method)
+		}
+		if _, duplicate := seen[method]; duplicate {
+			return Settings{}, fmt.Errorf("parse k8s plugin config: allowedAuthMethods contains duplicate value %q", method)
+		}
+		seen[method] = struct{}{}
+	}
+	s.AllowedAuthMethods = append([]string(nil), s.AllowedAuthMethods...)
+	return s, nil
 }
 
 // CRDEstablishTimeout resolves the custom-resource establish deadline,

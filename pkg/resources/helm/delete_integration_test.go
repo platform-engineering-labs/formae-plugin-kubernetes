@@ -69,7 +69,7 @@ func TestDelete_RegistersItsUninstall(t *testing.T) {
 		t.Fatalf("Delete: %v", err)
 	}
 
-	flight := lookupFlight(cfg, deleteTestNamespace, deleteTestRelease)
+	flight := lookupFlight(integrationFlightScope(t, cfg), deleteTestNamespace, deleteTestRelease)
 	if flight == nil {
 		t.Fatal("Delete registered no in-flight operation: the next Status poll will " +
 			"report this live uninstall as abandoned and re-drive Delete")
@@ -86,7 +86,7 @@ func TestDelete_RegistersItsUninstall(t *testing.T) {
 	}
 	// Completing must clear the registry, or a later abandoned uninstall of the
 	// same release is suppressed forever.
-	if flight := lookupFlight(cfg, deleteTestNamespace, deleteTestRelease); flight != nil {
+	if flight := lookupFlight(integrationFlightScope(t, cfg), deleteTestNamespace, deleteTestRelease); flight != nil {
 		t.Errorf("in-flight entry survived the uninstall: %+v", flight)
 	}
 }

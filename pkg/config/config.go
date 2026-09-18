@@ -5,7 +5,6 @@
 package config
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -43,6 +42,7 @@ type Config struct {
 	// Parsed auth config — populated by FromTargetConfig
 	authType string
 	authRaw  json.RawMessage
+	deps     AuthDependencies
 }
 
 // authHeader is used to extract just the Type discriminator.
@@ -70,8 +70,10 @@ type CloudAuthConfig struct {
 // EKSAuthConfig holds EKS-specific auth fields.
 type EKSAuthConfig struct {
 	CloudAuthConfig
-	ClusterName string `json:"ClusterName"`
-	Region      string `json:"Region,omitempty"`
+	ClusterName string          `json:"ClusterName"`
+	Region      string          `json:"Region,omitempty"`
+	Profile     string          `json:"Profile,omitempty"`
+	Credentials json.RawMessage `json:"Credentials,omitempty"`
 }
 
 // AKSAuthConfig holds AKS-specific auth fields. Scope is optional and
@@ -79,10 +81,11 @@ type EKSAuthConfig struct {
 // custom AAD integration.
 type AKSAuthConfig struct {
 	CloudAuthConfig
-	SubscriptionID string `json:"SubscriptionId,omitempty"`
-	ResourceGroup  string `json:"ResourceGroup,omitempty"`
-	ClusterName    string `json:"ClusterName,omitempty"`
-	Scope          string `json:"Scope,omitempty"`
+	SubscriptionID string          `json:"SubscriptionId,omitempty"`
+	ResourceGroup  string          `json:"ResourceGroup,omitempty"`
+	ClusterName    string          `json:"ClusterName,omitempty"`
+	Scope          string          `json:"Scope,omitempty"`
+	Credentials    json.RawMessage `json:"Credentials,omitempty"`
 }
 
 // GKEAuthConfig holds GKE-specific auth fields. ProjectID, Location, and
@@ -91,9 +94,17 @@ type AKSAuthConfig struct {
 // different projects/clusters would alias on the same cached token.
 type GKEAuthConfig struct {
 	CloudAuthConfig
-	ProjectID   string `json:"ProjectId,omitempty"`
-	Location    string `json:"Location,omitempty"`
-	ClusterName string `json:"ClusterName,omitempty"`
+	ProjectID   string          `json:"ProjectId,omitempty"`
+	Location    string          `json:"Location,omitempty"`
+	ClusterName string          `json:"ClusterName,omitempty"`
+	Credentials json.RawMessage `json:"Credentials,omitempty"`
+}
+
+// OidcAuthConfig holds direct Kubernetes OIDC authentication coordinates.
+type OidcAuthConfig struct {
+	CloudAuthConfig
+	Type     string `json:"Type"`
+	Audience string `json:"Audience"`
 }
 
 // OVHAuthConfig holds OVH-specific auth fields.
@@ -142,6 +153,9 @@ func FromTargetConfig(targetConfig []byte) (*Config, error) {
 
 	cfg.authType = header.Type
 	cfg.authRaw = cfg.Auth
+	if err := cfg.validateAuthConfig(); err != nil {
+		return nil, err
+	}
 
 	return &cfg, nil
 }
@@ -163,28 +177,12 @@ func FromTargetConfig(targetConfig []byte) (*Config, error) {
 // Fail here instead, naming the field and the reference, so the cause is
 // legible at config-parse time.
 func guardNoUnflattenedReferences(auth json.RawMessage) error {
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(auth, &fields); err != nil {
+	var value any
+	if err := json.Unmarshal(auth, &value); err != nil {
 		return nil // shape errors are the caller's to report
 	}
-	names := make([]string, 0, len(fields))
-	for name, raw := range fields {
-		trimmed := bytes.TrimSpace(raw)
-		if len(trimmed) == 0 || trimmed[0] != '{' {
-			continue
-		}
-		var envelope struct {
-			Res *bool   `json:"$res"`
-			Ref *string `json:"$ref"`
-		}
-		if err := json.Unmarshal(trimmed, &envelope); err != nil {
-			continue
-		}
-		if envelope.Res == nil && envelope.Ref == nil {
-			continue
-		}
-		names = append(names, name)
-	}
+	var names []string
+	collectUnflattenedReferences(value, "", &names)
 	if len(names) == 0 {
 		return nil
 	}
@@ -198,95 +196,57 @@ func guardNoUnflattenedReferences(auth json.RawMessage) error {
 	)
 }
 
+func collectUnflattenedReferences(value any, path string, names *[]string) {
+	switch typed := value.(type) {
+	case map[string]any:
+		if _, hasRes := typed["$res"]; hasRes {
+			*names = append(*names, path)
+			return
+		}
+		if _, hasRef := typed["$ref"]; hasRef {
+			*names = append(*names, path)
+			return
+		}
+		for name, child := range typed {
+			childPath := name
+			if path != "" {
+				childPath = path + "." + name
+			}
+			collectUnflattenedReferences(child, childPath, names)
+		}
+	case []any:
+		for i, child := range typed {
+			collectUnflattenedReferences(child, fmt.Sprintf("%s[%d]", path, i), names)
+		}
+	}
+}
+
 // AuthType returns the auth strategy type string.
 func (c *Config) AuthType() string {
 	return c.authType
 }
 
-// CacheKey returns a stable identity string for the cluster this Config
-// targets. The transport-layer cache uses this key to dedupe *transport.Client
-// (and the underlying CachedTokenSource) across CRUD calls — without it,
-// every Create/Read/Update/Delete/Status/List would rebuild the client and
-// re-mint a token.
-//
-// Composition (auth-type-specific):
-//
-//	Kubeconfig: "Kubeconfig|<kubeconfig-path>|<context>"
-//	EKS:        "EKS|<endpoint>|<cluster-name>|<region>"
-//	GKE:        "GKE|<endpoint>|<project>|<location>|<cluster-name>"
-//	AKS:        "AKS|<endpoint>|<resource-group>|<cluster-name>|<scope>"
-//	OVH:        "OVH|<endpoint>|<service-name>|<cluster-id>"
-//	OCI:        "OCI|<endpoint>|<cluster-ocid>|<region>"
-//
-// Endpoint is included as a defense-in-depth tiebreaker in case a user
-// duplicates a logical identifier (e.g. same cluster name across regions
-// they forgot to set). For Kubeconfig auth the path+context are enough.
-//
-// CacheKey returns ("", error) on malformed Auth blocks; the caller should
-// treat that as a hard cache miss and surface the error.
-func (c *Config) CacheKey() (string, error) {
-	switch c.authType {
-	case "Kubeconfig":
-		var kc KubeconfigAuthConfig
-		if err := json.Unmarshal(c.authRaw, &kc); err != nil {
-			return "", fmt.Errorf("CacheKey: parse Kubeconfig auth: %w", err)
-		}
-		// We deliberately do NOT resolve $KUBECONFIG / $HOME here — the same
-		// resolution happens inside buildKubeconfigConfig and is allowed to
-		// vary by process environment. Two targets that both omit
-		// Kubeconfig share a key, which is correct: they resolve to the
-		// same kubeconfig.
-		return fmt.Sprintf("Kubeconfig|%s|%s", kc.Kubeconfig, kc.Context), nil
-	case "EKS":
-		var ac EKSAuthConfig
-		if err := json.Unmarshal(c.authRaw, &ac); err != nil {
-			return "", fmt.Errorf("CacheKey: parse EKS auth: %w", err)
-		}
-		return fmt.Sprintf("EKS|%s|%s|%s", ac.Endpoint, ac.ClusterName, ac.Region), nil
-	case "GKE":
-		var ac GKEAuthConfig
-		if err := json.Unmarshal(c.authRaw, &ac); err != nil {
-			return "", fmt.Errorf("CacheKey: parse GKE auth: %w", err)
-		}
-		return fmt.Sprintf("GKE|%s|%s|%s|%s", ac.Endpoint, ac.ProjectID, ac.Location, ac.ClusterName), nil
-	case "AKS":
-		var ac AKSAuthConfig
-		if err := json.Unmarshal(c.authRaw, &ac); err != nil {
-			return "", fmt.Errorf("CacheKey: parse AKS auth: %w", err)
-		}
-		return fmt.Sprintf("AKS|%s|%s|%s|%s|%s", ac.Endpoint, ac.SubscriptionID, ac.ResourceGroup, ac.ClusterName, ac.Scope), nil
-	case "OVH":
-		var ac OVHAuthConfig
-		if err := json.Unmarshal(c.authRaw, &ac); err != nil {
-			return "", fmt.Errorf("CacheKey: parse OVH auth: %w", err)
-		}
-		return fmt.Sprintf("OVH|%s|%s|%s", ac.Endpoint, ac.ServiceName, ac.ClusterID), nil
-	case "OCI":
-		var ac OCIAuthConfig
-		if err := json.Unmarshal(c.authRaw, &ac); err != nil {
-			return "", fmt.Errorf("CacheKey: parse OCI auth: %w", err)
-		}
-		return fmt.Sprintf("OCI|%s|%s|%s", ac.Endpoint, ac.ClusterOCID, ac.Region), nil
-	default:
-		return "", fmt.Errorf("CacheKey: unsupported auth type: %s", c.authType)
-	}
-}
-
 // ToK8sConfig builds a rest.Config based on the auth strategy.
-func (c *Config) ToK8sConfig() (*rest.Config, error) {
+func (c *Config) ToK8sConfig(ctx context.Context) (*rest.Config, error) {
+	if err := c.ValidateAuthPolicy(c.deps.AllowedAuthMethods); err != nil {
+		return nil, err
+	}
+	if c.UsesOidc() {
+		return c.buildOidcConfig()
+	}
 	switch c.authType {
 	case "Kubeconfig":
 		return c.buildKubeconfigConfig()
 	case "EKS":
-		return c.buildCloudConfig(c.newEKSProvider)
+		return c.buildCloudConfig(ctx, c.newEKSProvider)
 	case "GKE":
-		return c.buildCloudConfig(c.newGKEProvider)
+		return c.buildCloudConfig(ctx, c.newGKEProvider)
 	case "AKS":
-		return c.buildCloudConfig(c.newAKSProvider)
+		return c.buildCloudConfig(ctx, c.newAKSProvider)
 	case "OVH":
-		return c.buildCloudConfig(c.newOVHProvider)
+		return c.buildCloudConfig(ctx, c.newOVHProvider)
 	case "OCI":
-		return c.buildCloudConfig(c.newOCIProvider)
+		return c.buildCloudConfig(ctx, c.newOCIProvider)
 	default:
 		return nil, fmt.Errorf("unsupported auth type: %s", c.authType)
 	}
@@ -340,7 +300,7 @@ func (c *Config) buildKubeconfigConfig() (*rest.Config, error) {
 // custom endpoint, or anything formae does not model relies on. Only when a
 // field is absent does a provider that implements auth.ClusterDescriber get
 // asked to look it up; every other auth type requires both fields as before.
-func (c *Config) connectionDetails(provider auth.AuthProvider, cloud *CloudAuthConfig) (string, []byte, error) {
+func (c *Config) connectionDetails(ctx context.Context, provider auth.AuthProvider, cloud *CloudAuthConfig) (string, []byte, error) {
 	endpoint := cloud.Endpoint
 
 	var caData []byte
@@ -364,7 +324,7 @@ func (c *Config) connectionDetails(provider auth.AuthProvider, cloud *CloudAuthC
 		})
 	}
 
-	derivedEndpoint, derivedCA, err := describer.DescribeCluster(context.Background())
+	derivedEndpoint, derivedCA, err := describer.DescribeCluster(ctx)
 	if err != nil {
 		return "", nil, err
 	}
@@ -382,13 +342,13 @@ func (c *Config) connectionDetails(provider auth.AuthProvider, cloud *CloudAuthC
 	return endpoint, caData, nil
 }
 
-func (c *Config) buildCloudConfig(providerFn func() (auth.AuthProvider, *CloudAuthConfig, error)) (*rest.Config, error) {
+func (c *Config) buildCloudConfig(ctx context.Context, providerFn func() (auth.AuthProvider, *CloudAuthConfig, error)) (*rest.Config, error) {
 	provider, cloud, err := providerFn()
 	if err != nil {
 		return nil, err
 	}
 
-	endpoint, caData, err := c.connectionDetails(provider, cloud)
+	endpoint, caData, err := c.connectionDetails(ctx, provider, cloud)
 	if err != nil {
 		return nil, err
 	}

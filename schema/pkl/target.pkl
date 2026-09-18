@@ -71,6 +71,49 @@ abstract class Auth {
   fixed Type: String = type
 }
 
+/// AWS credentials accepted by EKS auth.
+abstract class AwsCredentials {
+  hidden fixed type: String
+  fixed Type: String = type
+}
+
+/// Broker-backed AWS role federation credentials.
+class AwsOidcCredentials extends AwsCredentials {
+  fixed type = "Oidc"
+  hidden roleArn: (String|formae.Resolvable)
+  fixed RoleArn: (String|formae.Resolvable) = roleArn
+}
+
+/// Azure credentials accepted by AKS auth.
+abstract class AzureCredentials {
+  hidden fixed type: String
+  fixed Type: String = type
+}
+
+/// Broker-backed Entra workload federation credentials.
+class AzureOidcCredentials extends AzureCredentials {
+  fixed type = "Oidc"
+  hidden tenantId: (String|formae.Resolvable)
+  hidden clientId: (String|formae.Resolvable)
+  fixed TenantId: (String|formae.Resolvable) = tenantId
+  fixed ClientId: (String|formae.Resolvable) = clientId
+}
+
+/// Google credentials accepted by GKE auth.
+abstract class GcpCredentials {
+  hidden fixed type: String
+  fixed Type: String = type
+}
+
+/// Broker-backed Google workload federation credentials.
+class GcpOidcCredentials extends GcpCredentials {
+  fixed type = "Oidc"
+  hidden workloadIdentityProvider: (String|formae.Resolvable)
+  hidden serviceAccountEmail: (String|formae.Resolvable)?
+  fixed WorkloadIdentityProvider: (String|formae.Resolvable) = workloadIdentityProvider
+  fixed ServiceAccountEmail: (String|formae.Resolvable)? = serviceAccountEmail
+}
+
 /// Kubeconfig-based auth. Covers vanilla K8S, dev clusters, and any
 /// pre-configured cluster.
 class KubeconfigAuth extends Auth {
@@ -88,10 +131,12 @@ class EKSAuth extends Auth {
   hidden certificateAuthority: (String|formae.Resolvable)
   hidden clusterName: (String|formae.Resolvable)
   hidden region: (String|formae.Resolvable)?
+  hidden credentials: AwsCredentials?
   fixed Endpoint: (String|formae.Resolvable) = endpoint
   fixed CertificateAuthority: (String|formae.Resolvable) = certificateAuthority
   fixed ClusterName: (String|formae.Resolvable) = clusterName
   fixed Region: (String|formae.Resolvable)? = region
+  fixed Credentials: AwsCredentials? = credentials
 }
 
 /// Google GKE auth via OAuth2 access token.
@@ -106,11 +151,13 @@ class GKEAuth extends Auth {
   hidden projectId: (String|formae.Resolvable)?
   hidden location: (String|formae.Resolvable)?
   hidden clusterName: (String|formae.Resolvable)?
+  hidden credentials: GcpCredentials?
   fixed Endpoint: (String|formae.Resolvable) = endpoint
   fixed CertificateAuthority: (String|formae.Resolvable) = certificateAuthority
   fixed ProjectId: (String|formae.Resolvable)? = projectId
   fixed Location: (String|formae.Resolvable)? = location
   fixed ClusterName: (String|formae.Resolvable)? = clusterName
+  fixed Credentials: GcpCredentials? = credentials
 }
 
 /// Azure AKS auth via Azure AD token.
@@ -142,11 +189,30 @@ class AKSAuth extends Auth {
   hidden clusterName: (String|formae.Resolvable)?
   hidden endpoint: (String|formae.Resolvable)?
   hidden certificateAuthority: (String|formae.Resolvable)?
+  hidden credentials: AzureCredentials?
   fixed SubscriptionId: (String|formae.Resolvable)? = subscriptionId
   fixed ResourceGroup: (String|formae.Resolvable)? = resourceGroup
   fixed ClusterName: (String|formae.Resolvable)? = clusterName
-  fixed Endpoint: (String|formae.Resolvable)? = endpoint
-  fixed CertificateAuthority: (String|formae.Resolvable)? = certificateAuthority
+  fixed Endpoint: (String|formae.Resolvable)? =
+    if (credentials != null && endpoint == null)
+      throw("AKS endpoint is required when credentials are present")
+    else endpoint
+  fixed CertificateAuthority: (String|formae.Resolvable)? =
+    if (credentials != null && certificateAuthority == null)
+      throw("AKS certificateAuthority is required when credentials are present")
+    else certificateAuthority
+  fixed Credentials: AzureCredentials? = credentials
+}
+
+/// Direct broker-issued Kubernetes OIDC authentication.
+class OidcAuth extends Auth {
+  fixed type = "Oidc"
+  hidden endpoint: (String|formae.Resolvable)
+  hidden certificateAuthority: (String|formae.Resolvable)
+  hidden audience: (String|formae.Resolvable)
+  fixed Endpoint: (String|formae.Resolvable) = endpoint
+  fixed CertificateAuthority: (String|formae.Resolvable) = certificateAuthority
+  fixed Audience: (String|formae.Resolvable) = audience
 }
 
 /// OVH Managed K8S auth.

@@ -6,7 +6,7 @@
 # them evaluable. They are never used to reach a provider.
 set -uo pipefail
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 export AZURE_PRINCIPAL_ID="${AZURE_PRINCIPAL_ID:-00000000-0000-0000-0000-000000000000}"
 export AZURE_SUBSCRIPTION_ID="${AZURE_SUBSCRIPTION_ID:-00000000-0000-0000-0000-000000000001}"
@@ -14,10 +14,22 @@ export GCP_PROJECT="${GCP_PROJECT:-example-project}"
 export GCP_APPLY_AS="${GCP_APPLY_AS:-user:dev@example.com}"
 export OCI_COMPARTMENT_ID="${OCI_COMPARTMENT_ID:-ocid1.compartment.oc1..example}"
 
+# Capture enumeration status outside process substitution: otherwise a failed
+# search looks like an empty successful loop. grep is available on CI runners;
+# do not require an uninstalled ripgrep just to enumerate the example files.
+if ! projects=$(find examples -name PklProject | sort) || [ -z "$projects" ]; then
+  printf 'Could not enumerate example projects.\n' >&2
+  exit 1
+fi
+if ! entries=$(grep -rl --include='*.pkl' -E '^forma\b|^forma \{|^amends "main.pkl"' examples | sort) || [ -z "$entries" ]; then
+  printf 'Could not enumerate example entry files (or none were found).\n' >&2
+  exit 1
+fi
+
 # Resolve every PklProject under examples/ (nested projects included).
 while IFS= read -r proj; do
   pkl project resolve "$(dirname "$proj")" >/dev/null || exit 1
-done < <(find examples -name PklProject | sort)
+done <<< "$projects"
 
 # Nearest enclosing PklProject for a forma, so imports resolve as at apply time.
 project_dir() {
@@ -39,7 +51,7 @@ while IFS= read -r f; do
     printf 'FAIL %s\n%s\n' "$f" "$err"
     failed=$((failed + 1))
   fi
-done < <(grep -rl --include='*.pkl' -E '^forma\b|^forma \{' examples | sort)
+done <<< "$entries"
 
 printf '\n%d forma checked, %d failed\n' "$checked" "$failed"
 [ "$failed" -eq 0 ]

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/k8sversion"
@@ -43,10 +44,21 @@ import (
 // Plugin implements the Formae ResourcePlugin interface for Kubernetes.
 // The SDK automatically provides identity methods (Name, Version, Namespace)
 // by reading formae-plugin.pkl at startup.
-type Plugin struct{}
+type Plugin struct {
+	authDependencies config.AuthDependencies
+	cacheOnce        sync.Once
+	clients          *transport.ClientCache
+}
 
 // Compile-time check: Plugin must satisfy ResourcePlugin interface.
 var _ plugin.ResourcePlugin = &Plugin{}
+var _ plugin.OidcAware = &Plugin{}
+
+func (p *Plugin) SetOidcTokenSource(src plugin.OidcTokenSource) { p.authDependencies.OidcSource = src }
+func (p *Plugin) clientCache() *transport.ClientCache {
+	p.cacheOnce.Do(func() { p.clients = transport.NewClientCache() })
+	return p.clients
+}
 
 // Compile-time check: the plugin takes settings from formae.conf.pkl.
 var _ plugin.Configurable = &Plugin{}
@@ -55,7 +67,16 @@ var _ plugin.Configurable = &Plugin{}
 // agent's formae.conf.pkl beyond BaseResourcePluginConfig — schema/Config.pkl's
 // PluginConfig. The SDK calls it once, before the plugin serves anything.
 func (p *Plugin) Configure(cfg json.RawMessage) error {
-	return config.SetSettings(cfg)
+	settings, err := config.ParseSettings(cfg)
+	if err != nil {
+		return err
+	}
+	if err := config.SetSettings(cfg); err != nil {
+		return err
+	}
+	p.authDependencies.AllowedAuthMethods = append(
+		[]string(nil), settings.AllowedAuthMethods...)
+	return nil
 }
 
 // =============================================================================
@@ -620,32 +641,37 @@ func (p *Plugin) LabelConfig() model.LabelConfig {
 // CRUD Operations
 // =============================================================================
 
-// getProvisioner returns a provisioner for the given resource type backed
-// by a process-wide-cached *transport.Client.
-//
-// Without caching, every CRUD call rebuilds the client and re-mints an auth
-// token — fine for in-cluster kubeconfig auth, expensive (and in OVH's case,
-// quota-eating) for cloud auth providers. transport.CachedNewClient keys on
-// config.CacheKey(), which composes auth type, endpoint, and cluster
-// identity into a stable string, so two targets pointing at different
-// clusters never alias on the same client.
+// getProvisioner enforces the instance policy before client creation or live
+// discovery, then uses this plugin's identity-isolated client cache.
 func (p *Plugin) getProvisioner(ctx context.Context, resourceType string, targetConfig []byte) (prov.Provisioner, *transport.Client, error) {
 	if !registry.HasProvisioner(resourceType) {
 		return nil, nil, fmt.Errorf("unsupported resource type: %s", resourceType)
 	}
 
-	cfg, err := config.FromTargetConfig(targetConfig)
+	cfg, err := p.parseTargetConfig(targetConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to extract config: %w", err)
 	}
 
-	client, err := transport.CachedNewClient(cfg)
+	client, err := p.clientCache().Get(ctx, cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create K8S client: %w", err)
 	}
 
 	factory, _ := registry.GetFactory(resourceType)
 	return factory(client, cfg), client, nil
+}
+
+func (p *Plugin) parseTargetConfig(targetConfig []byte) (*config.Config, error) {
+	cfg, err := config.FromTargetConfig(targetConfig)
+	if err != nil {
+		return nil, err
+	}
+	cfg.SetAuthDependencies(p.authDependencies)
+	if err := cfg.ValidateAuthPolicy(p.authDependencies.AllowedAuthMethods); err != nil {
+		return nil, err
+	}
+	return cfg, nil
 }
 
 // typeUnsupported reports whether resourceType is unavailable on the target
@@ -662,8 +688,32 @@ func typeUnsupported(ctx context.Context, resourceType string, client *transport
 	return !ok, reason
 }
 
+// operationContext owns one callback, including broker Helm preflight.
+func (p *Plugin) operationContext(ctx context.Context, resourceType string, targetConfig, properties []byte) (context.Context, context.CancelFunc, error) {
+	ctx, cancel := config.NewOperationContext(ctx)
+	if resourceType != helm.ResourceTypeRelease {
+		return ctx, cancel, nil
+	}
+	cfg, err := p.parseTargetConfig(targetConfig)
+	if err != nil {
+		cancel()
+		return nil, nil, err
+	}
+	bounded, budgetCancel, err := helm.NewCallbackContext(ctx, cfg, properties)
+	if err != nil {
+		cancel()
+		return nil, nil, err
+	}
+	return bounded, func() { budgetCancel(); cancel() }, nil
+}
+
 // Create provisions a new K8S resource.
 func (p *Plugin) Create(ctx context.Context, req *resource.CreateRequest) (*resource.CreateResult, error) {
+	ctx, cancel, err := p.operationContext(ctx, req.ResourceType, req.TargetConfig, req.Properties)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
 	provisioner, client, err := p.getProvisioner(ctx, req.ResourceType, req.TargetConfig)
 	if err != nil {
 		return nil, err
@@ -682,6 +732,11 @@ func (p *Plugin) Create(ctx context.Context, req *resource.CreateRequest) (*reso
 // namespace, label vs nativeID) and floods the output. Leave logging to
 // the supervisor.
 func (p *Plugin) Read(ctx context.Context, req *resource.ReadRequest) (*resource.ReadResult, error) {
+	ctx, cancel, err := p.operationContext(ctx, req.ResourceType, req.TargetConfig, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
 	provisioner, client, err := p.getProvisioner(ctx, req.ResourceType, req.TargetConfig)
 	if err != nil {
 		return nil, err
@@ -696,6 +751,11 @@ func (p *Plugin) Read(ctx context.Context, req *resource.ReadRequest) (*resource
 
 // Update modifies an existing K8S resource using server-side apply.
 func (p *Plugin) Update(ctx context.Context, req *resource.UpdateRequest) (*resource.UpdateResult, error) {
+	ctx, cancel, err := p.operationContext(ctx, req.ResourceType, req.TargetConfig, req.DesiredProperties)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
 	provisioner, client, err := p.getProvisioner(ctx, req.ResourceType, req.TargetConfig)
 	if err != nil {
 		return nil, err
@@ -708,6 +768,11 @@ func (p *Plugin) Update(ctx context.Context, req *resource.UpdateRequest) (*reso
 
 // Delete removes a K8S resource.
 func (p *Plugin) Delete(ctx context.Context, req *resource.DeleteRequest) (*resource.DeleteResult, error) {
+	ctx, cancel, err := p.operationContext(ctx, req.ResourceType, req.TargetConfig, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
 	provisioner, client, err := p.getProvisioner(ctx, req.ResourceType, req.TargetConfig)
 	if err != nil {
 		return nil, err
@@ -724,6 +789,11 @@ func (p *Plugin) Delete(ctx context.Context, req *resource.DeleteRequest) (*reso
 
 // Status checks the progress of an async operation.
 func (p *Plugin) Status(ctx context.Context, req *resource.StatusRequest) (*resource.StatusResult, error) {
+	ctx, cancel, err := p.operationContext(ctx, req.ResourceType, req.TargetConfig, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
 	provisioner, client, err := p.getProvisioner(ctx, req.ResourceType, req.TargetConfig)
 	if err != nil {
 		return nil, err
@@ -738,6 +808,11 @@ func (p *Plugin) Status(ctx context.Context, req *resource.StatusRequest) (*reso
 
 // List returns all resource identifiers of a given type for discovery.
 func (p *Plugin) List(ctx context.Context, req *resource.ListRequest) (*resource.ListResult, error) {
+	ctx, cancel, err := p.operationContext(ctx, req.ResourceType, req.TargetConfig, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
 	provisioner, client, err := p.getProvisioner(ctx, req.ResourceType, req.TargetConfig)
 	if err != nil {
 		return nil, err
@@ -766,7 +841,7 @@ func (p *Plugin) List(ctx context.Context, req *resource.ListRequest) (*resource
 // caller keeps the object either way.
 func ownerLookup(client *transport.Client) helm.OwnerLookup {
 	return func(ctx context.Context, kind, namespace, name string) ([]helm.OwnerRef, error) {
-		gvr, namespaced, ok := client.ResolveKind(kind)
+		gvr, namespaced, ok := client.ResolveKind(ctx, kind)
 		if !ok {
 			return nil, nil
 		}

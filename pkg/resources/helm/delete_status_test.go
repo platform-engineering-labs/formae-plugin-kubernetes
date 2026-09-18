@@ -92,3 +92,23 @@ func TestDeleteFlight_FallsBackToDefaultTimeout(t *testing.T) {
 		t.Errorf("deadline = %s, want ~%s (the package default)", f.deadline, want)
 	}
 }
+
+// deleteFlight describes the uninstall Delete is about to start.
+//
+// Registering it is not bookkeeping, it is what keeps a live uninstall from being
+// called abandoned. `abandoned` is "a record this plugin owns, with no operation
+// behind it", so with nothing registered the first Status poll — 20s after Delete
+// under the default StatusCheckInterval — reports every uninstall slower than
+// that as abandoned and asks the agent to re-drive Delete, starting a second
+// uninstall of the same release. Slower than that is ordinary: a pre-delete hook,
+// or Wait=true sitting through a Pod's terminationGracePeriodSeconds.
+//
+// Bounded by the timeout recorded on the release so that the uninstall and the
+// stalled() verdict that judges it agree on how long it is allowed to take.
+func deleteFlight(rel *release.Release) inflight {
+	return inflight{
+		op:       opDelete,
+		revision: rel.Version,
+		deadline: time.Now().Add(releaseTimeout(rel)),
+	}
+}

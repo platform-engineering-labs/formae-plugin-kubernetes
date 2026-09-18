@@ -7,6 +7,7 @@
 package config_test
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -103,7 +104,7 @@ func TestToK8sConfig_KubeconfigEmptyHomeAndEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = cfg.ToK8sConfig()
+	_, err = cfg.ToK8sConfig(context.Background())
 	if err == nil {
 		t.Skip("test environment exposes a fallback HOME we can't clear; skipping")
 	}
@@ -112,10 +113,10 @@ func TestToK8sConfig_KubeconfigEmptyHomeAndEnv(t *testing.T) {
 	}
 }
 
-// TestCacheKey_DistinguishesClusters ensures CacheKey composition includes
+// TestAuthFingerprint_DistinguishesClusters ensures AuthFingerprint composition includes
 // every field that uniquely identifies a cluster — otherwise the transport
 // cache aliases distinct targets.
-func TestCacheKey_DistinguishesClusters(t *testing.T) {
+func TestAuthFingerprint_DistinguishesClusters(t *testing.T) {
 	cases := []struct {
 		name string
 		a, b string
@@ -166,38 +167,38 @@ func TestCacheKey_DistinguishesClusters(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parse b: %v", err)
 			}
-			kA, err := cfgA.CacheKey()
+			kA, err := cfgA.AuthFingerprint()
 			if err != nil {
-				t.Fatalf("CacheKey a: %v", err)
+				t.Fatalf("AuthFingerprint a: %v", err)
 			}
-			kB, err := cfgB.CacheKey()
+			kB, err := cfgB.AuthFingerprint()
 			if err != nil {
-				t.Fatalf("CacheKey b: %v", err)
+				t.Fatalf("AuthFingerprint b: %v", err)
 			}
 			if kA == kB {
-				t.Errorf("CacheKey collision on differing identity: %q == %q", kA, kB)
+				t.Errorf("AuthFingerprint collision on differing identity: %q == %q", kA, kB)
 			}
 		})
 	}
 }
 
-func TestCacheKey_StableForEqualConfigs(t *testing.T) {
+func TestAuthFingerprint_StableForEqualConfigs(t *testing.T) {
 	raw := []byte(`{"Auth":{"Type":"EKS","Endpoint":"https://e","CertificateAuthority":"Y2E=","ClusterName":"c","Region":"r"}}`)
 	cfgA, _ := config.FromTargetConfig(raw)
 	cfgB, _ := config.FromTargetConfig(raw)
-	kA, _ := cfgA.CacheKey()
-	kB, _ := cfgB.CacheKey()
+	kA, _ := cfgA.AuthFingerprint()
+	kB, _ := cfgB.AuthFingerprint()
 	if kA != kB {
 		t.Errorf("equal configs produced different keys: %q vs %q", kA, kB)
 	}
 }
 
-func TestCacheKey_UnsupportedAuth(t *testing.T) {
+func TestAuthFingerprint_UnsupportedAuth(t *testing.T) {
 	cfg, err := config.FromTargetConfig([]byte(`{"Auth":{"Type":"NOPE"}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := cfg.CacheKey(); err == nil {
+	if _, err := cfg.AuthFingerprint(); err == nil {
 		t.Error("expected error for unsupported auth type")
 	}
 }
@@ -301,7 +302,7 @@ func TestFromTargetConfig_AllowsPlainScalars(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolved config must parse: %v", err)
 	}
-	restCfg, err := cfg.ToK8sConfig()
+	restCfg, err := cfg.ToK8sConfig(context.Background())
 	if err != nil {
 		t.Fatalf("ToK8sConfig: %v", err)
 	}
@@ -331,7 +332,7 @@ func TestEKSTokenFromTargetConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FromTargetConfig: %v", err)
 	}
-	restCfg, err := cfg.ToK8sConfig()
+	restCfg, err := cfg.ToK8sConfig(context.Background())
 	if err != nil {
 		t.Fatalf("ToK8sConfig: %v", err)
 	}
@@ -385,7 +386,7 @@ func TestAKSBareFqdnResolvesToHTTPS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FromTargetConfig: %v", err)
 	}
-	restCfg, err := cfg.ToK8sConfig()
+	restCfg, err := cfg.ToK8sConfig(context.Background())
 	if err != nil {
 		t.Fatalf("ToK8sConfig: %v", err)
 	}
@@ -439,7 +440,7 @@ func TestMissingRequiredAuthFields(t *testing.T) {
 			if err != nil {
 				t.Fatalf("FromTargetConfig: %v", err)
 			}
-			_, err = cfg.ToK8sConfig()
+			_, err = cfg.ToK8sConfig(context.Background())
 			if err == nil {
 				t.Fatal("expected an error for the missing field, got none")
 			}
@@ -464,7 +465,7 @@ func TestAKSDerivesConnectionDetails(t *testing.T) {
 		if err != nil {
 			t.Fatalf("FromTargetConfig: %v", err)
 		}
-		_, err = cfg.ToK8sConfig()
+		_, err = cfg.ToK8sConfig(context.Background())
 		if err == nil {
 			t.Fatal("expected an error: there is nothing to look the cluster up with")
 		}
@@ -485,7 +486,7 @@ func TestAKSDerivesConnectionDetails(t *testing.T) {
 		if err != nil {
 			t.Fatalf("FromTargetConfig: %v", err)
 		}
-		restCfg, err := cfg.ToK8sConfig()
+		restCfg, err := cfg.ToK8sConfig(context.Background())
 		if err != nil {
 			t.Fatalf("reached for the cloud instead of using the stated values: %v", err)
 		}
@@ -511,7 +512,7 @@ func TestNonAKSCloudAuthStillRequiresEndpointAndCA(t *testing.T) {
 			if err != nil {
 				t.Fatalf("FromTargetConfig: %v", err)
 			}
-			_, err = cfg.ToK8sConfig()
+			_, err = cfg.ToK8sConfig(context.Background())
 			if err == nil {
 				t.Fatal("expected an error for the missing endpoint and CA")
 			}

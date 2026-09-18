@@ -1,5 +1,7 @@
 # Connect matrix
 
+Installation OIDC uses the separate [EKS](https://github.com/platform-engineering-labs/formae-plugin-kubernetes/tree/main/examples/oidc-eks), [AKS](https://github.com/platform-engineering-labs/formae-plugin-kubernetes/tree/main/examples/oidc-aks), [GKE](https://github.com/platform-engineering-labs/formae-plugin-kubernetes/tree/main/examples/oidc-gke) and [direct Kubernetes](https://github.com/platform-engineering-labs/formae-plugin-kubernetes/tree/main/examples/oidc-direct) recipes. The ambient managed-cloud recipes here require self-hosting and operator policy permission. Cloud targets and endpoint resolvables do not establish separate Kubernetes grants. Onboard a new K8S target after grants propagate; auth is createOnly, and changing a populated target can recreate resources across stacks. The OIDC recipes describe the compatible, unreleased core/broker/plugin prerequisites and live cloud release gates.
+
 Test scaffolding for one question: **can formae connect to a Kubernetes
 cluster it did not create in the same forma?**
 

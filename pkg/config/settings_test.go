@@ -7,6 +7,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -38,6 +39,32 @@ func TestCRDEstablishTimeout(t *testing.T) {
 				t.Errorf("CRDEstablishTimeout() = %s, want %s", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestParseSettingsValidatesAllowedAuthMethods(t *testing.T) {
+	settings, err := ParseSettings([]byte(`{
+		"allowedAuthMethods":["EKS:Oidc","AKS:Oidc","GKE:Oidc","Oidc","EKS:DefaultChain","AKS:DefaultChain","GKE:ADC","Kubeconfig","OVH","OCI"]
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(settings.AllowedAuthMethods) != 10 {
+		t.Fatalf("parsed %d methods, want 10", len(settings.AllowedAuthMethods))
+	}
+
+	for _, raw := range []string{
+		`{"allowedAuthMethods":["Unknown"]}`,
+		`{"allowedAuthMethods":[""]}`,
+		`{"allowedAuthMethods":["Oidc","Oidc"]}`,
+	} {
+		_, err := ParseSettings([]byte(raw))
+		if err == nil {
+			t.Fatalf("ParseSettings(%s) accepted invalid policy", raw)
+		}
+		if !strings.Contains(err.Error(), "allowedAuthMethods") {
+			t.Fatalf("error should name allowedAuthMethods, got %v", err)
+		}
 	}
 }
 

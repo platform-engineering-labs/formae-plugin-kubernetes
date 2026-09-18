@@ -1,3 +1,6 @@
+// AMBIENT AUTH: self-hosted / operator-policy-permitted only. Hosted installation
+// OIDC recipe: https://github.com/platform-engineering-labs/formae-plugin-kubernetes/tree/main/examples/oidc-eks
+// Cluster metadata references do not establish separate access grants.
 amends "@formae/forma.pkl"
 
 import "@formae/formae.pkl"
