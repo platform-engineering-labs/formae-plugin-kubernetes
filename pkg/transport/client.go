@@ -7,13 +7,15 @@ package transport
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sync"
 
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/auth"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
-	memory "k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
@@ -25,8 +27,10 @@ type Client struct {
 	Dynamic dynamic.Interface
 	Config  *config.Config
 
-	mapperMu sync.Mutex
-	mapper   meta.RESTMapper
+	mapperMu   sync.Mutex
+	groups     []*restmapper.APIGroupResources
+	restConfig *rest.Config
+	oidcTokens auth.TokenSource
 
 	versionMu  sync.Mutex
 	version    string
@@ -54,12 +58,19 @@ type kindMapping struct {
 // already caches, and held for the life of the Client. First match wins: a kind
 // name served by two groups is ambiguous and picking the preferred version is the
 // same choice kubectl makes.
-func (c *Client) ResolveKind(kind string) (schema.GroupVersionResource, bool, bool) {
+func (c *Client) ResolveKind(ctx context.Context, kind string) (schema.GroupVersionResource, bool, bool) {
+	if err := c.checkOperation(ctx); err != nil {
+		return schema.GroupVersionResource{}, false, false
+	}
 	c.kindMu.Lock()
 	defer c.kindMu.Unlock()
 
 	if c.kindIndex == nil {
-		lists, err := c.Discovery().ServerPreferredResources()
+		disc, err := c.operationDiscovery(ctx)
+		if err != nil {
+			return schema.GroupVersionResource{}, false, false
+		}
+		lists, err := disc.ServerPreferredResources()
 		// A partial result is normal and usable: an unavailable aggregated API
 		// server makes this return both an error and the groups that did answer.
 		if lists == nil && err != nil {
@@ -98,12 +109,19 @@ func (c *Client) ResolveKind(kind string) (schema.GroupVersionResource, bool, bo
 // process-cached Client and would silently disable version gating until the
 // agent restarts.
 func (c *Client) ResolveVersion(ctx context.Context) (string, error) {
+	if err := c.checkOperation(ctx); err != nil {
+		return "", err
+	}
 	c.versionMu.Lock()
 	defer c.versionMu.Unlock()
 	if c.versionSet {
 		return c.version, nil
 	}
-	v, err := config.ResolveK8sVersion(ctx, c.Config, c.Discovery())
+	disc, err := c.operationDiscovery(ctx)
+	if err != nil {
+		return "", err
+	}
+	v, err := config.ResolveK8sVersion(ctx, c.Config, disc)
 	if err != nil {
 		return "", err
 	}
@@ -113,45 +131,64 @@ func (c *Client) ResolveVersion(ctx context.Context) (string, error) {
 }
 
 // ResolveMapping maps an apiVersion+kind to its GVR and namespaced scope using
-// a discovery-backed RESTMapper. The mapper is built lazily and cached. If the
+// a discovery-backed RESTMapper. Only discovered API data is cached. If the
 // kind is not found (e.g. a CRD installed after the mapper was first built),
 // the mapper is reset once and the lookup retried, so an operator can install
 // a CRD and apply an instance of it in the same plugin process.
-func (c *Client) ResolveMapping(apiVersion, kind string) (schema.GroupVersionResource, bool, error) {
+func (c *Client) ResolveMapping(ctx context.Context, apiVersion, kind string) (schema.GroupVersionResource, bool, error) {
+	if err := c.checkOperation(ctx); err != nil {
+		return schema.GroupVersionResource{}, false, err
+	}
 	c.mapperMu.Lock()
-	if c.mapper == nil {
-		c.mapper = restmapper.NewDeferredDiscoveryRESTMapper(
-			memory.NewMemCacheClient(c.Discovery()),
-		)
+	defer c.mapperMu.Unlock()
+	for attempt := 0; attempt < 2; attempt++ {
+		if c.groups == nil {
+			disc, err := c.operationDiscovery(ctx)
+			if err != nil {
+				return schema.GroupVersionResource{}, false, err
+			}
+			groups, err := restmapper.GetAPIGroupResources(disc)
+			if err != nil {
+				return schema.GroupVersionResource{}, false, err
+			}
+			c.groups = groups
+		}
+		// Only API data persists. The mapper and any discovery adapter belong to
+		// this call; a CRD miss invalidates data and rediscovers once.
+		gvr, namespaced, err := resolveMappingWith(restmapper.NewDiscoveryRESTMapper(c.groups), apiVersion, kind)
+		if err == nil {
+			return gvr, namespaced, nil
+		}
+		c.groups = nil
+		if attempt == 1 {
+			return schema.GroupVersionResource{}, false, err
+		}
 	}
-	mapper := c.mapper
-	c.mapperMu.Unlock()
-
-	gvr, namespaced, err := resolveMappingWith(mapper, apiVersion, kind)
-	if err == nil {
-		return gvr, namespaced, nil
-	}
-
-	// Reset-on-miss: the CRD may have been installed mid-session.
-	if r, ok := mapper.(meta.ResettableRESTMapper); ok {
-		r.Reset()
-		return resolveMappingWith(mapper, apiVersion, kind)
-	}
-	return schema.GroupVersionResource{}, false, err
+	panic("unreachable")
 }
 
-// ResetMapper discards the cached discovery/RESTMapper so the next
-// ResolveMapping re-fetches from the apiserver. Use after an apply fails because
-// a kind is not (yet) served — e.g. its CRD was just created or recreated — so a
-// stale "kind exists" cache entry doesn't keep resolving to a dead endpoint.
+// ResetMapper discards discovery data after a resource or CRD changes.
 func (c *Client) ResetMapper() {
 	c.mapperMu.Lock()
-	if r, ok := c.mapper.(meta.ResettableRESTMapper); ok {
-		r.Reset()
-	} else {
-		c.mapper = nil
-	}
+	c.groups = nil
 	c.mapperMu.Unlock()
+	c.kindMu.Lock()
+	c.kindIndex = nil
+	c.kindMu.Unlock()
+}
+
+// operationDiscovery installs the callback adapter outside the reusable bearer
+// transport. Never assign this client or its rest.Config back to Client.
+func (c *Client) operationDiscovery(ctx context.Context) (discovery.DiscoveryInterface, error) {
+	if c.restConfig == nil {
+		if c.Clientset == nil {
+			return nil, nil
+		}
+		return c.Discovery(), nil
+	}
+	cfg := rest.CopyConfig(c.restConfig)
+	cfg.Wrap(func(base http.RoundTripper) http.RoundTripper { return auth.WithOperationContext(base, ctx) })
+	return discovery.NewDiscoveryClientForConfig(cfg)
 }
 
 // resolveMappingWith performs a single GVK->GVR lookup against the given mapper.
@@ -169,8 +206,15 @@ func resolveMappingWith(mapper meta.RESTMapper, apiVersion, kind string) (schema
 }
 
 // NewClient creates a new Kubernetes client from the provided config.
-func NewClient(cfg *config.Config) (*Client, error) {
-	restConfig, err := cfg.ToK8sConfig()
+func NewClient(ctx context.Context, cfg *config.Config) (*Client, error) {
+	var restConfig *rest.Config
+	var tokens auth.TokenSource
+	var err error
+	if cfg.UsesOidc() {
+		restConfig, tokens, err = cfg.OidcClientConfig()
+	} else {
+		restConfig, err = cfg.ToK8sConfig(ctx)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -199,8 +243,39 @@ func NewClient(cfg *config.Config) (*Client, error) {
 	}
 
 	return &Client{
-		Clientset: clientset,
-		Dynamic:   dynamicClient,
-		Config:    cfg,
+		Clientset:  clientset,
+		Dynamic:    dynamicClient,
+		Config:     cfg,
+		restConfig: restConfig,
+		oidcTokens: tokens,
 	}, nil
+}
+
+func (c *Client) checkOperation(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if c.Config != nil && c.Config.UsesOidc() {
+		return c.Config.CheckRuntime(ctx)
+	}
+	return nil
+}
+
+// CallbackRESTConfig returns a copy for a handler-owned Helm adapter. The
+// underlying auth cache is shared, but the adapter/context must never be stored.
+func (c *Client) CallbackRESTConfig(ctx context.Context) (*rest.Config, error) {
+	if err := c.checkOperation(ctx); err != nil {
+		return nil, err
+	}
+	return rest.CopyConfig(c.restConfig), nil
+}
+
+// OidcWorkerConfig returns a queue-only worker config and the separately held
+// callback source. Only the former may be handed to a detached worker.
+func (c *Client) OidcWorkerConfig(ctx context.Context, worker auth.TokenSource) (*rest.Config, auth.TokenSource, error) {
+	rc, _, err := c.Config.OidcWorkerConfig(ctx, worker)
+	if err != nil {
+		return nil, nil, err
+	}
+	return rc, c.oidcTokens, nil
 }

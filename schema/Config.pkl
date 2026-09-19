@@ -9,6 +9,19 @@ open module k8s.Config
 
 extends "formae:/Config.pkl"
 
+/// Authentication methods an operator may permit on Kubernetes targets.
+typealias AuthMethod =
+  "EKS:Oidc"
+  | "AKS:Oidc"
+  | "GKE:Oidc"
+  | "Oidc"
+  | "EKS:DefaultChain"
+  | "AKS:DefaultChain"
+  | "GKE:ADC"
+  | "Kubeconfig"
+  | "OVH"
+  | "OCI"
+
 class PluginConfig extends BaseResourcePluginConfig {
     type = "k8s"
 
@@ -18,4 +31,7 @@ class PluginConfig extends BaseResourcePluginConfig {
     /// that installs CRDs. Defaults to 180. Raise it for charts whose
     /// CRDs land late (cert-manager took ~66s in one observed install).
     crdEstablishTimeoutSeconds: Int?
+
+    /// Authentication methods targets may use. Empty means unrestricted.
+    allowedAuthMethods: Listing<AuthMethod>(isDistinct) = new {}
 }

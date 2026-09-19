@@ -7,9 +7,12 @@
 package transport
 
 import (
+	"context"
 	"errors"
 	"sync/atomic"
 	"testing"
+
+	"github.com/platform-engineering-labs/formae/pkg/plugin"
 	"time"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
@@ -33,29 +36,29 @@ type stubBuilder struct {
 	calls atomic.Int64
 }
 
-func (s *stubBuilder) build(_ *config.Config) (*Client, error) {
+func (s *stubBuilder) build(_ context.Context, _ *config.Config) (*Client, error) {
 	s.calls.Add(1)
 	// Each call returns a fresh *Client so pointer-equality tests can
 	// distinguish cache hits from rebuilds.
 	return &Client{Config: &config.Config{}}, nil
 }
 
-func (s *stubBuilder) failing(_ *config.Config) (*Client, error) {
+func (s *stubBuilder) failing(_ context.Context, _ *config.Config) (*Client, error) {
 	s.calls.Add(1)
 	return nil, errors.New("build failed")
 }
 
 func TestClientCache_HitSameKey(t *testing.T) {
 	b := &stubBuilder{}
-	cache := newClientCache(b.build)
+	cache := newClientCache(b.build, plugin.OidcOperationMetadata)
 
 	cfg := mustConfig(t, `{"Auth":{"Type":"EKS","Endpoint":"https://e.example","CertificateAuthority":"Y2E=","ClusterName":"prod","Region":"us-east-1"}}`)
 
-	c1, err := cache.fetch(cfg)
+	c1, err := cache.Get(context.Background(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c2, err := cache.fetch(cfg)
+	c2, err := cache.Get(context.Background(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,13 +73,13 @@ func TestClientCache_HitSameKey(t *testing.T) {
 
 func TestClientCache_MissDifferentClusters(t *testing.T) {
 	b := &stubBuilder{}
-	cache := newClientCache(b.build)
+	cache := newClientCache(b.build, plugin.OidcOperationMetadata)
 
 	cfgA := mustConfig(t, `{"Auth":{"Type":"EKS","Endpoint":"https://a","CertificateAuthority":"Y2E=","ClusterName":"a","Region":"us-east-1"}}`)
 	cfgB := mustConfig(t, `{"Auth":{"Type":"EKS","Endpoint":"https://b","CertificateAuthority":"Y2E=","ClusterName":"b","Region":"us-east-1"}}`)
 
-	cA, _ := cache.fetch(cfgA)
-	cB, _ := cache.fetch(cfgB)
+	cA, _ := cache.Get(context.Background(), cfgA)
+	cB, _ := cache.Get(context.Background(), cfgB)
 	if cA == cB {
 		t.Error("different cluster identities must not alias on the same client")
 	}
@@ -87,16 +90,16 @@ func TestClientCache_MissDifferentClusters(t *testing.T) {
 
 func TestClientCache_MissAfterTTL(t *testing.T) {
 	b := &stubBuilder{}
-	cache := newClientCache(b.build)
+	cache := newClientCache(b.build, plugin.OidcOperationMetadata)
 	cache.ttl = 1 * time.Millisecond
 
 	cfg := mustConfig(t, `{"Auth":{"Type":"Kubeconfig","Context":"orbstack"}}`)
 
-	if _, err := cache.fetch(cfg); err != nil {
+	if _, err := cache.Get(context.Background(), cfg); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(5 * time.Millisecond) // exceed TTL
-	if _, err := cache.fetch(cfg); err != nil {
+	if _, err := cache.Get(context.Background(), cfg); err != nil {
 		t.Fatal(err)
 	}
 
@@ -110,13 +113,13 @@ func TestClientCache_GKEDistinguishesProjects(t *testing.T) {
 	// not collide. This is the bug C-AUTH-2 fixes: without cluster
 	// identity on Provider, both keys would hash to the same cache slot.
 	b := &stubBuilder{}
-	cache := newClientCache(b.build)
+	cache := newClientCache(b.build, plugin.OidcOperationMetadata)
 
 	cfgA := mustConfig(t, `{"Auth":{"Type":"GKE","Endpoint":"https://e","CertificateAuthority":"Y2E=","ProjectId":"proj-a","Location":"us-central1","ClusterName":"shared"}}`)
 	cfgB := mustConfig(t, `{"Auth":{"Type":"GKE","Endpoint":"https://e","CertificateAuthority":"Y2E=","ProjectId":"proj-b","Location":"us-central1","ClusterName":"shared"}}`)
 
-	cA, _ := cache.fetch(cfgA)
-	cB, _ := cache.fetch(cfgB)
+	cA, _ := cache.Get(context.Background(), cfgA)
+	cB, _ := cache.Get(context.Background(), cfgB)
 	if cA == cB {
 		t.Error("different GCP projects must not alias on the same cached client")
 	}
@@ -124,13 +127,13 @@ func TestClientCache_GKEDistinguishesProjects(t *testing.T) {
 
 func TestClientCache_AKSDistinguishesResourceGroups(t *testing.T) {
 	b := &stubBuilder{}
-	cache := newClientCache(b.build)
+	cache := newClientCache(b.build, plugin.OidcOperationMetadata)
 
 	cfgA := mustConfig(t, `{"Auth":{"Type":"AKS","Endpoint":"https://e","CertificateAuthority":"Y2E=","ResourceGroup":"rg-a","ClusterName":"shared"}}`)
 	cfgB := mustConfig(t, `{"Auth":{"Type":"AKS","Endpoint":"https://e","CertificateAuthority":"Y2E=","ResourceGroup":"rg-b","ClusterName":"shared"}}`)
 
-	cA, _ := cache.fetch(cfgA)
-	cB, _ := cache.fetch(cfgB)
+	cA, _ := cache.Get(context.Background(), cfgA)
+	cB, _ := cache.Get(context.Background(), cfgB)
 	if cA == cB {
 		t.Error("different Azure resource groups must not alias on the same cached client")
 	}
@@ -138,13 +141,13 @@ func TestClientCache_AKSDistinguishesResourceGroups(t *testing.T) {
 
 func TestClientCache_PropagatesBuilderError(t *testing.T) {
 	b := &stubBuilder{}
-	cache := newClientCache(b.failing)
+	cache := newClientCache(b.failing, plugin.OidcOperationMetadata)
 	cfg := mustConfig(t, `{"Auth":{"Type":"Kubeconfig","Context":"orbstack"}}`)
-	if _, err := cache.fetch(cfg); err == nil {
+	if _, err := cache.Get(context.Background(), cfg); err == nil {
 		t.Fatal("expected builder error to propagate")
 	}
 	// A failed build must not poison the cache — subsequent calls retry.
-	if _, err := cache.fetch(cfg); err == nil {
+	if _, err := cache.Get(context.Background(), cfg); err == nil {
 		t.Fatal("expected second call to also try the builder")
 	}
 	if got := b.calls.Load(); got < 2 {
@@ -152,23 +155,23 @@ func TestClientCache_PropagatesBuilderError(t *testing.T) {
 	}
 }
 
-func TestClientCache_CacheKeyError(t *testing.T) {
+func TestClientCache_FingerprintError(t *testing.T) {
 	// A Config whose Auth block lacks a Type field never makes it past
 	// FromTargetConfig today, but if someone constructs a Config directly
 	// or extends the surface, the cache must propagate the error rather
 	// than panic.
 	b := &stubBuilder{}
-	cache := newClientCache(b.build)
+	cache := newClientCache(b.build, plugin.OidcOperationMetadata)
 
 	cfg, err := config.FromTargetConfig([]byte(`{"Auth":{"Type":"UNSUPPORTED"}}`))
 	if err != nil {
 		t.Fatalf("setup: %v", err)
 	}
-	if _, err := cache.fetch(cfg); err == nil {
-		t.Fatal("expected CacheKey error to surface from fetch")
+	if _, err := cache.Get(context.Background(), cfg); err == nil {
+		t.Fatal("expected auth fingerprint error to surface from Get")
 	}
 	if got := b.calls.Load(); got != 0 {
-		t.Errorf("builder must not be called on CacheKey error, got %d calls", got)
+		t.Errorf("builder must not be called on auth fingerprint error, got %d calls", got)
 	}
 }
 
@@ -178,14 +181,14 @@ func TestClientCache_CacheKeyError(t *testing.T) {
 // because the cache deliberately does not use singleflight (see cache.go).
 func TestClientCache_ConcurrentMiss(t *testing.T) {
 	b := &stubBuilder{}
-	cache := newClientCache(b.build)
+	cache := newClientCache(b.build, plugin.OidcOperationMetadata)
 	cfg := mustConfig(t, `{"Auth":{"Type":"Kubeconfig","Context":"orbstack"}}`)
 
 	const N = 32
 	done := make(chan *Client, N)
 	for i := 0; i < N; i++ {
 		go func() {
-			c, _ := cache.fetch(cfg)
+			c, _ := cache.Get(context.Background(), cfg)
 			done <- c
 		}()
 	}
@@ -197,13 +200,14 @@ func TestClientCache_ConcurrentMiss(t *testing.T) {
 			first = c
 			continue
 		}
-		// After the first build completes, all subsequent fetches must
+		// After the first build completes, all subsequent Getes must
 		// resolve to the cached entry. Allow up to one "loser" client
 		// for the brief race window where two goroutines both miss.
-		_ = c
+		if c != first {
+			t.Error("concurrent callers did not share winning client")
+		}
 	}
-	if got := b.calls.Load(); got > 2 {
-		t.Errorf("expected at most 2 concurrent builds (race window), got %d", got)
+	if got := b.calls.Load(); got > N {
+		t.Errorf("expected at most N concurrent builds (race window), got %d", got)
 	}
 }
-

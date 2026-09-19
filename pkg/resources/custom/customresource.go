@@ -120,7 +120,7 @@ func (c *CustomResource) resolveAndApply(ctx context.Context, obj *unstructured.
 	apiVersion, kind := obj.GetAPIVersion(), obj.GetKind()
 	deadline := time.Now().Add(config.CRDEstablishTimeout())
 	for {
-		gvr, namespaced, err := c.Client.ResolveMapping(apiVersion, kind)
+		gvr, namespaced, err := c.Client.ResolveMapping(ctx, apiVersion, kind)
 		if err == nil {
 			ns := obj.GetNamespace()
 			if namespaced && ns == "" {
@@ -213,7 +213,7 @@ func (c *CustomResource) getByID(ctx context.Context, nativeID string) (*unstruc
 	if err != nil {
 		return nil, err
 	}
-	gvr, namespaced, err := c.Client.ResolveMapping(apiVersion, kind)
+	gvr, namespaced, err := c.Client.ResolveMapping(ctx, apiVersion, kind)
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +263,7 @@ func (c *CustomResource) Delete(ctx context.Context, request *resource.DeleteReq
 	if err != nil {
 		return nil, err
 	}
-	gvr, namespaced, err := c.Client.ResolveMapping(apiVersion, kind)
+	gvr, namespaced, err := c.Client.ResolveMapping(ctx, apiVersion, kind)
 	if err != nil {
 		return nil, err
 	}

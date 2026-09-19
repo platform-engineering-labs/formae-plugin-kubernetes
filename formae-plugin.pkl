@@ -11,7 +11,8 @@ summary = "Kubernetes resource plugin"
 description = "Kubernetes resource plugin for Formae"
 category = "containers"
 license = "FSL-1.1-ALv2"
-minFormaeVersion = "0.89.0"
+// Installation OIDC requires trusted callback metadata from this core release.
+minFormaeVersion = "0.90.2"
 
 output {
   renderer = new JsonRenderer {}

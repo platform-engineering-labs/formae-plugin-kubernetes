@@ -53,7 +53,7 @@ func slowProps(t *testing.T, name, chart string, hookSeconds int) json.RawMessag
 
 func currentRelease(t *testing.T, r *Release, name string) *release.Release {
 	t.Helper()
-	conf, err := newActionConfig(r.Config, stabilityNamespace)
+	conf, err := newActionConfig(context.Background(), r.Config, stabilityNamespace)
 	if err != nil {
 		t.Fatalf("newActionConfig: %v", err)
 	}
@@ -76,7 +76,9 @@ func purgeRelease(t *testing.T, r *Release, name string) {
 	// install races it: the goroutine goes on to write the record we just
 	// purged. Tests run sequentially, so draining everything is safe here.
 	DrainInFlight(30 * time.Second)
-	removeFlight(r.Config, stabilityNamespace, name)
+	if f := lookupFlight(integrationFlightScope(t, r.Config), stabilityNamespace, name); f != nil {
+		removeOwnedFlight(integrationFlightScope(t, r.Config), stabilityNamespace, name, f.generation)
+	}
 
 	if _, err := r.Delete(context.Background(), &resource.DeleteRequest{
 		NativeID:     prov.NativeID(stabilityNamespace, name),
@@ -281,10 +283,11 @@ func TestDrainLeavesTheReleaseFailedRatherThanPending(t *testing.T) {
 	r, chart := setUpRelease(t, name)
 	ctx := context.Background()
 
-	if _, err := r.Create(ctx, &resource.CreateRequest{
+	original, err := r.Create(ctx, &resource.CreateRequest{
 		ResourceType: ResourceTypeRelease,
 		Properties:   slowProps(t, name, chart, 60),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	if rel := currentRelease(t, r, name); rel == nil || !releaseIsPending(rel) {
@@ -314,6 +317,13 @@ func TestDrainLeavesTheReleaseFailedRatherThanPending(t *testing.T) {
 		t.Fatalf("planned action %d over a failed release, want actionUpgrade", action)
 	}
 
+	// The retained terminal outcome must be delivered to the matching operation
+	// before another desired state may take over this process's flight.
+	terminal, err := r.Status(ctx, &resource.StatusRequest{RequestID: original.ProgressResult.RequestID})
+	if err != nil || terminal.ProgressResult.OperationStatus != resource.OperationStatusFailure {
+		t.Fatalf("drained operation did not report its terminal failure: %v %v", terminal, err)
+	}
+
 	retried, err := r.Create(ctx, &resource.CreateRequest{
 		ResourceType: ResourceTypeRelease,
 		Properties:   slowProps(t, name, chart, 0),
@@ -336,7 +346,7 @@ func TestDrainLeavesTheReleaseFailedRatherThanPending(t *testing.T) {
 // they are worth testing on purpose rather than by luck.
 func wedge(t *testing.T, r *Release, name string) {
 	t.Helper()
-	conf, err := newActionConfig(r.Config, stabilityNamespace)
+	conf, err := newActionConfig(context.Background(), r.Config, stabilityNamespace)
 	if err != nil {
 		t.Fatalf("newActionConfig: %v", err)
 	}

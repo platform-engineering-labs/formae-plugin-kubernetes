@@ -25,7 +25,7 @@ func clearFlights() {
 	flightMu.Unlock()
 }
 
-// testTarget builds a config for a named kube context, which is what CacheKey
+// testTarget builds a config for a named kube context, which is what ClusterKey
 // hashes and therefore what separates one cluster from another.
 func testTarget(t *testing.T, kubeContext string) *config.Config {
 	t.Helper()
@@ -41,13 +41,13 @@ func TestFlightRegistry_RoundTrip(t *testing.T) {
 	defer clearFlights()
 	target := testTarget(t, "cluster-a")
 
-	if got := lookupFlight(target, "ns", "app"); got != nil {
+	if got := lookupFlight(testScope(target), "ns", "app"); got != nil {
 		t.Fatalf("lookup on an empty registry returned %+v", got)
 	}
 
 	registerFlight(target, "ns", "app", inflight{op: opInstall, revision: 1, fingerprint: "abc"}, func() {})
 
-	got := lookupFlight(target, "ns", "app")
+	got := lookupFlight(testScope(target), "ns", "app")
 	if got == nil {
 		t.Fatal("registered flight not found")
 	}
@@ -56,7 +56,7 @@ func TestFlightRegistry_RoundTrip(t *testing.T) {
 	}
 
 	removeFlight(target, "ns", "app")
-	if got := lookupFlight(target, "ns", "app"); got != nil {
+	if got := lookupFlight(testScope(target), "ns", "app"); got != nil {
 		t.Errorf("flight still present after remove: %+v", got)
 	}
 }
@@ -70,10 +70,10 @@ func TestFlightRegistry_KeyedByNamespaceAndName(t *testing.T) {
 	registerFlight(target, "ns", "a", inflight{revision: 1}, func() {})
 	registerFlight(target, "ns", "b", inflight{revision: 2}, func() {})
 
-	if f := lookupFlight(target, "ns", "a"); f == nil || f.revision != 1 {
+	if f := lookupFlight(testScope(target), "ns", "a"); f == nil || f.revision != 1 {
 		t.Errorf("ns/a = %+v, want revision 1", f)
 	}
-	if f := lookupFlight(target, "ns", "b"); f == nil || f.revision != 2 {
+	if f := lookupFlight(testScope(target), "ns", "b"); f == nil || f.revision != 2 {
 		t.Errorf("ns/b = %+v, want revision 2", f)
 	}
 }
@@ -90,22 +90,22 @@ func TestFlightRegistry_SeparatesTargets(t *testing.T) {
 
 	registerFlight(staging, "prod", "api", inflight{revision: 1, fingerprint: "staging"}, func() {})
 
-	if f := lookupFlight(production, "prod", "api"); f != nil {
+	if f := lookupFlight(testScope(production), "prod", "api"); f != nil {
 		t.Fatalf("an install on staging was visible on production: %+v", f)
 	}
 
 	registerFlight(production, "prod", "api", inflight{revision: 7, fingerprint: "production"}, func() {})
 
-	if f := lookupFlight(staging, "prod", "api"); f == nil || f.fingerprint != "staging" {
+	if f := lookupFlight(testScope(staging), "prod", "api"); f == nil || f.fingerprint != "staging" {
 		t.Errorf("staging flight = %+v, want its own entry back", f)
 	}
-	if f := lookupFlight(production, "prod", "api"); f == nil || f.fingerprint != "production" {
+	if f := lookupFlight(testScope(production), "prod", "api"); f == nil || f.fingerprint != "production" {
 		t.Errorf("production flight = %+v, want its own entry back", f)
 	}
 
 	// Removing one target's flight must leave the other's alone.
 	removeFlight(staging, "prod", "api")
-	if f := lookupFlight(production, "prod", "api"); f == nil {
+	if f := lookupFlight(testScope(production), "prod", "api"); f == nil {
 		t.Error("removing the staging flight also removed production's")
 	}
 }
@@ -116,7 +116,7 @@ func TestFlightRegistry_SharesAKeyForTheSameCluster(t *testing.T) {
 	defer clearFlights()
 
 	registerFlight(testTarget(t, "same"), "ns", "app", inflight{revision: 3}, func() {})
-	if f := lookupFlight(testTarget(t, "same"), "ns", "app"); f == nil || f.revision != 3 {
+	if f := lookupFlight(testScope(testTarget(t, "same")), "ns", "app"); f == nil || f.revision != 3 {
 		t.Errorf("flight = %+v, want revision 3 from an equivalent target config", f)
 	}
 }
@@ -127,7 +127,7 @@ func TestFlightRegistry_UnidentifiableTargetNeverMatches(t *testing.T) {
 	defer clearFlights()
 
 	registerFlight(nil, "ns", "app", inflight{revision: 1}, func() {})
-	if f := lookupFlight(nil, "ns", "app"); f != nil {
+	if f := lookupFlight(testScope(nil), "ns", "app"); f != nil {
 		t.Errorf("a flight was registered against an unidentifiable target: %+v", f)
 	}
 	removeFlight(nil, "ns", "app")
@@ -214,7 +214,7 @@ func TestFlightRegistry_ConcurrentAccess(t *testing.T) {
 			defer wg.Done()
 			name := string(rune('a' + i%5))
 			registerFlight(target, "ns", name, inflight{revision: i}, func() {})
-			lookupFlight(target, "ns", name)
+			lookupFlight(testScope(target), "ns", name)
 			removeFlight(target, "ns", name)
 		}(i)
 	}
@@ -305,4 +305,27 @@ func TestPostDeployHooks(t *testing.T) {
 	if len(postDeployHooks(&release.Release{})) != 0 {
 		t.Error("a release with no hooks reported post-deploy hooks")
 	}
+}
+
+func registerFlight(cfg *config.Config, ns, name string, f inflight, cancel func()) {
+	f.cancel = cancel
+	reserveFlight(testScope(cfg), ns, name, f)
+}
+func removeFlight(cfg *config.Config, ns, name string) {
+	if f := lookupFlight(testScope(cfg), ns, name); f != nil {
+		removeOwnedFlight(testScope(cfg), ns, name, f.generation)
+	}
+}
+
+func testScope(cfg *config.Config) string {
+	if cfg == nil {
+		return ""
+	}
+	key, _ := cfg.ClusterKey()
+	return key
+}
+
+// reserveFlight never overwrites another owner, including another Plugin value.
+func reserveFlight(scope, namespace, name string, f inflight) (*inflight, bool) {
+	return reserveFlightMatching(scope, namespace, name, f, nil)
 }
