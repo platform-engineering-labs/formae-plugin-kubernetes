@@ -68,11 +68,8 @@ jobs:
     needs: discover-charts
     runs-on: ubuntu-latest
     env:
-      # The plugin imports the bounded OIDC operation API pinned in go.mod.
-      # Keep the binary and local SDK replacements on the exact compatible
-      # core revision; bump this intentionally when interop needs newer core
-      # behavior. Floating main can predate symbols during stacked PRs.
-      FORMAE_REF: e067184313ff5d38b11e4bd11985733d17d65e5f
+      FORMAE_REF: 5658146d82d866486642ae0fb792abb9231883ef
+      FORMAE_VERSION: 0.90.2
     strategy:
       matrix:
         group: ${{ fromJson(needs.discover-charts.outputs.groups) }}
@@ -80,6 +77,12 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+
+      - name: Record plugin source
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          echo "PLUGIN_GO_MOD_SHA=$(sha256sum go.mod | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          echo "PLUGIN_GO_SUM_SHA=$(sha256sum go.sum | cut -d' ' -f1)" >> "$GITHUB_ENV"
 
       - uses: actions/setup-go@v7
         with:
@@ -93,13 +96,7 @@ jobs:
           cluster_name: formae-helm-interop-${{ matrix.group.name }}
           node_image: "kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
 
-      - name: Build formae
-        # From the exact compatible core revision rather than a release: the
-        # suite drives extract, adopt and discovery, and leans on fixes that
-        # land there before they ship. The
-        # version stamped in resolves the plugin's PKL formae dep against
-        # package://...formae@<X.Y.Z>, so it has to match a published schema —
-        # hence the canonical version stripped from the latest tag.
+      - name: Build exact formae source
         run: |
           set -euo pipefail
           git init /tmp/formae
@@ -107,24 +104,22 @@ jobs:
           git -C /tmp/formae fetch --depth 1 origin "$FORMAE_REF"
           git -C /tmp/formae checkout --detach FETCH_HEAD
           test "$(git -C /tmp/formae rev-parse HEAD)" = "$FORMAE_REF"
-          cd /tmp/formae
-          git fetch --tags
-          LATEST_TAG=$(git tag -l "[0-9]*" --sort=-version:refname | head -1)
-          VERSION=$(echo "$LATEST_TAG" | cut -d'-' -f1)
-          echo "Building formae ${VERSION} (from tag ${LATEST_TAG})"
-          make build VERSION="${VERSION}"
+          make -C /tmp/formae build VERSION="$FORMAE_VERSION"
           sudo mkdir -p /opt/pel/bin
           sudo install -m 0755 /tmp/formae/formae /opt/pel/bin/formae
-          /opt/pel/bin/formae --version
 
-      - name: Inject formae replace directives
+      - name: Verify and log source identities
         run: |
-          for pkg in pkg/auth pkg/model pkg/plugin pkg/plugin-conformance-tests; do
-            if grep -q "formae/$pkg" go.mod 2>/dev/null; then
-              go mod edit -replace "github.com/platform-engineering-labs/formae/$pkg=/tmp/formae/$pkg"
-            fi
-          done
-          go mod tidy
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test "$(git -C /tmp/formae rev-parse HEAD)" = "$FORMAE_REF"
+          echo "plugin sha=$(git rev-parse HEAD)"
+          echo "core sha=$(git -C /tmp/formae rev-parse HEAD)"
+          echo "core version=${FORMAE_VERSION}"
+          /opt/pel/bin/formae --version
+          go list -m all
+          test "$(sha256sum go.mod | cut -d' ' -f1)" = "$PLUGIN_GO_MOD_SHA"
+          test "$(sha256sum go.sum | cut -d' ' -f1)" = "$PLUGIN_GO_SUM_SHA"
 
       - name: Install plugin
         run: make install

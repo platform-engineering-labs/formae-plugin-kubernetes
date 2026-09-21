@@ -15,8 +15,18 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      formae_ref:
+        description: 'Immutable formae source revision'
+        required: false
+        default: '5658146d82d866486642ae0fb792abb9231883ef'
+        type: string
+      formae_version:
+        description: 'Canonical formae version baked into the binary'
+        required: false
+        default: '0.90.2'
+        type: string
       drain_samples:
-        description: 'Samples for the SIGTERM drain win-rate measurement (0 = skip)'
+        description: 'Optional SIGTERM drain samples (0 = skip; the strict scenario remains the gate)'
         required: false
         default: '0'
         type: string
@@ -29,8 +39,17 @@ jobs:
   helm-stability:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      FORMAE_REF: ${{ inputs.formae_ref || '5658146d82d866486642ae0fb792abb9231883ef' }}
+      FORMAE_VERSION: ${{ inputs.formae_version || '0.90.2' }}
     steps:
       - uses: actions/checkout@v7
+
+      - name: Record plugin source
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          echo "PLUGIN_GO_MOD_SHA=$(sha256sum go.mod | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          echo "PLUGIN_GO_SUM_SHA=$(sha256sum go.sum | cut -d' ' -f1)" >> "$GITHUB_ENV"
 
       - uses: actions/setup-go@v7
         with:
@@ -57,23 +76,31 @@ jobs:
           cluster_name: formae-stability
           node_image: "kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
 
-      - name: Build formae
-        # Same approach as conformance-version.yml's prepare job: build from
-        # formae main, stamped with the canonical version of the latest tag so
-        # it matches a schema published on the hub.
+      - name: Build exact formae source
         run: |
           set -euo pipefail
-          git clone --branch main --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
-          cd /tmp/formae
-          git fetch --tags
-          LATEST_TAG=$(git tag -l "[0-9]*" --sort=-version:refname | head -1)
-          VERSION=$(echo "$LATEST_TAG" | cut -d'-' -f1)
-          echo "latest tag=${LATEST_TAG}, canonical VERSION=${VERSION}"
-          make build VERSION="${VERSION}"
+          git init /tmp/formae
+          git -C /tmp/formae remote add origin https://github.com/platform-engineering-labs/formae.git
+          git -C /tmp/formae fetch --depth 1 origin "$FORMAE_REF"
+          git -C /tmp/formae checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/formae rev-parse HEAD)" = "$FORMAE_REF"
+          make -C /tmp/formae build VERSION="$FORMAE_VERSION"
           sudo mkdir -p /opt/pel/bin
           sudo install -m 0755 /tmp/formae/formae /opt/pel/bin/formae
           echo "/opt/pel/bin" >> "$GITHUB_PATH"
+
+      - name: Verify and log source identities
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test "$(git -C /tmp/formae rev-parse HEAD)" = "$FORMAE_REF"
+          echo "plugin sha=$(git rev-parse HEAD)"
+          echo "core sha=$(git -C /tmp/formae rev-parse HEAD)"
+          echo "core version=${FORMAE_VERSION}"
           /opt/pel/bin/formae --version
+          go list -m all
+          test "$(sha256sum go.mod | cut -d' ' -f1)" = "$PLUGIN_GO_MOD_SHA"
+          test "$(sha256sum go.sum | cut -d' ' -f1)" = "$PLUGIN_GO_SUM_SHA"
 
       - name: Run the stability suite
         # make helm-stability-test depends on install, so the agent spawns the
