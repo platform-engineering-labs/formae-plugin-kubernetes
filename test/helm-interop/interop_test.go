@@ -139,6 +139,10 @@ func runInteropCell(t *testing.T, pair specPair) {
 	}
 	t.Logf("✓ upgraded by formae as %q, ownership marker now on the lineage",
 		state.Description)
+	desired := cell.path("desired.pkl")
+	if err := cell.formae.ExtractDesired(cell.stack, desired); err != nil {
+		t.Fatalf("extract upgraded desired stack: %v", err)
+	}
 
 	// --- 6. a human rolls it back -------------------------------------------
 	if err := cell.helm.Rollback(cell.namespace, cell.release, 1); err != nil {
@@ -165,7 +169,7 @@ func runInteropCell(t *testing.T, pair specPair) {
 	if label == "" {
 		t.Fatalf("managed release %s has no inventory label", cell.nativeID())
 	}
-	outcome, message, err := cell.formae.ResolveDrift(adopted, cell.path("drift-resolution.json"), driftResource{
+	outcome, message, err := cell.formae.ResolveDrift(desired, cell.path("drift-resolution.json"), driftResource{
 		Stack: cell.stack,
 		Type:  resourceTypeRelease,
 		Label: label,

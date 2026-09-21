@@ -735,6 +735,13 @@ func (f *formaeCLI) Extract(query, path string) error {
 	return err
 }
 
+// ExtractDesired writes the complete recorded declaration for one managed stack.
+func (f *formaeCLI) ExtractDesired(stack, path string) error {
+	_, err := runCmd(f.binary, f.args("extract", "--desired", "--query", "stack:"+stack,
+		"--schema-location", "local", "--yes", path)...)
+	return err
+}
+
 // Resource returns the inventory entry for one native id, or nil.
 //
 // Keyed by native id rather than "the first Release in the inventory": this runs
