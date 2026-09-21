@@ -523,19 +523,6 @@ func (f *formaeCLI) Apply(mode, forma string) (state string, message string) {
 	return f.apply(mode, forma, true)
 }
 
-// ApplyExpectingRefusal submits an apply that SHOULD be turned down, and does
-// not retry.
-//
-// Apply retries a rejection because it is usually a concurrency conflict rather
-// than a verdict. Here it is the verdict — reconcile refusing to overwrite an
-// out-of-band rollback is the behaviour under test — and retrying would keep
-// resubmitting until something let it through, turning the assertion into a
-// race against the drift guard.
-func (f *formaeCLI) ApplyExpectingRefusal(mode, forma string) (state string, message string) {
-	f.t.Helper()
-	return f.apply(mode, forma, false)
-}
-
 func (f *formaeCLI) apply(mode, forma string, retry bool) (state string, message string) {
 	f.t.Helper()
 	for attempt := 1; ; attempt++ {
@@ -580,12 +567,6 @@ func (f *formaeCLI) applyOnce(mode, forma string) (state string, message string)
 	// as a harness error made the guard doing its job look like the test
 	// falling over — which is how "the guard never fires on reconcile" got
 	// believed for a while. It fires; nothing was listening.
-	// A decision prompt is an actionable refusal, not an optimistic-concurrency
-	// conflict. Keep it distinct so the ordinary Apply path does not retry it.
-	if strings.Contains(out, "Reconcile needs drift decisions") {
-		return "DecisionRequired", strings.TrimSpace(firstMeaningfulLine(out))
-	}
-
 	if strings.Contains(out, "rejected because") ||
 		strings.Contains(out, "modified since the last reconcile") {
 		return "Rejected", strings.TrimSpace(firstMeaningfulLine(out))
@@ -596,6 +577,83 @@ func (f *formaeCLI) applyOnce(mode, forma string) (state string, message string)
 		f.t.Fatalf("no command submitted by `apply --mode %s`: %s", mode, strings.TrimSpace(out))
 	}
 	return f.waitCommand(match[1])
+}
+
+// ResolveDrift runs the public machine-readable drift handshake. Each protocol
+// stage is a separate CLI invocation so this exercises the same contract an
+// automation caller uses rather than reaching into the agent or datastore.
+func (f *formaeCLI) ResolveDrift(forma, controlsPath string, expected driftResource) (state, message string, err error) {
+	f.t.Helper()
+
+	stdout, stderr, runErr := f.machineApply(forma, "", true)
+	if runErr == nil {
+		return "", "", fmt.Errorf("initial drift simulation succeeded; expected ReconcileRejected")
+	}
+	controls, err := parseReconcileRejection([]byte(stdout), expected)
+	if err != nil {
+		return "", "", fmt.Errorf("parse initial drift simulation: %w (stderr: %s)", err, strings.TrimSpace(stderr))
+	}
+	if err := writeResolution(controlsPath, controls); err != nil {
+		return "", "", err
+	}
+
+	stdout, stderr, runErr = f.machineApply(forma, controlsPath, true)
+	if runErr != nil {
+		return "", "", fmt.Errorf("resolution simulation failed: %w (stdout: %s; stderr: %s)", runErr, strings.TrimSpace(stdout), strings.TrimSpace(stderr))
+	}
+	reviewID, err := parseResolutionReview([]byte(stdout), controls, expected)
+	if err != nil {
+		return "", "", err
+	}
+	controls.ReviewID = reviewID
+	controls.IdempotencyKey = "helm-interop-" + reviewID
+	if err := writeResolution(controlsPath, controls); err != nil {
+		return "", "", err
+	}
+
+	stdout, stderr, runErr = f.machineApply(forma, controlsPath, false)
+	if runErr != nil {
+		return "", "", fmt.Errorf("resolution submission failed: %w (stdout: %s; stderr: %s)", runErr, strings.TrimSpace(stdout), strings.TrimSpace(stderr))
+	}
+	commandID, err := parseSubmittedCommand([]byte(stdout))
+	if err != nil {
+		return "", "", err
+	}
+	state, message = f.waitCommand(commandID)
+	return state, message, nil
+}
+
+func (f *formaeCLI) machineApply(forma, controlsPath string, simulate bool) (stdout, stderr string, err error) {
+	f.t.Helper()
+	args := []string{"apply", "--mode", "reconcile", "--yes", "--output-consumer", "machine", "--output-schema", "json"}
+	if simulate {
+		args = append(args, "--simulate")
+	}
+	if controlsPath != "" {
+		args = append(args, "--resolution", controlsPath)
+	}
+	args = append(args, forma)
+	cmd := exec.Command(f.binary, f.args(args...)...)
+	var stdoutBuilder, stderrBuilder strings.Builder
+	cmd.Stdout = &stdoutBuilder
+	cmd.Stderr = &stderrBuilder
+	err = cmd.Run()
+	return stdoutBuilder.String(), stderrBuilder.String(), err
+}
+
+func writeResolution(path string, controls driftResolution) error {
+	raw, err := json.MarshalIndent(controls, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode drift resolution: %w", err)
+	}
+	raw = append(raw, '\n')
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		return fmt.Errorf("write drift resolution: %w", err)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		return fmt.Errorf("protect drift resolution: %w", err)
+	}
+	return nil
 }
 
 // commandTimeout bounds how long a submitted command may take to settle.
