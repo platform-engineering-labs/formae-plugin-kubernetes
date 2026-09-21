@@ -585,42 +585,85 @@ func (f *formaeCLI) applyOnce(mode, forma string) (state string, message string)
 func (f *formaeCLI) ResolveDrift(forma, controlsPath string, expected driftResource) (state, message string, err error) {
 	f.t.Helper()
 
-	stdout, stderr, runErr := f.machineApply(forma, "", true)
-	if runErr == nil {
-		return "", "", fmt.Errorf("initial drift simulation succeeded; expected ReconcileRejected")
-	}
-	controls, err := parseReconcileRejection([]byte(stdout), expected)
-	if err != nil {
-		return "", "", fmt.Errorf("parse initial drift simulation: %w (stderr: %s)", err, strings.TrimSpace(stderr))
-	}
-	if err := writeResolution(controlsPath, controls); err != nil {
-		return "", "", err
-	}
+	const attempts = 3
+	var firstObservationID, firstResourceID string
+	attemptedReviewIDs := make([]string, 0, attempts)
+	seenReviewIDs := make(map[string]bool, attempts)
 
-	stdout, stderr, runErr = f.machineApply(forma, controlsPath, true)
-	if runErr != nil {
-		return "", "", fmt.Errorf("resolution simulation failed: %w (stdout: %s; stderr: %s)", runErr, strings.TrimSpace(stdout), strings.TrimSpace(stderr))
-	}
-	reviewID, err := parseResolutionReview([]byte(stdout), controls, expected)
-	if err != nil {
-		return "", "", err
-	}
-	controls.ReviewID = reviewID
-	controls.IdempotencyKey = "helm-interop-" + reviewID
-	if err := writeResolution(controlsPath, controls); err != nil {
-		return "", "", err
-	}
+	for attempt := 1; attempt <= attempts; attempt++ {
+		if attempt > 1 {
+			backoff := time.Duration((attempt-1)*(attempt-1)) * interopPollInterval
+			f.t.Logf("drift review became stale (attempt %d/%d); restarting the full handshake in %s",
+				attempt-1, attempts, backoff)
+			time.Sleep(backoff)
+		}
 
-	stdout, stderr, runErr = f.machineApply(forma, controlsPath, false)
-	if runErr != nil {
-		return "", "", fmt.Errorf("resolution submission failed: %w (stdout: %s; stderr: %s)", runErr, strings.TrimSpace(stdout), strings.TrimSpace(stderr))
+		stdout, stderr, runErr := f.machineApply(forma, "", true)
+		if runErr == nil {
+			return "", "", fmt.Errorf("initial drift simulation succeeded on attempt %d; expected ReconcileRejected", attempt)
+		}
+		controls, err := parseReconcileRejection([]byte(stdout), expected)
+		if err != nil {
+			return "", "", fmt.Errorf("parse initial drift simulation on attempt %d: %w (stdout: %s; stderr: %s)",
+				attempt, err, strings.TrimSpace(stdout), strings.TrimSpace(stderr))
+		}
+		resourceID := controls.Decisions[0].ResourceID
+		if attempt == 1 {
+			firstObservationID = controls.ObservationID
+			firstResourceID = resourceID
+		} else {
+			if controls.ObservationID != firstObservationID {
+				return "", "", fmt.Errorf("drift ObservationID changed on attempt %d: got %q, want %q", attempt, controls.ObservationID, firstObservationID)
+			}
+			if resourceID != firstResourceID {
+				return "", "", fmt.Errorf("drift ResourceID changed on attempt %d: got %q, want %q", attempt, resourceID, firstResourceID)
+			}
+		}
+		if err := writeResolution(controlsPath, controls); err != nil {
+			return "", "", err
+		}
+
+		stdout, stderr, runErr = f.machineApply(forma, controlsPath, true)
+		if runErr != nil {
+			return "", "", fmt.Errorf("resolution simulation failed on attempt %d: %w (stdout: %s; stderr: %s)",
+				attempt, runErr, strings.TrimSpace(stdout), strings.TrimSpace(stderr))
+		}
+		reviewID, err := parseResolutionReview([]byte(stdout), controls, expected)
+		if err != nil {
+			return "", "", fmt.Errorf("parse resolution review on attempt %d: %w (stdout: %s; stderr: %s)",
+				attempt, err, strings.TrimSpace(stdout), strings.TrimSpace(stderr))
+		}
+		if seenReviewIDs[reviewID] {
+			return "", "", fmt.Errorf("resolution review %q was reused on attempt %d", reviewID, attempt)
+		}
+		seenReviewIDs[reviewID] = true
+		attemptedReviewIDs = append(attemptedReviewIDs, reviewID)
+		controls.ReviewID = reviewID
+		controls.IdempotencyKey = "helm-interop-" + reviewID
+		if err := writeResolution(controlsPath, controls); err != nil {
+			return "", "", err
+		}
+
+		stdout, stderr, runErr = f.machineApply(forma, controlsPath, false)
+		if runErr == nil {
+			commandID, err := parseSubmittedCommand([]byte(stdout))
+			if err != nil {
+				return "", "", err
+			}
+			state, message = f.waitCommand(commandID)
+			return state, message, nil
+		}
+		reason, staleErr := parseStaleDriftReviewRejection([]byte(stdout))
+		if staleErr != nil {
+			return "", "", fmt.Errorf("resolution submission failed on attempt %d: %w; response is not a retryable stale review: %v (stdout: %s; stderr: %s)",
+				attempt, runErr, staleErr, strings.TrimSpace(stdout), strings.TrimSpace(stderr))
+		}
+		if attempt == attempts {
+			return "", "", fmt.Errorf("drift resolution remained stale after %d attempts; attempted ReviewIDs: %v; final reason: %s (stdout: %s; stderr: %s)",
+				attempt, attemptedReviewIDs, reason, strings.TrimSpace(stdout), strings.TrimSpace(stderr))
+		}
 	}
-	commandID, err := parseSubmittedCommand([]byte(stdout))
-	if err != nil {
-		return "", "", err
-	}
-	state, message = f.waitCommand(commandID)
-	return state, message, nil
+	return "", "", fmt.Errorf("drift resolution retry loop ended unexpectedly")
 }
 
 func (f *formaeCLI) machineApply(forma, controlsPath string, simulate bool) (stdout, stderr string, err error) {

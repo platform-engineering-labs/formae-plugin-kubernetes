@@ -7,8 +7,10 @@
 package interop
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 )
 
 type driftResource struct {
@@ -128,17 +130,136 @@ func parseResolutionReview(raw []byte, controls driftResolution, expected driftR
 	if !payload.Simulation.ChangesRequired {
 		return "", fmt.Errorf("resolution review says no changes are required")
 	}
-	found := false
-	for _, update := range payload.Simulation.Command.ResourceUpdates {
-		if update.ResourceID == decision.ResourceID && update.StackName == expected.Stack && update.ResourceType == expected.Type && update.ResourceLabel == expected.Label && update.Operation == "update" {
-			found = true
-			break
-		}
+	if len(payload.Simulation.Command.ResourceUpdates) != 1 {
+		return "", fmt.Errorf("resolution review contains %d resource updates, want 1", len(payload.Simulation.Command.ResourceUpdates))
 	}
-	if !found {
-		return "", fmt.Errorf("resolution review has no matching release update")
+	update := payload.Simulation.Command.ResourceUpdates[0]
+	if update.ResourceID != decision.ResourceID || update.StackName != expected.Stack || update.ResourceType != expected.Type || update.ResourceLabel != expected.Label || update.Operation != "update" {
+		return "", fmt.Errorf("resolution review update does not match the drifted release")
 	}
 	return payload.Review.ReviewID, nil
+}
+
+func parseStaleDriftReviewRejection(raw []byte) (string, error) {
+	payload, err := decodeJSONObject(raw)
+	if err != nil {
+		return "", fmt.Errorf("decode drift resolution rejection: %w", err)
+	}
+	if len(payload) != 2 {
+		return "", fmt.Errorf("drift resolution rejection has unexpected fields")
+	}
+	errorType, err := requiredJSONString(payload, "error")
+	if err != nil {
+		return "", fmt.Errorf("drift resolution rejection error: %w", err)
+	}
+	if errorType != "DriftResolutionRejected" {
+		return "", fmt.Errorf("submission error = %q, want DriftResolutionRejected", errorType)
+	}
+
+	dataRaw, ok := payload["data"]
+	if !ok {
+		return "", fmt.Errorf("drift resolution rejection has no data")
+	}
+	data, err := decodeJSONObject(dataRaw)
+	if err != nil {
+		return "", fmt.Errorf("decode drift resolution rejection data: %w", err)
+	}
+	for name := range data {
+		switch name {
+		case "Code", "Reason", "ResourceID", "CommandId":
+		default:
+			return "", fmt.Errorf("drift resolution rejection data has unexpected field %q", name)
+		}
+	}
+	code, err := requiredJSONString(data, "Code")
+	if err != nil {
+		return "", fmt.Errorf("drift resolution rejection code: %w", err)
+	}
+	if code != "stale-review" {
+		return "", fmt.Errorf("drift resolution rejection code = %q, want stale-review", code)
+	}
+	reason, err := requiredJSONString(data, "Reason")
+	if err != nil {
+		return "", fmt.Errorf("drift resolution rejection reason: %w", err)
+	}
+	if reason == "" {
+		return "", fmt.Errorf("drift resolution rejection has no reason")
+	}
+	if resourceID, ok := data["ResourceID"]; ok {
+		if _, err := jsonString(resourceID); err != nil {
+			return "", fmt.Errorf("drift resolution rejection ResourceID: %w", err)
+		}
+	}
+	if commandIDRaw, ok := data["CommandId"]; ok {
+		commandID, err := jsonString(commandIDRaw)
+		if err != nil {
+			return "", fmt.Errorf("drift resolution rejection CommandId: %w", err)
+		}
+		if commandID != "" {
+			return "", fmt.Errorf("drift resolution rejection admitted command %q", commandID)
+		}
+	}
+	return reason, nil
+}
+
+func decodeJSONObject(raw []byte) (map[string]json.RawMessage, error) {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	opening, err := decoder.Token()
+	if err != nil {
+		return nil, err
+	}
+	if delimiter, ok := opening.(json.Delim); !ok || delimiter != '{' {
+		return nil, fmt.Errorf("got %v, want JSON object", opening)
+	}
+	fields := make(map[string]json.RawMessage)
+	for decoder.More() {
+		key, err := decoder.Token()
+		if err != nil {
+			return nil, err
+		}
+		name, ok := key.(string)
+		if !ok {
+			return nil, fmt.Errorf("got object key %T, want string", key)
+		}
+		if _, exists := fields[name]; exists {
+			return nil, fmt.Errorf("duplicate field %q", name)
+		}
+		var value json.RawMessage
+		if err := decoder.Decode(&value); err != nil {
+			return nil, err
+		}
+		fields[name] = value
+	}
+	if _, err := decoder.Token(); err != nil {
+		return nil, err
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			return nil, fmt.Errorf("unexpected JSON after object")
+		}
+		return nil, err
+	}
+	return fields, nil
+}
+
+func requiredJSONString(fields map[string]json.RawMessage, name string) (string, error) {
+	raw, ok := fields[name]
+	if !ok {
+		return "", fmt.Errorf("missing %s", name)
+	}
+	return jsonString(raw)
+}
+
+func jsonString(raw json.RawMessage) (string, error) {
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return "", err
+	}
+	text, ok := value.(string)
+	if !ok {
+		return "", fmt.Errorf("got %T, want string", value)
+	}
+	return text, nil
 }
 
 func parseSubmittedCommand(raw []byte) (string, error) {
