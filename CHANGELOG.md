@@ -26,6 +26,9 @@ formae agent.
 
 ### Fixed
 
+- **Renewed opaque credentials keep the normal refresh interval.** A successful
+  refresh that returns the same token with a later expiry no longer causes
+  repeated credential requests every ten seconds.
 - **A direct SIGTERM now gives in-flight Helm work up to ten seconds to
   finish cancellation before the plugin stops.** This lets Helm record a
   failed release that the next apply can upgrade over. Agent shutdown and an

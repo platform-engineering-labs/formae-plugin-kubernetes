@@ -22,8 +22,8 @@ type cachedToken struct {
 // CachedTokenSource coalesces synchronous refreshes without retaining any
 // operation context. A canceled refresh leader cannot poison live waiters.
 // Tokens are checked in their last 20% of life (at least 60 seconds early).
-// An issuer returning a still-valid early token is rechecked after 10 seconds,
-// but a token is never served in its final 10 seconds.
+// An unchanged token without a later expiry is rechecked after 10 seconds.
+// Renewed expiry uses the normal margin; no token is served in its final 10 seconds.
 type CachedTokenSource struct {
 	inner      TokenSource
 	now        func() time.Time
@@ -96,7 +96,8 @@ func (c *CachedTokenSource) Token(ctx context.Context) (string, time.Time, error
 				margin = 60 * time.Second
 			}
 			next := expiry.Add(-margin)
-			if !next.After(now) || (previous != nil && token == previous.token) {
+			sameTokenWithoutLaterExpiry := previous != nil && token == previous.token && !expiry.After(previous.expiry)
+			if !next.After(now) || sameTokenWithoutLaterExpiry {
 				next = now.Add(10 * time.Second)
 			}
 			if cutoff := expiry.Add(-tokenSafetyMargin); next.After(cutoff) {

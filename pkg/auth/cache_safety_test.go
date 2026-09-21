@@ -362,8 +362,8 @@ func TestCacheHonorsRollingExpiryForUnchangedOpaqueToken(t *testing.T) {
 	}{
 		{0, 30, 1},
 		{24 * time.Minute, 54, 2},
-		{31 * time.Minute, 61, 3},
-		{61 * time.Minute, 91, 4},
+		{31 * time.Minute, 54, 2},
+		{61 * time.Minute, 91, 3},
 	} {
 		now = start.Add(tc.elapsed)
 		token, expiry, err := c.Token(context.Background())
