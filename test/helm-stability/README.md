@@ -82,7 +82,7 @@ is. No timeout is involved and recovery is immediate. A release this plugin is
 | **`TestAgentRestartAfterInstall`**<br>agent restarted after install finished | `deployed`, revision **1** | **No command submitted** — "No changes needed" | Nothing. The re-apply is a genuine no-op, and the `pre-install` hook does not re-run |
 | **`TestPluginSigtermMidInstall`**<br>`SIGTERM` direct to the plugin | `failed` | Failed | Re-apply. Upgrades over it to `deployed` |
 | **`TestPluginSigkillMidInstall`**<br>`SIGKILL` direct to the plugin | `pending-install` until the next apply | Failed, **with no message** (see below) | Re-apply. Clears the lock and completes the install |
-| **`TestDrainWinRate`**<br>`SIGTERM` × N | — | — | Reports how often the drain wins its race. Skipped unless `SAMPLES` is set |
+| **`TestDrainWinRate`**<br>`SIGTERM` × N | — | — | Optional sampling of the direct-SIGTERM outcome. Skipped unless `SAMPLES` is set |
 
 Every scenario additionally asserts, at teardown, that the release is **not left
 holding a Helm lock** — no test can pass while leaving one wedged.
@@ -147,22 +147,21 @@ can change this — it is dead at the moment the decision is made.
 so the user sees a failed command with an empty diagnostic. Worth fixing
 upstream; not fixable here.
 
-### The drain, and its race
+### The ordered drain
 
 A `SIGTERM` sent *directly* to the plugin is handled: in-flight operations are
 cancelled, so Helm runs `failRelease` and records `failed` instead of leaving
 `pending-install`. That is one Secret write, and it turns a wedge into a plain
 upgrade.
 
-It is best-effort. The SDK installs its own signal handler and calls
-`node.Stop()`, and Go delivers to every `signal.Notify` receiver concurrently
-with no ordering hook — so the record write races node teardown. **Losing costs
-nothing**: the outcome is then what it was before the drain existed, and the next
-apply recovers it anyway.
+The SDK runs the plugin's bounded `BeforeStop` callback after receiving SIGINT
+or SIGTERM and before calling `node.Stop()`. The callback waits up to ten
+seconds for Helm cancellation to finish. SIGKILL cannot run the callback; the
+next apply recovers that path as described above.
 
-`TestDrainWinRate` measures the rate and fails only below 50%. Under that, the
-drain is not buying what it claims and a pre-stop hook on the SDK's `RunConfig`
-stops being a nice-to-have.
+`TestPluginSigtermMidInstall` is the mandatory drain gate. `TestDrainWinRate`
+is optional historical sampling with a 50% diagnostic floor; no sample count
+substitutes for the strict scenario or the SDK's deterministic ordering test.
 
 ## Why this is not in `pkg/`
 
@@ -173,7 +172,7 @@ not exercised by it:
 
 - a **real agent** re-driving or re-polling a **real command**,
 - a **real signal** reaching the plugin process,
-- the **drain** racing the SDK's node teardown.
+- the **ordered drain** completing before the SDK tears down its node.
 
 None of those is a Go function you can call twice. This suite kills processes.
 

@@ -6,9 +6,6 @@ package main
 
 import (
 	"log"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/helm"
@@ -21,12 +18,12 @@ import (
 const drainTimeout = 10 * time.Second
 
 func main() {
-	go drainHelmOnSignal()
-	sdk.RunWithManifest(&Plugin{}, sdk.RunConfig{})
+	sdk.RunWithManifest(&Plugin{}, sdk.RunConfig{BeforeStop: drainHelmBeforeStop})
 }
 
-// drainHelmOnSignal cancels in-flight Helm operations when the plugin is asked
-// to stop, so a graceful restart leaves recoverable releases behind.
+// drainHelmBeforeStop cancels in-flight Helm operations after the SDK receives
+// SIGINT or SIGTERM and before it stops the plugin node. This ordering gives
+// Helm a bounded chance to leave a release recoverable by the next apply.
 //
 // Cancelling makes Helm run failRelease (install.go:411, upgrade.go:399), which
 // records the release as `failed` — a state the next apply simply upgrades over.
@@ -34,18 +31,11 @@ func main() {
 // refuses to install OR upgrade and which only `helm uninstall` clears. The
 // difference between those two outcomes is one Secret write.
 //
-// Best-effort by construction. The SDK installs its own SIGTERM handler and
-// calls node.Stop() (pkg/plugin/run.go:190-197); Go delivers to every
-// signal.Notify receiver concurrently and offers no ordering hook, so this
-// races the node teardown that follows. Winning is the common case because the
-// write is a single API call, and losing costs nothing — the outcome is then
-// exactly what it was before this existed. SIGKILL is out of reach either way,
-// and stalled() plus the recovery message in stalledMessage remain the floor.
-func drainHelmOnSignal() {
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	<-sig
-
+// The callback remains best-effort: it waits at most ten seconds. Parent death
+// and agent shutdown still deliver SIGKILL, which cannot run a callback, so
+// stalled-release detection and reapply recovery remain the floor for those
+// paths.
+func drainHelmBeforeStop() {
 	if helm.DrainInFlight(drainTimeout) {
 		return
 	}
