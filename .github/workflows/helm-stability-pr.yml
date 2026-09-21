@@ -18,7 +18,7 @@ on:
       formae_ref:
         description: 'Immutable formae source revision'
         required: false
-        default: '5658146d82d866486642ae0fb792abb9231883ef'
+        default: '61b8155ada280ad4a70c59915cba37cf55709906'
         type: string
       formae_version:
         description: 'Canonical formae version baked into the binary'
@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      FORMAE_REF: ${{ inputs.formae_ref || '5658146d82d866486642ae0fb792abb9231883ef' }}
+      FORMAE_REF: ${{ inputs.formae_ref || '61b8155ada280ad4a70c59915cba37cf55709906' }}
       FORMAE_VERSION: ${{ inputs.formae_version || '0.90.2' }}
     steps:
       - uses: actions/checkout@v7
