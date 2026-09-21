@@ -636,7 +636,7 @@ func (r *Release) submit(
 		return nil, err
 	}
 	if r.Config.UsesOidc() {
-		if _, err := newAuthBridge(info, identity, time.Now().Add(props.timeout())); err != nil {
+		if err := validateActionAllowance(info, props.timeout()); err != nil {
 			return nil, err
 		}
 	}
@@ -684,7 +684,7 @@ func (r *Release) submit(
 	}()
 	var conf *action.Configuration
 	if r.Config.UsesOidc() {
-		bridge, err = newAuthBridge(info, identity, own.deadline)
+		bridge, err = newAuthBridge(info, identity, props.timeout(), own.deadline)
 		if err != nil {
 			return nil, err
 		}
@@ -1153,7 +1153,7 @@ func (r *Release) Delete(ctx context.Context, request *resource.DeleteRequest) (
 		return nil, err
 	}
 	if r.Config.UsesOidc() {
-		if _, err := newAuthBridge(info, identity, time.Now().Add(defaultTimeoutSeconds*time.Second)); err != nil {
+		if err := validateActionAllowance(info, defaultTimeoutSeconds*time.Second); err != nil {
 			return nil, err
 		}
 	}
@@ -1228,7 +1228,7 @@ func (r *Release) Delete(ctx context.Context, request *resource.DeleteRequest) (
 	var bridge *authBridge
 	if r.Config.UsesOidc() {
 		deadline, _ := runCtx.Deadline()
-		bridge, err = newAuthBridge(info, identity, deadline)
+		bridge, err = newAuthBridge(info, identity, releaseTimeout(rel), deadline)
 		if err != nil {
 			cancel()
 			return nil, err
@@ -1424,7 +1424,7 @@ func (r *Release) Status(ctx context.Context, request *resource.StatusRequest) (
 			return failure(nativeIDUnless(op == opInstall, ns, name), resource.OperationErrorCodeGeneralServiceException, "Helm action deadline exhausted"), nil
 		}
 		if !flight.finished && flight.bridge != nil {
-			if err := validateActionAllowance(info, flight.deadline.Sub(flight.started)); err != nil {
+			if err := validateActionAllowance(info, flight.bridge.allowance); err != nil {
 				return nil, err
 			}
 			_, source, err := r.Client.OidcWorkerConfig(ctx, flight.bridge)

@@ -24,6 +24,7 @@ type authBridge struct {
 	mu               sync.Mutex
 	clock            clock.Clock
 	window           time.Duration
+	allowance        time.Duration // immutable configured action budget
 	deadline         time.Time
 	serviced         time.Time
 	token            string
@@ -36,8 +37,8 @@ type authBridge struct {
 	sourceGeneration uint64
 }
 
-func newAuthBridge(info plugin.OidcOperationInfo, authFingerprint string, deadline time.Time) (*authBridge, error) {
-	return newAuthBridgeWithClock(info, authFingerprint, deadline, clock.RealClock{})
+func newAuthBridge(info plugin.OidcOperationInfo, authFingerprint string, allowance time.Duration, deadline time.Time) (*authBridge, error) {
+	return newAuthBridgeWithClock(info, authFingerprint, allowance, deadline, clock.RealClock{})
 }
 func bridgeWindow(info plugin.OidcOperationInfo) (time.Duration, error) {
 	if info.BindingID == "" || info.CallTimeout <= 0 || info.PollInterval < 0 || info.RetryDelay < 0 || info.ThrottleMaxDelay < 0 {
@@ -60,16 +61,19 @@ func validateActionAllowance(info plugin.OidcOperationInfo, allowance time.Durat
 	}
 	return nil
 }
-func newAuthBridgeWithClock(info plugin.OidcOperationInfo, fingerprint string, deadline time.Time, c clock.Clock) (*authBridge, error) {
+func newAuthBridgeWithClock(info plugin.OidcOperationInfo, fingerprint string, allowance time.Duration, deadline time.Time, c clock.Clock) (*authBridge, error) {
 	if fingerprint == "" {
 		return nil, errors.New("helm OIDC requires valid auth identity")
 	}
-	now := c.Now()
-	if err := validateActionAllowance(info, deadline.Sub(now)); err != nil {
+	if err := validateActionAllowance(info, allowance); err != nil {
 		return nil, err
 	}
+	now := c.Now()
+	if !now.Before(deadline) {
+		return nil, context.DeadlineExceeded
+	}
 	w, _ := bridgeWindow(info)
-	return &authBridge{clock: c, window: w, deadline: deadline, serviced: now, changed: make(chan struct{}), requests: make(chan struct{}, 1), servicing: make(chan struct{}, 1)}, nil
+	return &authBridge{clock: c, window: w, allowance: allowance, deadline: deadline, serviced: now, changed: make(chan struct{}), requests: make(chan struct{}, 1), servicing: make(chan struct{}, 1)}, nil
 }
 
 func (b *authBridge) notifyLocked() { close(b.changed); b.changed = make(chan struct{}) }

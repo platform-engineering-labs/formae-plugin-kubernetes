@@ -24,7 +24,7 @@ func testBridge(t *testing.T) (*authBridge, *clocktesting.FakeClock) {
 	t.Helper()
 	now := time.Now()
 	c := clocktesting.NewFakeClock(now)
-	b, err := newAuthBridgeWithClock(bridgeInfo(), "identity", now.Add(10*time.Minute), c)
+	b, err := newAuthBridgeWithClock(bridgeInfo(), "identity", 10*time.Minute, now.Add(10*time.Minute), c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestBridgeTiming(t *testing.T) {
 		{"short", bridgeInfo(), 129 * time.Second, 0, "timeoutSeconds"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			b, e := newAuthBridgeWithClock(tc.info, "auth", now.Add(tc.timeout), clocktesting.NewFakeClock(now))
+			b, e := newAuthBridgeWithClock(tc.info, "auth", tc.timeout, now.Add(tc.timeout), clocktesting.NewFakeClock(now))
 			if tc.bad != "" {
 				if e == nil || !strings.Contains(e.Error(), tc.bad) {
 					t.Fatalf("error=%v", e)
@@ -306,5 +306,124 @@ func TestBridgeServiceBudgetIncludesQueueWait(t *testing.T) {
 	}
 	if remaining > 29980*time.Millisecond {
 		t.Fatalf("service renewed budget after queue wait: %s", remaining)
+	}
+}
+
+func TestBridgeMinimumAllowanceSurvivesClockMovement(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		info      plugin.OidcOperationInfo
+		allowance time.Duration
+	}{
+		{"default", bridgeInfo(), 130 * time.Second},
+		{"custom", plugin.OidcOperationInfo{BindingID: "custom", PollInterval: 90 * time.Second, CallTimeout: 45 * time.Second, RetryDelay: 5 * time.Second, ThrottleMaxDelay: 10 * time.Second}, 175 * time.Second},
+	} {
+		for _, elapsed := range []time.Duration{time.Nanosecond, time.Minute} {
+			t.Run(tc.name+"/"+elapsed.String(), func(t *testing.T) {
+				c := clocktesting.NewFakeClock(time.Now())
+				if err := validateActionAllowance(tc.info, tc.allowance); err != nil {
+					t.Fatal(err)
+				}
+				deadline := c.Now().Add(tc.allowance)
+				c.Step(elapsed)
+				bridge, err := newAuthBridgeWithClock(tc.info, "identity", tc.allowance, deadline, c)
+				if err != nil {
+					t.Fatalf("valid %s allowance rejected after %s: %v", tc.allowance, elapsed, err)
+				}
+				if bridge.allowance != tc.allowance || !bridge.deadline.Equal(deadline) {
+					t.Fatal("constructor changed original action allowance or deadline")
+				}
+			})
+		}
+	}
+}
+
+func TestBridgeRejectsInsufficientAllowanceOrExhaustedDeadline(t *testing.T) {
+	now := time.Now()
+	for _, tc := range []struct {
+		name      string
+		allowance time.Duration
+		deadline  time.Time
+		exhausted bool
+	}{
+		{"insufficient_allowance_with_distant_deadline", 130*time.Second - time.Nanosecond, now.Add(time.Hour), false},
+		{"at_deadline", 130 * time.Second, now, true},
+		{"after_deadline", 130 * time.Second, now.Add(-time.Nanosecond), true},
+		{"missing_deadline", 130 * time.Second, time.Time{}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bridge, err := newAuthBridgeWithClock(bridgeInfo(), "identity", tc.allowance, tc.deadline, clocktesting.NewFakeClock(now))
+			if bridge != nil || err == nil {
+				t.Fatal("invalid action budget accepted")
+			}
+			if tc.exhausted {
+				if !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatalf("exhausted action: %v", err)
+				}
+			} else if !strings.Contains(err.Error(), "timeoutSeconds") {
+				t.Fatalf("short configured allowance: %v", err)
+			}
+		})
+	}
+}
+
+func TestBridgeShortRemainderKeepsOriginalDeadline(t *testing.T) {
+	for _, cached := range []bool{false, true} {
+		name := "queued_refresh"
+		if cached {
+			name = "cached_token"
+		}
+		t.Run(name, func(t *testing.T) {
+			c := clocktesting.NewFakeClock(time.Now())
+			deadline := c.Now().Add(130 * time.Second)
+			c.Step(129 * time.Second)
+			b, err := newAuthBridgeWithClock(bridgeInfo(), "identity", 130*time.Second, deadline, c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cached {
+				if err := b.Service(context.Background(), bridgeSource(func(context.Context) (string, time.Time, error) { return "valid-token", c.Now().Add(time.Hour), nil })); err != nil {
+					t.Fatal(err)
+				}
+				if token, _, err := b.Token(context.Background()); err != nil || token != "valid-token" {
+					t.Fatalf("token before deadline: %q %v", token, err)
+				}
+				c.Step(time.Second)
+				if token, _, err := b.Token(context.Background()); token != "" || !errors.Is(err, errRefreshServiceStarved) {
+					t.Fatalf("token after deadline: %q %v", token, err)
+				}
+			} else {
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				done := make(chan error, 1)
+				go func() {
+					token, _, err := b.Token(ctx)
+					if token != "" {
+						done <- errors.New("queued refresh returned a token")
+						return
+					}
+					done <- err
+				}()
+				waitUntil := time.Now().Add(time.Second)
+				for !c.HasWaiters() {
+					if time.Now().After(waitUntil) {
+						t.Fatal("worker did not start bounded wait")
+					}
+					time.Sleep(time.Millisecond)
+				}
+				c.Step(time.Second)
+				select {
+				case err := <-done:
+					if !errors.Is(err, errRefreshServiceStarved) {
+						t.Fatalf("deadline wait: %v", err)
+					}
+				case <-time.After(time.Second):
+					t.Fatal("worker waited beyond original deadline")
+				}
+			}
+			if b.allowance != 130*time.Second || !b.deadline.Equal(deadline) {
+				t.Fatal("credential service renewed the action budget")
+			}
+		})
 	}
 }

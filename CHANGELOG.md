@@ -26,6 +26,8 @@ formae agent.
 
 ### Fixed
 
+- Helm OIDC accepts timeouts exactly at the required minimum without extending
+  operation deadlines.
 - **Renewed opaque credentials keep the normal refresh interval.** A successful
   refresh that returns the same token with a later expiry no longer causes
   repeated credential requests every ten seconds.
