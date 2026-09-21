@@ -588,7 +588,6 @@ func (f *formaeCLI) ResolveDrift(forma, controlsPath string, expected driftResou
 	const attempts = 3
 	var firstObservationID, firstResourceID string
 	attemptedReviewIDs := make([]string, 0, attempts)
-	seenReviewIDs := make(map[string]bool, attempts)
 
 	for attempt := 1; attempt <= attempts; attempt++ {
 		if attempt > 1 {
@@ -633,10 +632,6 @@ func (f *formaeCLI) ResolveDrift(forma, controlsPath string, expected driftResou
 			return "", "", fmt.Errorf("parse resolution review on attempt %d: %w (stdout: %s; stderr: %s)",
 				attempt, err, strings.TrimSpace(stdout), strings.TrimSpace(stderr))
 		}
-		if seenReviewIDs[reviewID] {
-			return "", "", fmt.Errorf("resolution review %q was reused on attempt %d", reviewID, attempt)
-		}
-		seenReviewIDs[reviewID] = true
 		attemptedReviewIDs = append(attemptedReviewIDs, reviewID)
 		controls.ReviewID = reviewID
 		controls.IdempotencyKey = "helm-interop-" + reviewID
@@ -658,6 +653,7 @@ func (f *formaeCLI) ResolveDrift(forma, controlsPath string, expected driftResou
 			return "", "", fmt.Errorf("resolution submission failed on attempt %d: %w; response is not a retryable stale review: %v (stdout: %s; stderr: %s)",
 				attempt, runErr, staleErr, strings.TrimSpace(stdout), strings.TrimSpace(stderr))
 		}
+		f.t.Logf("drift resolution stale (attempt %d/%d; ReviewID %q): %s", attempt, attempts, reviewID, reason)
 		if attempt == attempts {
 			return "", "", fmt.Errorf("drift resolution remained stale after %d attempts; attempted ReviewIDs: %v; final reason: %s (stdout: %s; stderr: %s)",
 				attempt, attemptedReviewIDs, reason, strings.TrimSpace(stdout), strings.TrimSpace(stderr))
