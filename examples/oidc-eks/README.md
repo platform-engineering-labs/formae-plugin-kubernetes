@@ -3,13 +3,12 @@
 The complete prerequisites are also embedded in `main.pkl`, because MCP returns Pkl files only.
 
 Installation OIDC prerequisites (these comments are part of the MCP example).
-This unreleased example uses the actual checkout schema via PklProject:
+This source example evaluates against the checkout schema via PklProject:
   ["k8s"] = import("../../schema/pkl/PklProject")
-In your own PklProject, AFTER a compatible release is published, replace that
-whole entry with ["k8s"] { uri = "package://hub.platform.engineering/plugins/k8s/schema/pkl/k8s/k8s@RELEASE_VERSION" }
-Replace RELEASE_VERSION with the published compatible plugin version; the
-current checkout's manifest version is NOT a claim that OIDC is released.
-Also add ["formae"] { uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.89.0" }.
+The MCP bundler rewrites that local self import to the resolved package. In a
+standalone project, use ["k8s"] { uri = "package://hub.platform.engineering/plugins/k8s/schema/pkl/k8s/k8s@0.1.13" }.
+Installation OIDC requires formae 0.90.2 or newer; this example pins
+["formae"] { uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.90.2" }.
 Coordinates below are fictitious public metadata. Replace them, including CA.
 
 This is an ordinary top-level K8S target: no parent cloud target is needed.

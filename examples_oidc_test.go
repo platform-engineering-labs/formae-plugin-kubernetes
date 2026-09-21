@@ -37,9 +37,14 @@ func TestOIDCExamples(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				for _, required := range []string{"RELEASE_VERSION", "PERSISTED subject", "no parent", "separate", "JWKS", "broker", "createOnly", "ACROSS STACKS", "Helm gate", "kube-system", "ClusterRoleBinding"} {
+				for _, required := range []string{"k8s@0.1.13", "formae@0.90.2", "PERSISTED subject", "no parent", "separate", "JWKS", "broker", "createOnly", "ACROSS STACKS", "Helm gate", "kube-system", "ClusterRoleBinding"} {
 					if !strings.Contains(string(body), required) {
 						t.Errorf("Pkl-only example lacks %q", required)
+					}
+				}
+				for _, obsolete := range []string{"unreleased example", "RELEASE_VERSION", "AFTER a compatible release is published"} {
+					if strings.Contains(string(body), obsolete) {
+						t.Errorf("Pkl-only example still contains pre-release instruction %q", obsolete)
 					}
 				}
 				raw, err := exec.Command("pkl", "eval", "--project-dir", dir, "--format", "json", entry).CombinedOutput()
