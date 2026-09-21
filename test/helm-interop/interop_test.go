@@ -117,7 +117,7 @@ func runInteropCell(t *testing.T, pair specPair) {
 	// --- 5. formae upgrades it ----------------------------------------------
 	target := pair.migrate.Version
 	cell.repin(adopted, target, spec.RepoURL, pair.migrate.Values)
-	if state, message := cell.formae.Apply("patch", adopted); state != "Success" {
+	if state, message := cell.formae.Apply("reconcile", adopted); state != "Success" {
 		t.Fatalf("formae upgrade to %s ended %s: %s%s",
 			target, state, orNoMessage(message), cell.helmSideReason())
 	}
@@ -131,10 +131,8 @@ func runInteropCell(t *testing.T, pair specPair) {
 		t.Errorf("formae's own upgrade did not stamp %s (labels: %v)", formaeManagedLabel, state.Labels)
 	}
 	// formae mutates a release through Helm's upgrade action and has no rollback
-	// verb, which is what decides the hook event a chart sees. Asserted here, on
-	// every chart, because this is the only step where formae actually moves a
-	// release: the reconcile in step 7 is refused by the drift guard in every run
-	// observed so far, CI included, so nothing downstream exercises the path.
+	// verb, which is what decides the hook event a chart sees. Assert it here on
+	// every chart, before the reviewed reconcile exercises the same path again.
 	if strings.HasPrefix(state.Description, "Rollback") {
 		t.Errorf("formae moves a release with Helm's upgrade action, so revision 2 "+
 			"must be recorded as one; Helm says %q", state.Description)
@@ -382,12 +380,12 @@ func (c *interopCell) adopt() string {
 	// Bound at the live version so the apply carries no change.
 	c.repin(adopted, c.spec.Version, "", nil)
 
-	// reconcile, and only here. The stack does not exist yet — the extracted
-	// forma is what creates it — and formae refuses a patch against a stack it
-	// has never seen. The usual warning against reconciling mid-adoption is
+	// Reconcile creates the stack because formae refuses a patch against a stack
+	// it has never seen. The usual warning against reconciling mid-adoption is
 	// about a stack already holding the namespace, where reconcile would treat
 	// it as absent and delete it, taking the release down. This stack holds
-	// nothing but the release. Every later apply is a patch.
+	// nothing but the release, so the later upgrade can safely establish a new
+	// reconcile baseline before the out-of-band rollback.
 	if state, message := c.formae.Apply("reconcile", adopted); state != "Success" {
 		c.t.Fatalf("adopt ended %s: %s", state, orNoMessage(message))
 	}
