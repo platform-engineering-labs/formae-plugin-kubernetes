@@ -15,10 +15,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/auth"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/prov"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/resources/registry"
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/transport"
+	"github.com/platform-engineering-labs/formae/pkg/plugin"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
@@ -27,6 +30,7 @@ import (
 	"helm.sh/helm/v3/pkg/kube"
 	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/storage/driver"
+	"k8s.io/client-go/rest"
 )
 
 const ResourceTypeRelease = "K8S::Helm::Release"
@@ -137,6 +141,10 @@ func requestID(namespace, name string, revision int, op opKind) string {
 }
 
 func parseRequestID(id string) (namespace, name string, revision int, op opKind, err error) {
+	if _, err := requestGeneration(id); err != nil {
+		return "", "", 0, "", err
+	}
+	id, _, _ = strings.Cut(id, "#")
 	at := strings.LastIndex(id, "@")
 	colon := strings.LastIndex(id, ":")
 	if at < 0 || colon < at {
@@ -150,7 +158,11 @@ func parseRequestID(id string) (namespace, name string, revision int, op opKind,
 	if err != nil {
 		return "", "", 0, "", fmt.Errorf("malformed target in request id %q: %w", id, err)
 	}
-	return namespace, name, revision, opKind(id[colon+1:]), nil
+	op = opKind(id[colon+1:])
+	if revision < 1 || (op != opInstall && op != opUpgrade && op != opDelete) {
+		return "", "", 0, "", fmt.Errorf("malformed Helm revision or operation")
+	}
+	return namespace, name, revision, op, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -602,7 +614,91 @@ func (r *Release) submit(
 		return nil, fmt.Errorf("%s: metadata.name and metadata.namespace are required", ResourceTypeRelease)
 	}
 
-	conf, err := newActionConfig(r.Config, ns)
+	var info plugin.OidcOperationInfo
+	var bridge *authBridge
+	var source auth.TokenSource
+	var workerREST *rest.Config
+	if r.Config.UsesOidc() {
+		var ok bool
+		info, ok = plugin.OidcOperationMetadata(ctx)
+		if !ok {
+			return nil, fmt.Errorf("helm OIDC requires trusted operation metadata")
+		}
+		bounded, cancel, err := brokerCallbackContext(ctx, info)
+		if err != nil {
+			return nil, err
+		}
+		defer cancel()
+		ctx = bounded
+	}
+	identity, binding, err := flightIdentity(ctx, r.Config)
+	if err != nil {
+		return nil, err
+	}
+	if r.Config.UsesOidc() {
+		if err := validateActionAllowance(info, props.timeout()); err != nil {
+			return nil, err
+		}
+	}
+
+	scope, err := resolveFlightScope(ctx, r.Client)
+	if err != nil {
+		return nil, err
+	}
+
+	wantedOp := opUpgrade
+	if isCreate {
+		wantedOp = opInstall
+	}
+	ctx, preparationCancel := context.WithCancel(ctx)
+	defer preparationCancel()
+	candidate := inflight{op: wantedOp, requestOp: wantedOp, fingerprint: fingerprint(props), authFingerprint: identity, bindingID: binding, generation: uuid.NewString(), preparing: true, cancel: preparationCancel, deadline: time.Now().Add(props.timeout())}
+	own, reserved := reserveRejoinFlight(scope, ns, name, candidate)
+	if !reserved {
+		if !matchesRejoin(own, &candidate) {
+			return flightConflict(ns, name), nil
+		}
+		defer releaseStatusFlight(scope, ns, name, own.generation)
+		if own.bridge != nil && !own.finished {
+			_, live, err := r.Client.OidcWorkerConfig(ctx, own.bridge)
+			if err != nil {
+				return progressAfterFlightError(scope, ns, name, own, isCreate, err)
+			}
+			fresh, err := serviceFlight(ctx, scope, ns, name, own, live)
+			if err != nil {
+				return progressAfterFlightError(scope, ns, name, own, isCreate, err)
+			}
+			if fresh == nil || fresh.generation != own.generation {
+				return flightConflict(ns, name), nil
+			}
+			own = fresh
+		}
+		return flightProgress(ns, name, own, isCreate), nil
+	}
+	workerStarted := false
+	ownedGeneration := own.generation
+	defer func() {
+		if !workerStarted {
+			removeOwnedFlight(scope, ns, name, ownedGeneration)
+		}
+	}()
+	var conf *action.Configuration
+	if r.Config.UsesOidc() {
+		bridge, err = newAuthBridge(info, identity, props.timeout(), own.deadline)
+		if err != nil {
+			return nil, err
+		}
+		workerREST, source, err = r.Client.OidcWorkerConfig(ctx, bridge)
+		if err != nil {
+			return nil, err
+		}
+		if err = bridge.Service(ctx, source); err != nil {
+			return nil, err
+		}
+		conf, err = r.callbackActionConfig(ctx, ns)
+	} else {
+		conf, err = newAsyncActionConfig(ctx, r.Config, ns)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -612,7 +708,7 @@ func (r *Release) submit(
 		return nil, err
 	}
 
-	flight := lookupFlight(r.Config, ns, name)
+	var flight *inflight
 	action, target := planSubmit(current, isCreate, flight, props)
 
 	if action == actionRecover {
@@ -635,18 +731,7 @@ func (r *Release) submit(
 
 	switch action {
 	case actionRejoin:
-		// Our own operation, still running in this process, for this exact
-		// desired state. requestID is a pure function of these inputs, so the
-		// ID handed back here is the one the interrupted call already returned,
-		// and Status carries on polling the operation that never stopped.
-		return &resource.ProgressResult{
-			OperationStatus: resource.OperationStatusInProgress,
-			NativeID:        nativeIDUnless(isCreate, ns, name),
-			RequestID:       requestID(ns, name, target, flight.op),
-			StatusMessage: fmt.Sprintf(
-				"rejoined the %s of %s/%s already running in this plugin (started %s ago)",
-				flight.op, ns, name, time.Since(flight.started).Truncate(time.Second)),
-		}, nil
+		return nil, fmt.Errorf("unexpected Helm rejoin after exclusive reservation")
 
 	case actionSettled:
 		// Already deployed at the desired version and values, so run no Helm
@@ -717,15 +802,36 @@ func (r *Release) submit(
 	// Reuse the stored chart when the forma asks for what is already deployed, so
 	// re-applying an unchanged release needs no repository access.
 	chrt, err := chooseChart(current, props, func() (*chart.Chart, error) {
+		if bridge != nil {
+			return loadChartWithin(ctx, conf, props)
+		}
 		return loadChart(conf, props)
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	// Detached: the request context is cancelled the moment submit returns.
-	runCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), props.timeout())
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	runCtx, cancel := context.WithDeadline(context.Background(), own.deadline)
+	workerConf := conf
+	if bridge != nil {
+		workerConf, err = newBridgeActionConfig(runCtx, workerREST, ns, bridge)
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+	}
 
+	if err := ctx.Err(); err != nil {
+		cancel()
+		return nil, err
+	}
+	if err := runCtx.Err(); err != nil {
+		cancel()
+		return nil, err
+	}
 	op := opInstall
 	if action == actionUpgrade {
 		op = opUpgrade
@@ -734,23 +840,30 @@ func (r *Release) submit(
 	// Registered before the goroutine starts, so a re-driven call cannot slip
 	// between the two and miss the operation it should be rejoining. The cancel
 	// func is what lets a graceful stop turn `pending-install` into `failed`.
-	registerFlight(r.Config, ns, name, inflight{
-		op:          op,
-		revision:    target,
-		fingerprint: fingerprint(props),
-		deadline:    time.Now().Add(props.timeout()),
-	}, cancel)
-
+	own, reserved = activateFlight(scope, ns, name, own.generation, cancel, func(f *inflight) {
+		f.op = op
+		f.revision = target
+		f.preparing = false
+		f.cancel = cancel
+		f.bridge = bridge
+	})
+	if !reserved {
+		cancel()
+		return nil, context.Canceled
+	}
+	workerStarted = true
 	done := make(chan error, 1)
 	go func() {
 		defer cancel()
-		defer removeFlight(r.Config, ns, name)
 		defer invalidateInventory(r.Config)
+		var runErr error
 		if op == opInstall {
-			done <- runInstall(runCtx, conf, props, chrt)
-			return
+			runErr = runInstall(runCtx, workerConf, props, chrt)
+		} else {
+			runErr = runUpgrade(runCtx, workerConf, props, chrt)
 		}
-		done <- runUpgrade(runCtx, conf, props, chrt)
+		finishFlight(scope, ns, name, own.generation, runErr)
+		done <- runErr
 	}()
 
 	// Do not return until Helm has written the release record, or has failed
@@ -762,14 +875,20 @@ func (r *Release) submit(
 	// before the record (bad values, template error, unreachable apiserver)
 	// leaves no trace in the cluster for Status to report, so it has to surface
 	// here or not at all.
-	if err := awaitRecorded(runCtx, conf, name, target, done); err != nil {
-		return nil, err
+	var awaitErr error
+	if bridge != nil {
+		awaitErr = awaitRecordedWithService(ctx, conf, name, target, done, bridge, source)
+	} else {
+		awaitErr = awaitRecorded(runCtx, conf, name, target, done)
+	}
+	if awaitErr != nil {
+		return progressAfterFlightError(scope, ns, name, own, isCreate, awaitErr)
 	}
 
 	return &resource.ProgressResult{
 		OperationStatus: resource.OperationStatusInProgress,
 		NativeID:        nativeIDUnless(isCreate, ns, name),
-		RequestID:       requestID(ns, name, target, op),
+		RequestID:       flightRequestID(ns, name, own),
 	}, nil
 }
 
@@ -881,7 +1000,7 @@ func (r *Release) Read(ctx context.Context, request *resource.ReadRequest) (*res
 		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
 	}
 
-	conf, err := newActionConfig(r.Config, ns)
+	conf, err := r.callbackActionConfig(ctx, ns)
 	if err != nil {
 		return nil, err
 	}
@@ -1015,7 +1134,81 @@ func (r *Release) Delete(ctx context.Context, request *resource.DeleteRequest) (
 		return nil, fmt.Errorf("invalid native id %q for %s: %w", request.NativeID, request.ResourceType, err)
 	}
 
-	conf, err := newActionConfig(r.Config, ns)
+	var info plugin.OidcOperationInfo
+	if r.Config.UsesOidc() {
+		var ok bool
+		info, ok = plugin.OidcOperationMetadata(ctx)
+		if !ok {
+			return nil, fmt.Errorf("helm OIDC requires trusted operation metadata")
+		}
+		bounded, cancel, err := brokerCallbackContext(ctx, info)
+		if err != nil {
+			return nil, err
+		}
+		defer cancel()
+		ctx = bounded
+	}
+	identity, binding, err := flightIdentity(ctx, r.Config)
+	if err != nil {
+		return nil, err
+	}
+	if r.Config.UsesOidc() {
+		if err := validateActionAllowance(info, defaultTimeoutSeconds*time.Second); err != nil {
+			return nil, err
+		}
+	}
+
+	scope, err := resolveFlightScope(ctx, r.Client)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, preparationCancel := context.WithCancel(ctx)
+	defer preparationCancel()
+	candidate := inflight{op: opDelete, authFingerprint: identity, bindingID: binding, generation: uuid.NewString(), preparing: true, cancel: preparationCancel}
+	own, reserved := reserveRejoinFlight(scope, ns, name, candidate)
+	if !reserved {
+		if !matchesRejoin(own, &candidate) {
+			return &resource.DeleteResult{ProgressResult: flightConflict(ns, name)}, nil
+		}
+		defer releaseStatusFlight(scope, ns, name, own.generation)
+		if own.bridge != nil && !own.finished {
+			_, source, err := r.Client.OidcWorkerConfig(ctx, own.bridge)
+			if err != nil {
+				pr, reported := progressAfterFlightError(scope, ns, name, own, false, err)
+				if reported != nil {
+					return nil, reported
+				}
+				return &resource.DeleteResult{ProgressResult: pr}, nil
+			}
+			fresh, err := serviceFlight(ctx, scope, ns, name, own, source)
+			if err != nil {
+				pr, reported := progressAfterFlightError(scope, ns, name, own, false, err)
+				if reported != nil {
+					return nil, reported
+				}
+				return &resource.DeleteResult{ProgressResult: pr}, nil
+			}
+			if fresh == nil || fresh.generation != own.generation {
+				return &resource.DeleteResult{ProgressResult: flightConflict(ns, name)}, nil
+			}
+			own = fresh
+		}
+		return &resource.DeleteResult{ProgressResult: flightProgress(ns, name, own, false)}, nil
+	}
+	workerStarted := false
+	ownedGeneration := own.generation
+	defer func() {
+		if !workerStarted {
+			removeOwnedFlight(scope, ns, name, ownedGeneration)
+		}
+	}()
+	var conf *action.Configuration
+	if r.Config.UsesOidc() {
+		conf, err = r.callbackActionConfig(ctx, ns)
+	} else {
+		conf, err = newAsyncActionConfig(ctx, r.Config, ns)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -1031,6 +1224,34 @@ func (r *Release) Delete(ctx context.Context, request *resource.DeleteRequest) (
 		}}, nil
 	}
 
+	runCtx, cancel := context.WithTimeout(context.Background(), releaseTimeout(rel))
+	var bridge *authBridge
+	if r.Config.UsesOidc() {
+		deadline, _ := runCtx.Deadline()
+		bridge, err = newAuthBridge(info, identity, releaseTimeout(rel), deadline)
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+		restCfg, source, err := r.Client.OidcWorkerConfig(ctx, bridge)
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+		if err := bridge.Service(ctx, source); err != nil {
+			cancel()
+			return nil, err
+		}
+		conf, err = newBridgeActionConfig(runCtx, restCfg, ns, bridge)
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		cancel()
+		return nil, err
+	}
 	un := action.NewUninstall(conf)
 	// Wait for the objects to actually go, not just for the deletes to be
 	// accepted. Returning before termination let a destroy-then-apply race the
@@ -1060,24 +1281,33 @@ func (r *Release) Delete(ctx context.Context, request *resource.DeleteRequest) (
 	// Uninstall has no RunWithContext in Helm v3 (helm#12109 is not in), so
 	// u.Timeout is what bounds it.
 	//
-	// Registered before the goroutine starts, so no Status poll can slip between
-	// the two and see a record with no operation behind it. No cancel func is
-	// supplied for the same reason there is no RunWithContext: there is nothing to
-	// unwind. DrainInFlight still waits for it to deregister, and an uninstall cut
-	// short by a kill is picked up by the next Delete, which Helm makes idempotent.
-	registerFlight(r.Config, ns, name, deleteFlight(rel), nil)
-
+	// The bridge worker's HTTP adapter carries runCtx even though Helm's
+	// Uninstall API has no RunWithContext. Legacy uninstall remains bounded by
+	// Helm's timeout; the action reservation prevents a duplicate uninstall.
+	own, reserved = activateFlight(scope, ns, name, own.generation, cancel, func(f *inflight) {
+		f.revision = rel.Version
+		f.preparing = false
+		f.cancel = cancel
+		f.bridge = bridge
+		f.deadline = time.Now().Add(releaseTimeout(rel))
+	})
+	if !reserved {
+		cancel()
+		return nil, context.Canceled
+	}
+	workerStarted = true
 	go func() {
-		defer removeFlight(r.Config, ns, name)
+		defer cancel()
 		defer invalidateInventory(r.Config)
-		_, _ = un.Run(name)
+		_, err := un.Run(name)
+		finishFlight(scope, ns, name, own.generation, err)
 	}()
 
 	return &resource.DeleteResult{ProgressResult: &resource.ProgressResult{
 		Operation:       resource.OperationDelete,
 		OperationStatus: resource.OperationStatusInProgress,
 		NativeID:        prov.NativeID(ns, name),
-		RequestID:       requestID(ns, name, rel.Version, opDelete),
+		RequestID:       flightRequestID(ns, name, own),
 		StatusMessage:   fmt.Sprintf("uninstalling release %s/%s", ns, name),
 	}}, nil
 }
@@ -1086,7 +1316,50 @@ func (r *Release) Delete(ctx context.Context, request *resource.DeleteRequest) (
 // Status
 // ---------------------------------------------------------------------------
 
-func (r *Release) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
+func (r *Release) Status(ctx context.Context, request *resource.StatusRequest) (result *resource.StatusResult, resultErr error) {
+	// A Status Go error is terminal in the SDK. Before authenticated UID
+	// resolution, only a read-only observation of the full owning generation
+	// may bound retry. No bridge service or registry mutation is permitted.
+	var matchedScope, matchedGeneration, matchedNS, matchedName string
+	var observeUnidentified func() *resource.StatusResult
+	// Keep the matched reader until transient recovery has observed its outcome.
+	// Defers run in reverse order, so release must be registered before recovery.
+	defer func() {
+		if matchedScope != "" {
+			releaseStatusFlight(matchedScope, matchedNS, matchedName, matchedGeneration)
+		}
+	}()
+	defer func() {
+		if !isFlightServiceError(resultErr) {
+			return
+		}
+		if matchedScope == "" {
+			if observeUnidentified != nil {
+				result = observeUnidentified()
+				resultErr = nil
+			}
+			return
+		}
+		result = inProgress(request.NativeID, request.RequestID, nil, "temporary Helm service failure; retrying status")
+		if matchedScope != "" {
+			f := lookupFlight(matchedScope, matchedNS, matchedName)
+			if f == nil || f.generation != matchedGeneration {
+				result = &resource.StatusResult{ProgressResult: flightConflict(matchedNS, matchedName)}
+				resultErr = nil
+				return
+			}
+			if !f.finished && !f.deadline.IsZero() && !time.Now().Before(f.deadline) {
+				if f.cancel != nil {
+					f.cancel()
+				}
+				result = failure(nativeIDUnless(f.op == opInstall, matchedNS, matchedName), resource.OperationErrorCodeGeneralServiceException, "Helm action deadline exhausted")
+				resultErr = nil
+				return
+			}
+			result = reconcileFlightResult(matchedScope, matchedNS, matchedName, matchedGeneration, request.RequestID, result)
+		}
+		resultErr = nil
+	}()
 	// The release is located from the RequestID, not the NativeID: Create
 	// withholds the NativeID until the release is fully deployed, so on an
 	// install poll the NativeID is empty by design. The RequestID carries
@@ -1097,7 +1370,81 @@ func (r *Release) Status(ctx context.Context, request *resource.StatusRequest) (
 		return nil, err
 	}
 
-	conf, err := newActionConfig(r.Config, ns)
+	var info plugin.OidcOperationInfo
+	if r.Config.UsesOidc() {
+		var ok bool
+		info, ok = plugin.OidcOperationMetadata(ctx)
+		if !ok {
+			return nil, fmt.Errorf("helm OIDC requires trusted operation metadata")
+		}
+		bounded, cancel, err := brokerCallbackContext(ctx, info)
+		if err != nil {
+			return nil, err
+		}
+		defer cancel()
+		ctx = bounded
+	}
+	identity, binding, err := flightIdentity(ctx, r.Config)
+	if err != nil {
+		return nil, err
+	}
+	generation, err := requestGeneration(request.RequestID)
+	if err != nil {
+		return nil, err
+	}
+	observeUnidentified = func() *resource.StatusResult {
+		return observeUnidentifiedFlight(ns, name, wantRevision, op, generation, identity, binding, request.RequestID)
+	}
+	scope, err := resolveFlightScope(ctx, r.Client)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	recoveryID := uuid.NewString()
+	flight, recoveryOwned := acquireStatusFlight(scope, ns, name, generation, inflight{op: op, revision: wantRevision, generation: recoveryID, authFingerprint: identity, bindingID: binding, preparing: true, cancel: cancel})
+	if recoveryOwned {
+		defer removeOwnedFlight(scope, ns, name, recoveryID)
+		flight = nil
+	} else {
+		if flight == nil || flight.preparing || flight.op != op || flight.revision != wantRevision || flight.authFingerprint != identity || flight.bindingID != binding || flight.generation != generation {
+			return &resource.StatusResult{ProgressResult: flightConflict(ns, name)}, nil
+		}
+		matchedScope, matchedGeneration, matchedNS, matchedName = scope, generation, ns, name
+		if flight.finished && flight.outcome != nil {
+			return reconcileFlightResult(scope, ns, name, generation, request.RequestID, nil), nil
+		}
+		if !flight.finished && !flight.deadline.IsZero() && !time.Now().Before(flight.deadline) {
+			if flight.cancel != nil {
+				flight.cancel()
+			}
+			// Deadline reporting cannot wait for non-preemptible Helm work to
+			// return. Keep the flight unconsumed until the worker actually stops;
+			// this verdict must not release its exclusion or cancellation fence.
+			return failure(nativeIDUnless(op == opInstall, ns, name), resource.OperationErrorCodeGeneralServiceException, "Helm action deadline exhausted"), nil
+		}
+		if !flight.finished && flight.bridge != nil {
+			if err := validateActionAllowance(info, flight.bridge.allowance); err != nil {
+				return nil, err
+			}
+			_, source, err := r.Client.OidcWorkerConfig(ctx, flight.bridge)
+			if err != nil {
+				return nil, err
+			}
+			flight, err = serviceFlight(ctx, scope, ns, name, flight, source)
+			if err != nil {
+				return nil, err
+			}
+			if flight != nil && flight.finished && flight.outcome != nil {
+				return reconcileFlightResult(scope, ns, name, generation, request.RequestID, nil), nil
+			}
+		}
+		if flight != nil && flight.finished {
+			flight = nil
+		}
+	}
+
+	conf, err := r.callbackActionConfig(ctx, ns)
 	if err != nil {
 		return nil, err
 	}
@@ -1107,16 +1454,24 @@ func (r *Release) Status(ctx context.Context, request *resource.StatusRequest) (
 		return nil, err
 	}
 
+	if r.Config.UsesOidc() && recoveryOwned && releaseIsPending(rel) {
+		if err := validateActionAllowance(info, releaseTimeout(rel)); err != nil {
+			return nil, err
+		}
+	}
+
 	// Scoped to this target: the same namespace/name on another cluster is a
 	// different release, and its operation says nothing about this one.
-	flight := lookupFlight(r.Config, ns, name)
 
 	if op == opDelete {
-		return &resource.StatusResult{
-			ProgressResult: deleteStatus(rel, flight, ns, name, request.RequestID),
-		}, nil
+		result = &resource.StatusResult{ProgressResult: deleteStatus(rel, flight, ns, name, request.RequestID)}
+	} else {
+		result, err = r.installStatus(ctx, conf, rel, flight, ns, name, wantRevision, op, request.RequestID)
 	}
-	return r.installStatus(ctx, conf, rel, flight, ns, name, wantRevision, op, request.RequestID)
+	if !recoveryOwned && err == nil {
+		result = reconcileFlightResult(scope, ns, name, generation, request.RequestID, result)
+	}
+	return result, err
 }
 
 // deleteStatus reports on an uninstall in flight.
@@ -1199,6 +1554,9 @@ func (r *Release) installStatus(
 	pendingID := nativeIDUnless(op == opInstall, ns, name)
 	nativeID := prov.NativeID(ns, name)
 
+	if rel == nil && flight != nil && flight.op == op && flight.revision == wantRevision && time.Now().Before(flight.deadline) {
+		return inProgress(pendingID, reqID, nil, "waiting for Helm release record"), nil
+	}
 	if rel == nil {
 		// The record is written before any hook runs, so its absence this late
 		// means the operation never got off the ground.
@@ -1289,26 +1647,6 @@ func (r *Release) installStatus(
 
 	default:
 		return inProgress(pendingID, reqID, nil, fmt.Sprintf("release is %s", rel.Info.Status)), nil
-	}
-}
-
-// deleteFlight describes the uninstall Delete is about to start.
-//
-// Registering it is not bookkeeping, it is what keeps a live uninstall from being
-// called abandoned. `abandoned` is "a record this plugin owns, with no operation
-// behind it", so with nothing registered the first Status poll — 20s after Delete
-// under the default StatusCheckInterval — reports every uninstall slower than
-// that as abandoned and asks the agent to re-drive Delete, starting a second
-// uninstall of the same release. Slower than that is ordinary: a pre-delete hook,
-// or Wait=true sitting through a Pod's terminationGracePeriodSeconds.
-//
-// Bounded by the timeout recorded on the release so that the uninstall and the
-// stalled() verdict that judges it agree on how long it is allowed to take.
-func deleteFlight(rel *release.Release) inflight {
-	return inflight{
-		op:       opDelete,
-		revision: rel.Version,
-		deadline: time.Now().Add(releaseTimeout(rel)),
 	}
 }
 
@@ -1568,7 +1906,7 @@ func manifestReady(
 func (r *Release) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
 	// Namespace "" with AllNamespaces: the storage driver needs a namespace to
 	// build its client, the list itself spans the cluster.
-	conf, err := newActionConfig(r.Config, "")
+	conf, err := r.callbackActionConfig(ctx, "")
 	if err != nil {
 		return nil, err
 	}

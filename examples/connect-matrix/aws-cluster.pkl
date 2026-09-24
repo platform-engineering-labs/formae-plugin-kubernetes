@@ -1,3 +1,6 @@
+// AMBIENT AUTH: self-hosted / operator-policy-permitted only. Hosted installation
+// OIDC recipe: https://github.com/platform-engineering-labs/formae-plugin-kubernetes/tree/main/examples/oidc-eks
+// Cluster provisioning/metadata references do not establish separate access grants.
 /// Phase 1 of the AWS connect matrix: stand up an EKS cluster and NOTHING else.
 ///
 /// Deliberately omits the Kubernetes target. The whole point of this pair is

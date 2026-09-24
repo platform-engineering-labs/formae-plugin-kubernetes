@@ -9,10 +9,15 @@ on:
   workflow_dispatch:
     inputs:
       formae_branch:
-        description: "Formae branch to build from (default: main)"
+        description: "Formae branch or immutable commit to build (default: main)"
         required: false
         default: "main"
         type: string
+      exact_plugin_modules:
+        description: "Use the dispatched plugin commit and its checked-in module graph unchanged"
+        required: false
+        default: false
+        type: boolean
       formae_version:
         description: |
           Formae version baked into the binary via VERSION (also propagated to
@@ -33,12 +38,22 @@ jobs:
   build-formae:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      core_sha: ${{ steps.build.outputs.core_sha }}
+      core_version: ${{ steps.build.outputs.core_version }}
     steps:
       - name: Build formae
+        id: build
         run: |
-          BRANCH="${{ inputs.formae_branch || 'main' }}"
-          echo "Building formae from branch: ${BRANCH}"
-          git clone --branch "${BRANCH}" --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          set -euo pipefail
+          CORE_REF="${{ inputs.formae_branch || 'main' }}"
+          echo "Building formae from ref: ${CORE_REF}"
+          git init /tmp/formae
+          git -C /tmp/formae remote add origin https://github.com/platform-engineering-labs/formae.git
+          git -C /tmp/formae fetch --depth 1 origin "${CORE_REF}"
+          git -C /tmp/formae checkout --detach FETCH_HEAD
+          CORE_SHA=$(git -C /tmp/formae rev-parse HEAD)
+          echo "core_sha=${CORE_SHA}" >> "$GITHUB_OUTPUT"
           cd /tmp/formae
           git fetch --tags
           # Get latest release tag (sorted by semver) and pass to make
@@ -61,7 +76,8 @@ jobs:
           else
             echo "Using formae_version input: ${VERSION}"
           fi
-          echo "Building formae with VERSION=${VERSION}"
+          echo "core_version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Building formae ${VERSION} from ${CORE_SHA}"
           make build VERSION="${VERSION}"
 
       - name: Upload formae binary and Makefile
@@ -124,6 +140,11 @@ jobs:
       - name: Checkout plugin
         uses: actions/checkout@v7
 
+      - name: Record plugin module hashes
+        run: |
+          echo "PLUGIN_GO_MOD_SHA=$(sha256sum go.mod | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          echo "PLUGIN_GO_SUM_SHA=$(sha256sum go.sum | cut -d' ' -f1)" >> "$GITHUB_ENV"
+
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
@@ -146,12 +167,15 @@ jobs:
           name: formae-binary
           path: /tmp/formae-artifact
 
-      - name: Clone formae source for replace directives
+      - name: Check out exact formae source
         run: |
-          # Match the branch the binary was built from so go.mod replace
-          # directives pick up the same source the binary embeds.
-          BRANCH="${{ inputs.formae_branch || 'main' }}"
-          git clone --branch "${BRANCH}" --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          set -euo pipefail
+          CORE_SHA="${{ needs.build-formae.outputs.core_sha }}"
+          git init /tmp/formae
+          git -C /tmp/formae remote add origin https://github.com/platform-engineering-labs/formae.git
+          git -C /tmp/formae fetch --depth 1 origin "${CORE_SHA}"
+          git -C /tmp/formae checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/formae rev-parse HEAD)" = "${CORE_SHA}"
           cp /tmp/formae-artifact/formae /tmp/formae/formae
           chmod +x /tmp/formae/formae
 
@@ -160,6 +184,7 @@ jobs:
       # plugin branch to build against. Parse the @ref suffix and check
       # out that ref so the plugin is compatible with the formae binary.
       - name: Align plugin branch with formae Makefile
+        if: ${{ inputs.exact_plugin_modules != true }}
         run: |
           PLUGIN_NAME=$(basename "${{ github.repository }}")
           REF=$(grep "${PLUGIN_NAME}" /tmp/formae/Makefile \
@@ -175,6 +200,7 @@ jobs:
           fi
 
       - name: Inject formae replace directives
+        if: ${{ inputs.exact_plugin_modules != true }}
         run: |
           FORMAE_SRC=/tmp/formae
           for pkg in pkg/auth pkg/model pkg/plugin pkg/plugin-conformance-tests; do
@@ -184,6 +210,28 @@ jobs:
             fi
           done
           go mod tidy
+
+      - name: Verify and log source identities
+        env:
+          EXACT_PLUGIN_MODULES: ${{ inputs.exact_plugin_modules || false }}
+          EXPECTED_PLUGIN_SHA: ${{ github.sha }}
+          EXPECTED_CORE_SHA: ${{ needs.build-formae.outputs.core_sha }}
+          EXPECTED_CORE_VERSION: ${{ needs.build-formae.outputs.core_version }}
+        run: |
+          set -euo pipefail
+          PLUGIN_SHA=$(git rev-parse HEAD)
+          CORE_SHA=$(git -C /tmp/formae rev-parse HEAD)
+          echo "plugin sha=${PLUGIN_SHA}"
+          echo "core sha=${CORE_SHA}"
+          echo "core version=${EXPECTED_CORE_VERSION}"
+          /tmp/formae/formae --version
+          go list -m all
+          test "${CORE_SHA}" = "${EXPECTED_CORE_SHA}"
+          if [ "${EXACT_PLUGIN_MODULES}" = "true" ]; then
+            test "${PLUGIN_SHA}" = "${EXPECTED_PLUGIN_SHA}"
+            test "$(sha256sum go.mod | cut -d' ' -f1)" = "${PLUGIN_GO_MOD_SHA}"
+            test "$(sha256sum go.sum | cut -d' ' -f1)" = "${PLUGIN_GO_SUM_SHA}"
+          fi
 
       - name: Install plugin
         run: make install
@@ -228,6 +276,11 @@ jobs:
       - name: Checkout plugin
         uses: actions/checkout@v7
 
+      - name: Record plugin module hashes
+        run: |
+          echo "PLUGIN_GO_MOD_SHA=$(sha256sum go.mod | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          echo "PLUGIN_GO_SUM_SHA=$(sha256sum go.sum | cut -d' ' -f1)" >> "$GITHUB_ENV"
+
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
@@ -250,14 +303,20 @@ jobs:
           name: formae-binary
           path: /tmp/formae-artifact
 
-      - name: Clone formae source for replace directives
+      - name: Check out exact formae source
         run: |
-          BRANCH="${{ inputs.formae_branch || 'main' }}"
-          git clone --branch "${BRANCH}" --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          set -euo pipefail
+          CORE_SHA="${{ needs.build-formae.outputs.core_sha }}"
+          git init /tmp/formae
+          git -C /tmp/formae remote add origin https://github.com/platform-engineering-labs/formae.git
+          git -C /tmp/formae fetch --depth 1 origin "${CORE_SHA}"
+          git -C /tmp/formae checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/formae rev-parse HEAD)" = "${CORE_SHA}"
           cp /tmp/formae-artifact/formae /tmp/formae/formae
           chmod +x /tmp/formae/formae
 
       - name: Inject formae replace directives
+        if: ${{ inputs.exact_plugin_modules != true }}
         run: |
           FORMAE_SRC=/tmp/formae
           for pkg in pkg/auth pkg/model pkg/plugin pkg/plugin-conformance-tests; do
@@ -266,6 +325,28 @@ jobs:
             fi
           done
           go mod tidy
+
+      - name: Verify and log source identities
+        env:
+          EXACT_PLUGIN_MODULES: ${{ inputs.exact_plugin_modules || false }}
+          EXPECTED_PLUGIN_SHA: ${{ github.sha }}
+          EXPECTED_CORE_SHA: ${{ needs.build-formae.outputs.core_sha }}
+          EXPECTED_CORE_VERSION: ${{ needs.build-formae.outputs.core_version }}
+        run: |
+          set -euo pipefail
+          PLUGIN_SHA=$(git rev-parse HEAD)
+          CORE_SHA=$(git -C /tmp/formae rev-parse HEAD)
+          echo "plugin sha=${PLUGIN_SHA}"
+          echo "core sha=${CORE_SHA}"
+          echo "core version=${EXPECTED_CORE_VERSION}"
+          /tmp/formae/formae --version
+          go list -m all
+          test "${CORE_SHA}" = "${EXPECTED_CORE_SHA}"
+          if [ "${EXACT_PLUGIN_MODULES}" = "true" ]; then
+            test "${PLUGIN_SHA}" = "${EXPECTED_PLUGIN_SHA}"
+            test "$(sha256sum go.mod | cut -d' ' -f1)" = "${PLUGIN_GO_MOD_SHA}"
+            test "$(sha256sum go.sum | cut -d' ' -f1)" = "${PLUGIN_GO_SUM_SHA}"
+          fi
 
       - name: Run helm stability suite
         env:
@@ -292,6 +373,11 @@ jobs:
       - name: Checkout plugin
         uses: actions/checkout@v7
 
+      - name: Record plugin module hashes
+        run: |
+          echo "PLUGIN_GO_MOD_SHA=$(sha256sum go.mod | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          echo "PLUGIN_GO_SUM_SHA=$(sha256sum go.sum | cut -d' ' -f1)" >> "$GITHUB_ENV"
+
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
@@ -314,12 +400,15 @@ jobs:
           name: formae-binary
           path: /tmp/formae-artifact
 
-      - name: Clone formae source for replace directives
+      - name: Check out exact formae source
         run: |
-          # Match the branch the binary was built from so go.mod replace
-          # directives pick up the same source the binary embeds.
-          BRANCH="${{ inputs.formae_branch || 'main' }}"
-          git clone --branch "${BRANCH}" --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          set -euo pipefail
+          CORE_SHA="${{ needs.build-formae.outputs.core_sha }}"
+          git init /tmp/formae
+          git -C /tmp/formae remote add origin https://github.com/platform-engineering-labs/formae.git
+          git -C /tmp/formae fetch --depth 1 origin "${CORE_SHA}"
+          git -C /tmp/formae checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/formae rev-parse HEAD)" = "${CORE_SHA}"
           cp /tmp/formae-artifact/formae /tmp/formae/formae
           chmod +x /tmp/formae/formae
 
@@ -328,6 +417,7 @@ jobs:
       # plugin branch to build against. Parse the @ref suffix and check
       # out that ref so the plugin is compatible with the formae binary.
       - name: Align plugin branch with formae Makefile
+        if: ${{ inputs.exact_plugin_modules != true }}
         run: |
           PLUGIN_NAME=$(basename "${{ github.repository }}")
           REF=$(grep "${PLUGIN_NAME}" /tmp/formae/Makefile \
@@ -343,6 +433,7 @@ jobs:
           fi
 
       - name: Inject formae replace directives
+        if: ${{ inputs.exact_plugin_modules != true }}
         run: |
           FORMAE_SRC=/tmp/formae
           for pkg in pkg/auth pkg/model pkg/plugin pkg/plugin-conformance-tests; do
@@ -352,6 +443,28 @@ jobs:
             fi
           done
           go mod tidy
+
+      - name: Verify and log source identities
+        env:
+          EXACT_PLUGIN_MODULES: ${{ inputs.exact_plugin_modules || false }}
+          EXPECTED_PLUGIN_SHA: ${{ github.sha }}
+          EXPECTED_CORE_SHA: ${{ needs.build-formae.outputs.core_sha }}
+          EXPECTED_CORE_VERSION: ${{ needs.build-formae.outputs.core_version }}
+        run: |
+          set -euo pipefail
+          PLUGIN_SHA=$(git rev-parse HEAD)
+          CORE_SHA=$(git -C /tmp/formae rev-parse HEAD)
+          echo "plugin sha=${PLUGIN_SHA}"
+          echo "core sha=${CORE_SHA}"
+          echo "core version=${EXPECTED_CORE_VERSION}"
+          /tmp/formae/formae --version
+          go list -m all
+          test "${CORE_SHA}" = "${EXPECTED_CORE_SHA}"
+          if [ "${EXACT_PLUGIN_MODULES}" = "true" ]; then
+            test "${PLUGIN_SHA}" = "${EXPECTED_PLUGIN_SHA}"
+            test "$(sha256sum go.mod | cut -d' ' -f1)" = "${PLUGIN_GO_MOD_SHA}"
+            test "$(sha256sum go.sum | cut -d' ' -f1)" = "${PLUGIN_GO_SUM_SHA}"
+          fi
 
       - name: Install plugin
         run: make install
@@ -491,6 +604,11 @@ jobs:
       - name: Checkout plugin
         uses: actions/checkout@v7
 
+      - name: Record plugin module hashes
+        run: |
+          echo "PLUGIN_GO_MOD_SHA=$(sha256sum go.mod | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          echo "PLUGIN_GO_SUM_SHA=$(sha256sum go.sum | cut -d' ' -f1)" >> "$GITHUB_ENV"
+
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
@@ -513,14 +631,20 @@ jobs:
           name: formae-binary
           path: /tmp/formae-artifact
 
-      - name: Clone formae source for replace directives
+      - name: Check out exact formae source
         run: |
-          BRANCH="${{ inputs.formae_branch || 'main' }}"
-          git clone --branch "${BRANCH}" --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          set -euo pipefail
+          CORE_SHA="${{ needs.build-formae.outputs.core_sha }}"
+          git init /tmp/formae
+          git -C /tmp/formae remote add origin https://github.com/platform-engineering-labs/formae.git
+          git -C /tmp/formae fetch --depth 1 origin "${CORE_SHA}"
+          git -C /tmp/formae checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/formae rev-parse HEAD)" = "${CORE_SHA}"
           cp /tmp/formae-artifact/formae /tmp/formae/formae
           chmod +x /tmp/formae/formae
 
       - name: Inject formae replace directives
+        if: ${{ inputs.exact_plugin_modules != true }}
         run: |
           FORMAE_SRC=/tmp/formae
           for pkg in pkg/auth pkg/model pkg/plugin pkg/plugin-conformance-tests; do
@@ -529,6 +653,28 @@ jobs:
             fi
           done
           go mod tidy
+
+      - name: Verify and log source identities
+        env:
+          EXACT_PLUGIN_MODULES: ${{ inputs.exact_plugin_modules || false }}
+          EXPECTED_PLUGIN_SHA: ${{ github.sha }}
+          EXPECTED_CORE_SHA: ${{ needs.build-formae.outputs.core_sha }}
+          EXPECTED_CORE_VERSION: ${{ needs.build-formae.outputs.core_version }}
+        run: |
+          set -euo pipefail
+          PLUGIN_SHA=$(git rev-parse HEAD)
+          CORE_SHA=$(git -C /tmp/formae rev-parse HEAD)
+          echo "plugin sha=${PLUGIN_SHA}"
+          echo "core sha=${CORE_SHA}"
+          echo "core version=${EXPECTED_CORE_VERSION}"
+          /tmp/formae/formae --version
+          go list -m all
+          test "${CORE_SHA}" = "${EXPECTED_CORE_SHA}"
+          if [ "${EXACT_PLUGIN_MODULES}" = "true" ]; then
+            test "${PLUGIN_SHA}" = "${EXPECTED_PLUGIN_SHA}"
+            test "$(sha256sum go.mod | cut -d' ' -f1)" = "${PLUGIN_GO_MOD_SHA}"
+            test "$(sha256sum go.sum | cut -d' ' -f1)" = "${PLUGIN_GO_SUM_SHA}"
+          fi
 
       - name: Install plugin
         run: make install

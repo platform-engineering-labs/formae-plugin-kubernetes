@@ -7,11 +7,22 @@
 package main
 
 import (
+	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/base64"
+	"encoding/pem"
+	"fmt"
+	"github.com/platform-engineering-labs/formae/pkg/plugin"
+	"math/big"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/config"
+	"github.com/platform-engineering-labs/formae-plugin-k8s/pkg/transport"
 	"github.com/platform-engineering-labs/formae/pkg/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -315,4 +326,70 @@ func TestConfigureAppliesCRDEstablishTimeout(t *testing.T) {
 	require.NoError(t, p.Configure([]byte(`{"crdEstablishTimeoutSeconds":600}`)))
 	t.Cleanup(func() { _ = p.Configure([]byte(`{"crdEstablishTimeoutSeconds":0}`)) })
 	assert.Equal(t, 10*time.Minute, config.CRDEstablishTimeout())
+}
+
+func TestPluginAuthPolicyIsInstanceOwnedAndPrecedesAmbientAKS(t *testing.T) {
+	restricted := &Plugin{}
+	unrestricted := &Plugin{}
+	require.NoError(t, restricted.Configure([]byte(`{"allowedAuthMethods":["Kubeconfig"]}`)))
+	require.NoError(t, unrestricted.Configure(nil))
+
+	// If policy enforcement regresses below AKS construction, these values are
+	// sufficient for DefaultAzureCredential to select its environment branch
+	// and attempt Entra/ARM network access. The operation must fail on policy
+	// before any of that ambient behavior is reachable.
+	t.Setenv("AZURE_TENANT_ID", "11111111-1111-4111-8111-111111111111")
+	t.Setenv("AZURE_CLIENT_ID", "22222222-2222-4222-8222-222222222222")
+	t.Setenv("AZURE_CLIENT_SECRET", "poison-must-not-be-read")
+
+	target := []byte(`{"Auth":{"Type":"AKS","SubscriptionId":"sub","ResourceGroup":"rg","ClusterName":"cluster"}}`)
+	_, _, err := restricted.getProvisioner(context.Background(), "K8S::Core::Namespace", target)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "AKS:DefaultChain")
+	assert.Contains(t, err.Error(), "operator policy")
+
+	// A separate plugin instance retains the empty, unrestricted policy. Check
+	// the copied dependency directly through parsing so this half never reaches
+	// ambient AKS either.
+	cfg, err := unrestricted.parseTargetConfig(target)
+	require.NoError(t, err)
+	require.NoError(t, cfg.ValidateAuthPolicy(nil))
+}
+
+func TestGetProvisionerRejectsMissingOidcSourceDespiteLegacyKeyCollision(t *testing.T) {
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "cache-guard.test"},
+		NotBefore:             time.Now().Add(-time.Minute),
+		NotAfter:              time.Now().Add(time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageCertSign,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, privateKey.Public(), privateKey)
+	require.NoError(t, err)
+	ca := base64.StdEncoding.EncodeToString(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
+
+	legacyRaw := fmt.Sprintf(`{"Auth":{"Type":"EKS","Endpoint":"https://cache-guard.invalid","CertificateAuthority":%q,"ClusterName":"cluster","Region":"us-east-1"}}`, ca)
+	legacy, err := config.FromTargetConfig([]byte(legacyRaw))
+	require.NoError(t, err)
+	_, err = transport.NewClient(context.Background(), legacy)
+	require.NoError(t, err, "legacy auth remains independently constructible")
+
+	explicitRaw := fmt.Sprintf(`{"Auth":{"Type":"EKS","Endpoint":"https://cache-guard.invalid","CertificateAuthority":%q,"ClusterName":"cluster","Region":"us-east-1","Credentials":{"Type":"Oidc","RoleArn":"arn:aws:iam::123456789012:role/formae-kubernetes"}}}`, ca)
+	explicit, err := config.FromTargetConfig([]byte(explicitRaw))
+	require.NoError(t, err)
+	legacyKey, err := legacy.ClusterKey()
+	require.NoError(t, err)
+	explicitKey, err := explicit.ClusterKey()
+	require.NoError(t, err)
+	require.Equal(t, legacyKey, explicitKey, "regression setup requires the shared physical cluster identity")
+
+	p := &Plugin{}
+	require.NoError(t, p.Configure([]byte(`{"allowedAuthMethods":["EKS:Oidc"]}`)))
+	_, _, err = p.getProvisioner(context.Background(), "K8S::Core::Namespace", []byte(explicitRaw))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, plugin.ErrNoOidcBroker)
 }

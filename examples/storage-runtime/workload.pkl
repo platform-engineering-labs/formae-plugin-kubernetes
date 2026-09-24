@@ -1,3 +1,7 @@
+// AMBIENT AUTH: self-hosted / operator-policy-permitted only. Hosted installation
+// Kubernetes recipes: https://github.com/platform-engineering-labs/formae-plugin-kubernetes/tree/main/examples/oidc-eks
+// and https://github.com/platform-engineering-labs/formae-plugin-kubernetes/tree/main/examples/oidc-gke
+// Existing cloud targets do not grant Kubernetes access or establish a parent.
 // Reusable storage-plus-sandbox workload module.
 //
 // Deploys a Pod that mounts some storage at /data and writes a file, plus the

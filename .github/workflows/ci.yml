@@ -71,6 +71,11 @@ jobs:
           restore-keys: |
             gomod-${{ runner.os }}-
 
+      - name: Set up Pkl for schema and shipped-example tests
+        uses: pkl-community/setup-pkl@v0
+        with:
+          pkl-version: 0.30.0
+
       - name: Run unit tests
         run: make test-unit
 

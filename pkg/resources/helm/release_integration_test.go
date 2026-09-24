@@ -42,7 +42,7 @@ func newTestRelease(t *testing.T) (*Release, *config.Config) {
 	if err != nil {
 		t.Fatalf("FromTargetConfig: %v", err)
 	}
-	client, err := transport.NewClient(cfg)
+	client, err := transport.NewClient(context.Background(), cfg)
 	if err != nil {
 		t.Skipf("no reachable cluster: %v", err)
 	}
@@ -352,4 +352,13 @@ func contains(haystack []string, needle string) bool {
 		}
 	}
 	return false
+}
+
+func integrationFlightScope(t *testing.T, cfg *config.Config) string {
+	t.Helper()
+	scope, err := resolveTestFlightScope(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return scope
 }

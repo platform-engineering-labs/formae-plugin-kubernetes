@@ -299,16 +299,13 @@ func TestPluginSigkillMidInstall(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// How reliable is the drain, really
+// Supplemental drain sampling
 // ---------------------------------------------------------------------------
 
-// The drain races the SDK's own signal handler: Go delivers to every
-// signal.Notify receiver concurrently and offers no ordering hook, so the
-// release-record write is in a footrace with node teardown. Winning is the
-// common case, but "it worked when I tried it" is not a number.
-//
-// Losing is not a failure — the outcome then is exactly what it was before the
-// drain existed — so this reports a rate and only fails if it collapses.
+// The strict single scenario above is the release gate. This optional sampler
+// reruns the same outcome against fresh agent processes to make sporadic
+// infrastructure failures visible; it does not replace the ordering guarantee
+// covered by the SDK's deterministic BeforeStop test.
 //
 // Off by default: STABILITY_DRAIN_SAMPLES=10 make helm-stability-test
 func TestDrainWinRate(t *testing.T) {
@@ -321,11 +318,11 @@ func TestDrainWinRate(t *testing.T) {
 		samples = parsed
 	}
 	if samples <= 0 {
-		t.Skip("set STABILITY_DRAIN_SAMPLES=10 to measure how often the drain wins its race")
+		t.Skip("set STABILITY_DRAIN_SAMPLES=10 to sample direct-SIGTERM drain outcomes")
 	}
 
-	// A floor, not a target. Below this the drain is not buying what it claims
-	// to buy and the SDK pre-stop hook stops being a nice-to-have.
+	// Historical diagnostic floor, not the release threshold. The strict direct
+	// SIGTERM scenario above remains mandatory even when samples are disabled.
 	const floor = 0.5
 
 	won, lost, inconclusive := 0, 0, 0
@@ -351,8 +348,7 @@ func TestDrainWinRate(t *testing.T) {
 	t.Logf("drain win rate: %d/%d = %.0f%% (%d inconclusive)", won, decided, rate*100, inconclusive)
 
 	if rate < floor {
-		t.Errorf("drain won %.0f%% of races, below the %.0f%% floor; "+
-			"a pre-stop hook on the SDK's RunConfig would remove the race entirely",
+		t.Errorf("drain produced a failed release in %.0f%% of samples, below the %.0f%% diagnostic floor",
 			rate*100, floor*100)
 	}
 }
@@ -386,8 +382,8 @@ func drainOnce(t *testing.T, i int) string {
 // awaitSettledRecord waits for the release to stop being pending, or gives up
 // and returns whatever it last saw.
 //
-// Returning rather than failing on timeout is deliberate: still-pending IS the
-// answer for a lost race, and the caller decides whether that is a failure.
+// Returning rather than failing on timeout is deliberate: the sampler records
+// still-pending as an outcome, and its caller applies the diagnostic floor.
 func awaitSettledRecord(t *testing.T, s *scenario, timeout time.Duration) releaseState {
 	t.Helper()
 	deadline := time.Now().Add(timeout)

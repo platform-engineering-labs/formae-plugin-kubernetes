@@ -117,7 +117,7 @@ func runInteropCell(t *testing.T, pair specPair) {
 	// --- 5. formae upgrades it ----------------------------------------------
 	target := pair.migrate.Version
 	cell.repin(adopted, target, spec.RepoURL, pair.migrate.Values)
-	if state, message := cell.formae.Apply("patch", adopted); state != "Success" {
+	if state, message := cell.formae.Apply("reconcile", adopted); state != "Success" {
 		t.Fatalf("formae upgrade to %s ended %s: %s%s",
 			target, state, orNoMessage(message), cell.helmSideReason())
 	}
@@ -131,16 +131,18 @@ func runInteropCell(t *testing.T, pair specPair) {
 		t.Errorf("formae's own upgrade did not stamp %s (labels: %v)", formaeManagedLabel, state.Labels)
 	}
 	// formae mutates a release through Helm's upgrade action and has no rollback
-	// verb, which is what decides the hook event a chart sees. Asserted here, on
-	// every chart, because this is the only step where formae actually moves a
-	// release: the reconcile in step 7 is refused by the drift guard in every run
-	// observed so far, CI included, so nothing downstream exercises the path.
+	// verb, which is what decides the hook event a chart sees. Assert it here on
+	// every chart, before the reviewed reconcile exercises the same path again.
 	if strings.HasPrefix(state.Description, "Rollback") {
 		t.Errorf("formae moves a release with Helm's upgrade action, so revision 2 "+
 			"must be recorded as one; Helm says %q", state.Description)
 	}
 	t.Logf("✓ upgraded by formae as %q, ownership marker now on the lineage",
 		state.Description)
+	desired := cell.path("desired.pkl")
+	if err := cell.formae.ExtractDesired(cell.stack, desired); err != nil {
+		t.Fatalf("extract upgraded desired stack: %v", err)
+	}
 
 	// --- 6. a human rolls it back -------------------------------------------
 	if err := cell.helm.Rollback(cell.namespace, cell.release, 1); err != nil {
@@ -159,51 +161,38 @@ func runInteropCell(t *testing.T, pair specPair) {
 	cell.awaitReportedVersion(spec.Version)
 	t.Log("✓ formae sees the rollback as drift")
 
-	// An explicit `apply --mode reconcile` converging on the forma is reconcile
-	// working, not a policy problem. formae is the system of record: a change
-	// made outside it is drift, detecting that drift is the job, and an operator
-	// who then runs the converge command has asked for exactly this.
-	//
-	// An earlier version of this test asserted the opposite — that reconcile
-	// should refuse and require --force — and reported six charts as a policy
-	// violation. That was wrong twice over. It mislabelled correct behaviour,
-	// and the scenario it described (a background loop silently undoing an
-	// operator's rollback) is not what this step exercises: this is a
-	// human-invoked apply. Whether the background reconcile loop would do the
-	// same is a separate question this harness does not currently test.
-	//
-	// What is worth pinning is that the drift was visible first, and that the
-	// convergence actually happened rather than being reported and skipped.
-	outcome, message := cell.formae.ApplyExpectingRefusal("reconcile", adopted)
-	after := cell.state()
-	switch outcome {
-	case "Success":
-		assertEqual(t, "reconcile converged the release back to the forma", target, after.Version)
-		assertEqual(t, "convergence produced a new revision", 4, after.Revision)
-		// formae has no rollback verb: it converges by re-applying the forma,
-		// which Helm performs as an upgrade. That is what decides the hook event,
-		// so a chart whose pre-upgrade and pre-rollback hooks differ gets
-		// pre-upgrade here — the claim in examples/helm/README.md. Asserted on
-		// every chart that converges rather than only on the pre-rollback one,
-		// because velero is the only chart carrying that trait and its reconcile
-		// is refused, so the trait alone would never exercise this.
-		if strings.HasPrefix(after.Description, "Rollback") {
-			t.Errorf("formae converged by re-applying, which Helm must record as an upgrade; "+
-				"revision 4 says %q", after.Description)
-		}
-		t.Logf("✓ reconcile converged the out-of-band rollback back to the forma, as %q",
-			after.Description)
-	default:
-		// A refusal is legitimate too — the guard that makes an operator
-		// acknowledge an out-of-band change before overwriting it. What must not
-		// happen is reporting one thing and doing another, which traefik was
-		// observed doing: non-Success reported, release moved anyway.
-		t.Logf("reconcile did not converge (%s): %s", outcome, firstLine(orNoMessage(message)))
-		assertEqual(t, "a reconcile that did not succeed must not have moved the release",
-			spec.Version, after.Version)
-		assertEqual(t, "a reconcile that did not succeed must not have added a revision",
-			3, after.Revision)
+	// Reconcile is guarded by a recorded drift decision. Exercise the public
+	// automation contract: observe the rejection, simulate a complete revert,
+	// then submit its reviewed plan with a stable idempotency key.
+	resource := cell.formae.Resource(resourceTypeRelease, cell.nativeID())
+	label, _ := resource["Label"].(string)
+	if label == "" {
+		t.Fatalf("managed release %s has no inventory label", cell.nativeID())
 	}
+	outcome, message, err := cell.formae.ResolveDrift(desired, cell.path("drift-resolution.json"), driftResource{
+		Stack: cell.stack,
+		Type:  resourceTypeRelease,
+		Label: label,
+	})
+	if err != nil {
+		t.Fatalf("resolve rollback drift: %v", err)
+	}
+	if outcome != "Success" {
+		t.Fatalf("reconcile with reviewed revert ended %s: %s", outcome, orNoMessage(message))
+	}
+	after := cell.state()
+	assertEqual(t, "reconcile converged the release back to the forma", target, after.Version)
+	assertEqual(t, "convergence produced a new revision", 4, after.Revision)
+	// formae has no rollback verb: it converges by re-applying the forma,
+	// which Helm performs as an upgrade. That is what decides the hook event,
+	// so a chart whose pre-upgrade and pre-rollback hooks differ gets
+	// pre-upgrade here — the claim in examples/helm/README.md.
+	if !strings.HasPrefix(after.Description, "Upgrade") {
+		t.Errorf("formae converged by re-applying, which Helm must record as an upgrade; "+
+			"revision 4 says %q", after.Description)
+	}
+	t.Logf("✓ reconcile converged the out-of-band rollback back to the forma, as %q",
+		after.Description)
 
 	// --- 8. the assertion that justifies this chart --------------------------
 	cell.assertTrait("after the full chain")
@@ -395,12 +384,12 @@ func (c *interopCell) adopt() string {
 	// Bound at the live version so the apply carries no change.
 	c.repin(adopted, c.spec.Version, "", nil)
 
-	// reconcile, and only here. The stack does not exist yet — the extracted
-	// forma is what creates it — and formae refuses a patch against a stack it
-	// has never seen. The usual warning against reconciling mid-adoption is
+	// Reconcile creates the stack because formae refuses a patch against a stack
+	// it has never seen. The usual warning against reconciling mid-adoption is
 	// about a stack already holding the namespace, where reconcile would treat
 	// it as absent and delete it, taking the release down. This stack holds
-	// nothing but the release. Every later apply is a patch.
+	// nothing but the release, so the later upgrade can safely establish a new
+	// reconcile baseline before the out-of-band rollback.
 	if state, message := c.formae.Apply("reconcile", adopted); state != "Success" {
 		c.t.Fatalf("adopt ended %s: %s", state, orNoMessage(message))
 	}

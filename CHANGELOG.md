@@ -8,6 +8,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Install with `sudo formae plugin install k8s` on the host that runs the
 formae agent.
 
+## [0.1.13]
+
+### Added
+
+- **Kubernetes targets can authenticate with installation OIDC.** EKS, AKS and
+  GKE targets can exchange the installation identity for short-lived provider
+  credentials, and `OidcAuth` supports clusters whose token verifier accepts
+  the installation token directly. The new examples cover both an existing
+  cluster and a cluster created in a separate stack. An administrator must
+  still establish the provider federation and the cluster access grants before
+  applying the Kubernetes target.
+- **Long-running operations refresh credentials without persisting tokens.**
+  Kubernetes and Helm clients renew short-lived credentials in memory during
+  plugin callbacks. Authentication settings are create-only because changing
+  the identity of a populated target can replace resources across stacks.
+
+### Fixed
+
+- Helm OIDC accepts timeouts exactly at the required minimum without extending
+  operation deadlines.
+- **Renewed opaque credentials keep the normal refresh interval.** A successful
+  refresh that returns the same token with a later expiry no longer causes
+  repeated credential requests every ten seconds.
+- **A direct SIGTERM now gives in-flight Helm work up to ten seconds to
+  finish cancellation before the plugin stops.** This lets Helm record a
+  failed release that the next apply can upgrade over. Agent shutdown and an
+  unexpected SIGKILL still use the existing recovery path on reapply.
+- **Remote plugin operations no longer stall during actor startup.** The Ergo
+  runtime includes the remote spawn fix while retaining the existing plugin
+  protocol behavior.
+
+This release requires formae 0.90.2 or newer.
+
 ## [0.1.11]
 
 ### Added

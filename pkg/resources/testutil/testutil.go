@@ -62,7 +62,7 @@ func SetupEnv(t *testing.T) *TestEnv {
 		t.Fatalf("failed to parse target config: %v", err)
 	}
 
-	client, err := transport.NewClient(cfg)
+	client, err := transport.NewClient(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("failed to create K8S client: %v", err)
 	}

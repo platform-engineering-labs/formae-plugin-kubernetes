@@ -1,3 +1,6 @@
+// AMBIENT AUTH: self-hosted / operator-policy-permitted only. Hosted installation
+// OIDC recipe: https://github.com/platform-engineering-labs/formae-plugin-kubernetes/tree/main/examples/oidc-aks
+// Cluster provisioning/metadata references do not establish separate access grants.
 /// Phase 2 of the Azure connect matrix: connect to an AKS cluster that
 /// already exists, from its own stack, in its own apply.
 ///

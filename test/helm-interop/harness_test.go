@@ -523,19 +523,6 @@ func (f *formaeCLI) Apply(mode, forma string) (state string, message string) {
 	return f.apply(mode, forma, true)
 }
 
-// ApplyExpectingRefusal submits an apply that SHOULD be turned down, and does
-// not retry.
-//
-// Apply retries a rejection because it is usually a concurrency conflict rather
-// than a verdict. Here it is the verdict — reconcile refusing to overwrite an
-// out-of-band rollback is the behaviour under test — and retrying would keep
-// resubmitting until something let it through, turning the assertion into a
-// race against the drift guard.
-func (f *formaeCLI) ApplyExpectingRefusal(mode, forma string) (state string, message string) {
-	f.t.Helper()
-	return f.apply(mode, forma, false)
-}
-
 func (f *formaeCLI) apply(mode, forma string, retry bool) (state string, message string) {
 	f.t.Helper()
 	for attempt := 1; ; attempt++ {
@@ -580,7 +567,8 @@ func (f *formaeCLI) applyOnce(mode, forma string) (state string, message string)
 	// as a harness error made the guard doing its job look like the test
 	// falling over — which is how "the guard never fires on reconcile" got
 	// believed for a while. It fires; nothing was listening.
-	if strings.Contains(out, "rejected because") || strings.Contains(out, "modified since the last reconcile") {
+	if strings.Contains(out, "rejected because") ||
+		strings.Contains(out, "modified since the last reconcile") {
 		return "Rejected", strings.TrimSpace(firstMeaningfulLine(out))
 	}
 
@@ -589,6 +577,122 @@ func (f *formaeCLI) applyOnce(mode, forma string) (state string, message string)
 		f.t.Fatalf("no command submitted by `apply --mode %s`: %s", mode, strings.TrimSpace(out))
 	}
 	return f.waitCommand(match[1])
+}
+
+// ResolveDrift runs the public machine-readable drift handshake. Each protocol
+// stage is a separate CLI invocation so this exercises the same contract an
+// automation caller uses rather than reaching into the agent or datastore.
+func (f *formaeCLI) ResolveDrift(forma, controlsPath string, expected driftResource) (state, message string, err error) {
+	f.t.Helper()
+
+	const attempts = 3
+	var firstObservationID, firstResourceID string
+	attemptedReviewIDs := make([]string, 0, attempts)
+
+	for attempt := 1; attempt <= attempts; attempt++ {
+		if attempt > 1 {
+			backoff := time.Duration((attempt-1)*(attempt-1)) * interopPollInterval
+			f.t.Logf("drift review became stale (attempt %d/%d); restarting the full handshake in %s",
+				attempt-1, attempts, backoff)
+			time.Sleep(backoff)
+		}
+
+		stdout, stderr, runErr := f.machineApply(forma, "", true)
+		if runErr == nil {
+			return "", "", fmt.Errorf("initial drift simulation succeeded on attempt %d; expected ReconcileRejected", attempt)
+		}
+		controls, err := parseReconcileRejection([]byte(stdout), expected)
+		if err != nil {
+			return "", "", fmt.Errorf("parse initial drift simulation on attempt %d: %w (stdout: %s; stderr: %s)",
+				attempt, err, strings.TrimSpace(stdout), strings.TrimSpace(stderr))
+		}
+		resourceID := controls.Decisions[0].ResourceID
+		if attempt == 1 {
+			firstObservationID = controls.ObservationID
+			firstResourceID = resourceID
+		} else {
+			if controls.ObservationID != firstObservationID {
+				return "", "", fmt.Errorf("drift ObservationID changed on attempt %d: got %q, want %q", attempt, controls.ObservationID, firstObservationID)
+			}
+			if resourceID != firstResourceID {
+				return "", "", fmt.Errorf("drift ResourceID changed on attempt %d: got %q, want %q", attempt, resourceID, firstResourceID)
+			}
+		}
+		if err := writeResolution(controlsPath, controls); err != nil {
+			return "", "", err
+		}
+
+		stdout, stderr, runErr = f.machineApply(forma, controlsPath, true)
+		if runErr != nil {
+			return "", "", fmt.Errorf("resolution simulation failed on attempt %d: %w (stdout: %s; stderr: %s)",
+				attempt, runErr, strings.TrimSpace(stdout), strings.TrimSpace(stderr))
+		}
+		reviewID, err := parseResolutionReview([]byte(stdout), controls, expected)
+		if err != nil {
+			return "", "", fmt.Errorf("parse resolution review on attempt %d: %w (stdout: %s; stderr: %s)",
+				attempt, err, strings.TrimSpace(stdout), strings.TrimSpace(stderr))
+		}
+		attemptedReviewIDs = append(attemptedReviewIDs, reviewID)
+		controls.ReviewID = reviewID
+		controls.IdempotencyKey = "helm-interop-" + reviewID
+		if err := writeResolution(controlsPath, controls); err != nil {
+			return "", "", err
+		}
+
+		stdout, stderr, runErr = f.machineApply(forma, controlsPath, false)
+		if runErr == nil {
+			commandID, err := parseSubmittedCommand([]byte(stdout))
+			if err != nil {
+				return "", "", err
+			}
+			state, message = f.waitCommand(commandID)
+			return state, message, nil
+		}
+		reason, staleErr := parseStaleDriftReviewRejection([]byte(stdout))
+		if staleErr != nil {
+			return "", "", fmt.Errorf("resolution submission failed on attempt %d: %w; response is not a retryable stale review: %v (stdout: %s; stderr: %s)",
+				attempt, runErr, staleErr, strings.TrimSpace(stdout), strings.TrimSpace(stderr))
+		}
+		f.t.Logf("drift resolution stale (attempt %d/%d; ReviewID %q): %s", attempt, attempts, reviewID, reason)
+		if attempt == attempts {
+			return "", "", fmt.Errorf("drift resolution remained stale after %d attempts; attempted ReviewIDs: %v; final reason: %s (stdout: %s; stderr: %s)",
+				attempt, attemptedReviewIDs, reason, strings.TrimSpace(stdout), strings.TrimSpace(stderr))
+		}
+	}
+	return "", "", fmt.Errorf("drift resolution retry loop ended unexpectedly")
+}
+
+func (f *formaeCLI) machineApply(forma, controlsPath string, simulate bool) (stdout, stderr string, err error) {
+	f.t.Helper()
+	args := []string{"apply", "--mode", "reconcile", "--yes", "--output-consumer", "machine", "--output-schema", "json"}
+	if simulate {
+		args = append(args, "--simulate")
+	}
+	if controlsPath != "" {
+		args = append(args, "--resolution", controlsPath)
+	}
+	args = append(args, forma)
+	cmd := exec.Command(f.binary, f.args(args...)...)
+	var stdoutBuilder, stderrBuilder strings.Builder
+	cmd.Stdout = &stdoutBuilder
+	cmd.Stderr = &stderrBuilder
+	err = cmd.Run()
+	return stdoutBuilder.String(), stderrBuilder.String(), err
+}
+
+func writeResolution(path string, controls driftResolution) error {
+	raw, err := json.MarshalIndent(controls, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode drift resolution: %w", err)
+	}
+	raw = append(raw, '\n')
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		return fmt.Errorf("write drift resolution: %w", err)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		return fmt.Errorf("protect drift resolution: %w", err)
+	}
+	return nil
 }
 
 // commandTimeout bounds how long a submitted command may take to settle.
@@ -666,6 +770,13 @@ func (f *formaeCLI) waitCommand(id string) (state string, message string) {
 // Extract writes a forma describing resources matching query.
 func (f *formaeCLI) Extract(query, path string) error {
 	_, err := runCmd(f.binary, f.args("extract", "--query", query,
+		"--schema-location", "local", "--yes", path)...)
+	return err
+}
+
+// ExtractDesired writes the complete recorded declaration for one managed stack.
+func (f *formaeCLI) ExtractDesired(stack, path string) error {
+	_, err := runCmd(f.binary, f.args("extract", "--desired", "--query", "stack:"+stack,
 		"--schema-location", "local", "--yes", path)...)
 	return err
 }
