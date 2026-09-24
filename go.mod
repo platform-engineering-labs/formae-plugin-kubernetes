@@ -17,7 +17,7 @@ require (
 	github.com/platform-engineering-labs/formae/pkg/credential v0.1.1-0.20260918154753-1ddaf2b87619
 	github.com/platform-engineering-labs/formae/pkg/model v0.1.29-dev.0
 	github.com/platform-engineering-labs/formae/pkg/plugin v0.4.3-0.20260921044942-302935e20eac
-	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.2.8-0.20260918154753-1ddaf2b87619
+	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.2.8
 	github.com/stretchr/testify v1.12.1
 	github.com/theory/jsonpath v0.12.1
 	github.com/tidwall/gjson v1.19.0
