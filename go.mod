@@ -20,7 +20,7 @@ require (
 	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.2.8
 	github.com/stretchr/testify v1.12.1
 	github.com/theory/jsonpath v0.12.1
-	github.com/tidwall/gjson v1.19.0
+	github.com/tidwall/gjson v1.19.1
 	golang.org/x/oauth2 v0.37.0
 	helm.sh/helm/v3 v3.22.0
 	k8s.io/api v0.37.0
