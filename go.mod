@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.47.0
 	github.com/aws/aws-sdk-go-v2/config v1.33.3
 	github.com/aws/aws-sdk-go-v2/service/sts v1.49.0
-	github.com/aws/smithy-go v1.28.1
+	github.com/aws/smithy-go v1.28.2
 	github.com/google/uuid v1.6.0
 	github.com/oracle/oci-go-sdk/v65 v65.125.0
 	github.com/ovh/go-ovh v1.9.0
