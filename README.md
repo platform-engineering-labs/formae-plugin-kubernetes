@@ -1,4 +1,4 @@
-# Kubernetes Plugin for formae
+# Kubernetes plugin for formae
 
 [![CI](https://github.com/platform-engineering-labs/formae-plugin-kubernetes/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/platform-engineering-labs/formae-plugin-kubernetes/actions/workflows/ci.yml)
 [![Monthly](https://github.com/platform-engineering-labs/formae-plugin-kubernetes/actions/workflows/monthly.yml/badge.svg?branch=main)](https://github.com/platform-engineering-labs/formae-plugin-kubernetes/actions/workflows/monthly.yml)
@@ -9,6 +9,34 @@ enables formae to manage Kubernetes resources via
 [Server-Side Apply](https://kubernetes.io/docs/reference/using-api/server-side-apply/),
 with strongly-typed Pkl schemas pinned to your cluster's exact K8s minor
 (v1.21 → v1.36, 16 minors).
+
+[formae](https://github.com/platform-engineering-labs/formae) · [Hub](https://hub.platform.engineering/platform.engineering/k8s) · [Configuration](https://docs.formae.ai/documentation/reference/providers/kubernetes/configuration) · [Supported resources](https://docs.formae.ai/documentation/reference/providers/kubernetes/supported-resources)
+
+## Install
+
+Requires the formae CLI: see the [quick start](https://docs.formae.ai/documentation/get-started/quickstart).
+
+```bash
+formae plugin install k8s
+```
+
+Also included in the default plugin set: `formae plugin install standard`.
+
+Restart the formae agent afterwards so it loads the plugin.
+
+**New project:** with the agent running, `formae project init --include k8s my-project` creates `my-project` with a `PklProject` that declares the formae and k8s schema packages, so `import "@k8s/..."` resolves, and a starter `main.pkl`. Don't run it in an existing project: it overwrites both files.
+
+**Existing project:** add the plugin to `dependencies` in your `PklProject`, with the current version from the [hub page](https://hub.platform.engineering/platform.engineering/k8s), then run `pkl project resolve`:
+
+```pkl
+["k8s"] {
+  uri = "package://hub.platform.engineering/plugins/k8s/schema/pkl/k8s/k8s@<version>"
+}
+```
+
+Next: [write your first forma](https://docs.formae.ai/documentation/get-started/write-your-first-forma), then [`formae apply`](https://docs.formae.ai/documentation/reference/cli/apply) (see [apply modes](https://docs.formae.ai/documentation/concepts/apply-modes)).
+
+With an AI coding assistant, use the [formae plugin](https://docs.formae.ai/documentation/guides/ai-coding-assistants) (formerly `formae-mcp`), which can search the hub and fetch plugin examples. The formae documentation is also available as [llms.txt](https://docs.formae.ai/llms.txt).
 
 ## Supported Kubernetes versions
 
@@ -166,7 +194,7 @@ The Pod's ServiceAccount token at
 ## Helm charts
 
 A chart is installed as a single `K8S::Helm::Release`, driven by the Helm SDK
-embedded in the plugin. Formae manages the release; Helm manages the objects the
+embedded in the plugin. formae manages the release; Helm manages the objects the
 chart renders, so hooks, hook weights, CRD install ordering and revision history
 all work — and `helm list`, `helm history` and `helm rollback` see the release.
 
