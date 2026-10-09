@@ -251,6 +251,32 @@ func (m meta) compatible(target string) bool {
 	return true
 }
 
+// sharedFixtureGates sets a K8s floor/ceiling on shared fixtures that
+// evaluate on every minor but cannot run against an older cluster, so the
+// missing-import skip below never drops them. Keyed by the create fixture's
+// base name; its -update/-replace variants inherit the gate.
+//
+// These stay in shared/ rather than moving to features/ because the CI
+// features job runs CRUD only — shared/ fixtures also get discovery, and the
+// monthly workflow reads testdata/main/shared directly.
+var sharedFixtureGates = map[string]meta{
+	// podinfo 6.7.x declares kubeVersion >=1.23.0-0; Helm refuses the install
+	// on older clusters ("chart requires kubeVersion: >=1.23.0-0 which is
+	// incompatible with Kubernetes v1.22.17").
+	"helmrelease":     {MinK8sVersion: "1.23"},
+	"helmrelease-oci": {MinK8sVersion: "1.23"},
+}
+
+// sharedFixtureCompatible reports whether a shared fixture file belongs in
+// the generated tree for target, per sharedFixtureGates.
+func sharedFixtureCompatible(fileName, target string) bool {
+	base := strings.TrimSuffix(fileName, ".pkl")
+	base = strings.TrimSuffix(base, "-update")
+	base = strings.TrimSuffix(base, "-replace")
+	m, ok := sharedFixtureGates[base]
+	return !ok || m.compatible(target)
+}
+
 func copyFile(src, dst string) error {
 	data, err := os.ReadFile(src)
 	if err != nil {
@@ -351,11 +377,19 @@ func processTarget(masterDir, outDir, target string) error {
 	sharedDst := filepath.Join(dst, "shared")
 	if entries, err := os.ReadDir(sharedDst); err == nil {
 		dropped := 0
+		gated := 0
 		for _, e := range entries {
 			if e.IsDir() || !strings.HasSuffix(e.Name(), ".pkl") {
 				continue
 			}
 			fixturePath := filepath.Join(sharedDst, e.Name())
+			if !sharedFixtureCompatible(e.Name(), target) {
+				if err := os.Remove(fixturePath); err != nil {
+					return fmt.Errorf("drop gated fixture %s: %w", fixturePath, err)
+				}
+				gated++
+				continue
+			}
 			cmd := exec.Command("pkl", "eval", "--project-dir", dst, fixturePath)
 			// Fixtures read FORMAE_TEST_RUN_ID for unique resource names at
 			// test time; supply a dummy at gen time so eval doesn't fail
@@ -392,6 +426,9 @@ func processTarget(masterDir, outDir, target string) error {
 		}
 		if dropped > 0 {
 			fmt.Printf("  shared: %d fixtures dropped (incompatible with v%s)\n", dropped, target)
+		}
+		if gated > 0 {
+			fmt.Printf("  shared: %d fixtures gated out (sharedFixtureGates, v%s)\n", gated, target)
 		}
 	}
 
