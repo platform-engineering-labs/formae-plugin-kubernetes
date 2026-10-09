@@ -81,6 +81,9 @@ func TestOperationContextRemainsLiveThroughTLSResponseBody(t *testing.T) {
 				case <-release:
 					_, _ = io.WriteString(w, "last")
 				case <-r.Context().Done():
+					// Abort rather than end the response: a clean end races the
+					// client's close and can reach it as EOF, hiding cancellation.
+					panic(http.ErrAbortHandler)
 				}
 			}))
 			defer server.Close()
