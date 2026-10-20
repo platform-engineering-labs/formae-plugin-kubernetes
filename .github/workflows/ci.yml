@@ -2,7 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+    paths-ignore:
+      - '**/*.md'
   # Every PR, not just those targeting main. Build, unit tests and lint are cheap
   # and there is no branch for which they are not worth running — a PR into a
   # feature branch previously got no checks at all, so a regression could reach
@@ -17,7 +20,7 @@ on:
       run_conformance:
         description: 'Run conformance tests'
         required: false
-        default: 'false'
+        default: false
         type: boolean
 
 jobs:
